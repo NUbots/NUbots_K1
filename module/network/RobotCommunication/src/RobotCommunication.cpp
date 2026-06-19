@@ -34,6 +34,7 @@
 #include "message/behaviour/state/WalkState.hpp"
 #include "message/input/GameState.hpp"
 #include "message/input/RoboCup.hpp"
+#include "message/network/SharedTeam.hpp"
 #include "message/input/Sensors.hpp"
 #include "message/localisation/Ball.hpp"
 #include "message/localisation/Field.hpp"
@@ -58,7 +59,42 @@ namespace module::network {
     using message::support::GlobalConfig;
     using utility::math::euler::mat_to_rpy_intrinsic;
 
+    /// The shared cross-team message is the only format on the wire.
+    namespace shared = message::network;
+
     struct StartupDelay {};
+
+    /// Translate an incoming shared message into our internal RoboCup. Fields the shared format does not
+    /// carry (cost, others, ball confidence) stay at defaults; purpose is ATTACK when going_for_ball, else UNKNOWN.
+    static RoboCup shared_to_robocup(const shared::Message& in) {
+        RoboCup out;
+        out.timestamp = in.timestamp;
+        out.state     = message::input::State(int(in.state));
+
+        out.current_pose.player_id  = in.current_pose.player_id;
+        out.current_pose.position   = in.current_pose.position;
+        out.current_pose.covariance = in.current_pose.covariance;
+
+        out.walk_command = in.walk_command;
+
+        out.target_pose.player_id  = in.target_pose.player_id;
+        out.target_pose.position   = in.target_pose.position;
+        out.target_pose.covariance = in.target_pose.covariance;
+
+        out.kick_target = in.kick_target;
+
+        out.ball.position   = in.ball.position;
+        out.ball.velocity   = in.ball.velocity;
+        out.ball.covariance = in.ball.covariance;
+
+        // Best-effort reconstruction of the teammate's purpose from the single going_for_ball flag
+        out.purpose.player_id = in.current_pose.player_id;
+        out.purpose.purpose   = in.going_for_ball ? message::purpose::SoccerPosition::ATTACK
+                                                  : message::purpose::SoccerPosition::UNKNOWN;
+        out.purpose.active    = true;
+
+        return out;
+    }
 
     RobotCommunication::RobotCommunication(std::unique_ptr<NUClear::Environment> environment)
         : Reactor(std::move(environment)) {
@@ -116,18 +152,20 @@ namespace module::network {
                                 return;
                             }
 
-                            // Deserialise the incoming RoboCup message
+                            // Deserialise the incoming shared team message
                             const std::vector<unsigned char>& payload = p.payload;
-                            RoboCup incoming_msg = NUClear::util::serialise::Serialise<RoboCup>::deserialise(payload);
+                            shared::Message incoming =
+                                NUClear::util::serialise::Serialise<shared::Message>::deserialise(payload);
 
                             // Check if the incoming message is from the same player
-                            bool own_player_message = global_config.player_id == incoming_msg.current_pose.player_id;
+                            bool own_player_message = global_config.player_id == incoming.current_pose.player_id;
 
                             // Port-per-team ensures only teammates broadcast on this port
                             // Filter out messages from ourselves only
                             if (!own_player_message) {
-                                log<DEBUG>("Message received from teammate ID", incoming_msg.current_pose.player_id);
-                                emit(std::make_unique<RoboCup>(std::move(incoming_msg)));
+                                log<DEBUG>("Message received from teammate ID", incoming.current_pose.player_id);
+                                // Translate to internal RoboCup so the rest of the codebase is unchanged
+                                emit(std::make_unique<RoboCup>(shared_to_robocup(incoming)));
                             }
                         });
                 }
@@ -168,7 +206,7 @@ namespace module::network {
                          const std::shared_ptr<const Purpose>& purpose,
                          const std::shared_ptr<const WalkTo>& walk_to,
                          const GlobalConfig& config) {
-                auto msg = std::make_unique<RoboCup>();
+                auto msg = std::make_unique<shared::Message>();
 
                 // Timestamp
                 msg->timestamp = NUClear::clock::now();
@@ -178,32 +216,14 @@ namespace module::network {
                 if (game_state) {
                     int penalty_reason = game_state->self.penalty_reason;
                     switch (penalty_reason) {
-                        case 0: msg->state = 0; break;
-                        case 1: msg->state = 1; break;
-                        default: msg->state = 2; break;
-                    }
-
-                    // Team colour
-                    switch (int(game_state->team.team_colour)) {
-                        case GameState::TeamColour::BLUE: msg->current_pose.team = message::input::Team::BLUE; break;
-                        case GameState::TeamColour::RED: msg->current_pose.team = message::input::Team::RED; break;
-                        case GameState::TeamColour::YELLOW:
-                            msg->current_pose.team = message::input::Team::YELLOW;
-                            break;
-                        case GameState::TeamColour::BLACK: msg->current_pose.team = message::input::Team::BLACK; break;
-                        case GameState::TeamColour::WHITE: msg->current_pose.team = message::input::Team::WHITE; break;
-                        case GameState::TeamColour::GREEN: msg->current_pose.team = message::input::Team::GREEN; break;
-                        case GameState::TeamColour::ORANGE:
-                            msg->current_pose.team = message::input::Team::ORANGE;
-                            break;
-                        case GameState::TeamColour::PURPLE:
-                            msg->current_pose.team = message::input::Team::PURPLE;
-                            break;
-                        case GameState::TeamColour::BROWN: msg->current_pose.team = message::input::Team::BROWN; break;
-                        case GameState::TeamColour::GRAY: msg->current_pose.team = message::input::Team::GRAY; break;
-                        default: msg->current_pose.team = message::input::Team::UNKNOWN_TEAM;
+                        case 0: msg->state = shared::State::UNKNOWN_STATE; break;
+                        case 1: msg->state = shared::State::UNPENALISED; break;
+                        default: msg->state = shared::State::PENALISED; break;
                     }
                 }
+
+                // The shared team field identifies the university, not the colour
+                msg->current_pose.team = shared::Team::NUBOTS;
 
                 // Current pose (Position, orientation, and covariance of the player on the field)
                 msg->current_pose.player_id = config.player_id;
@@ -226,7 +246,7 @@ namespace module::network {
                         msg->current_pose.position.z() = mat_to_rpy_intrinsic(Hft.rotation()).z();
 
                         msg->current_pose.covariance = field->covariance.cast<float>();
-                        msg->current_pose.cost       = field->cost;
+                        // Note: the shared format carries no localisation cost field.
                     }
                 }
 
@@ -247,7 +267,7 @@ namespace module::network {
                     msg->target_pose.position = rDFf.cast<float>();
                     // Extract yaw from rotation matrix
                     msg->target_pose.position.z() = mat_to_rpy_intrinsic(Hfd.rotation()).z();
-                    // Copy team and player ID to target pose
+                    // Copy team (university) and player ID to target pose
                     msg->target_pose.team      = msg->current_pose.team;
                     msg->target_pose.player_id = config.player_id;
                 }
@@ -260,8 +280,9 @@ namespace module::network {
                 }
 
                 // Ball information
-                // Check if the ball has been seen recently, if it hasn't the message fields will 0
-                // and the confidence will be 0
+                // Default age to -1 (invalid / not seen); overwritten below if we have a recent ball
+                msg->ball.age = -1.0f;
+                // Check if the ball has been seen recently, if it hasn't the message fields stay 0 and age stays -1
                 if (loc_ball && (NUClear::clock::now() - loc_ball->time_of_measurement < cfg.ball_timeout)) {
                     // Convert position of ball from world to field space
                     if (field) {
@@ -272,32 +293,28 @@ namespace module::network {
                         // Store our position from field to ball
                         msg->ball.position = rBFf.cast<float>();
                     }
-                    // Confidence - our own estimates are 1.0, while if it's from a teammate, we have no confidence
-                    // This it to prevent everyone echoing
-                    msg->ball.confidence = loc_ball->confidence;
+                    // Age of the observation in seconds
+                    msg->ball.age = std::chrono::duration_cast<std::chrono::duration<float>>(
+                                        NUClear::clock::now() - loc_ball->time_of_measurement)
+                                        .count();
                     msg->ball.covariance = loc_ball->covariance.block(0, 0, 3, 3).cast<float>();
-
-                    msg->ball.velocity = (loc_ball->vBw).cast<float>();
+                    msg->ball.velocity   = (loc_ball->vBw).cast<float>();
                 }
 
-                // Current purpose (soccer position) of the Robot
-                if (purpose) {
-                    msg->purpose = *purpose;
-                }
-                // Override the player ID in the purpose message to be consistent, and in case purpose is not set
-                msg->purpose.player_id = config.player_id;
+                // Whether we are actively going for the ball (attacking)
+                msg->going_for_ball = purpose && purpose->purpose == message::purpose::SoccerPosition::ATTACK;
 
                 // Check serialised size before sending
-                auto payload = NUClear::util::serialise::Serialise<RoboCup>::serialise(*msg);
+                auto payload = NUClear::util::serialise::Serialise<shared::Message>::serialise(*msg);
                 if (payload.size() > cfg.max_message_size) {
-                    log<WARN>("RoboCup message size",
+                    log<WARN>("SharedTeam message size",
                               payload.size(),
                               "bytes exceeds",
                               cfg.max_message_size,
                               "byte limit");
                 }
                 else {
-                    log<DEBUG>("RoboCup message size:", payload.size(), "bytes");
+                    log<DEBUG>("SharedTeam message size:", payload.size(), "bytes");
                 }
 
                 // Only count messages during Ready, Set, and Playing states
