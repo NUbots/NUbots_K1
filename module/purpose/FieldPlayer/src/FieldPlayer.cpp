@@ -77,6 +77,9 @@ namespace module::purpose {
     using message::support::FieldDescription;
     using message::support::GlobalConfig;
 
+    using utility::math::euler::pos_rpy_to_transform;
+    using utility::strategy::formation::compute_support_position;
+
     FieldPlayer::FieldPlayer(std::unique_ptr<NUClear::Environment> environment)
         : BehaviourReactor(std::move(environment)) {
 
@@ -87,14 +90,14 @@ namespace module::purpose {
             cfg.equidistant_threshold     = config["equidistant_threshold"].as<double>();
             cfg.ball_off_center_threshold = config["ball_off_center_threshold"].as<double>();
             cfg.center_circle_offset      = config["center_circle_offset"].as<double>();
-            cfg.max_localisation_cost = config["max_localisation_cost"].as<double>();
-            cfg.search_when_lost      = config["search_when_lost"].as<bool>();
+            cfg.max_localisation_cost     = config["max_localisation_cost"].as<double>();
+            cfg.search_when_lost          = config["search_when_lost"].as<bool>();
 
-            // Load the formation JSON from the same directory as FieldPlayer.yaml.
-            // If the file is absent, formation_json stays empty and Support module fallback is used.
-            std::filesystem::path formation_path =
-                std::filesystem::path(config.path).parent_path()
-                / config["formation_file"].as<std::string>();
+            // Load the formation JSON from the same directory as FieldPlayer.yaml (the runtime
+            // "config" directory). If the file is absent, formation_json stays empty and the
+            // Support module fallback is used.
+            std::filesystem::path formation_path = (std::filesystem::path("config") / config.file_name).parent_path()
+                                                   / config["formation_file"].as<std::string>();
             if (std::ifstream f(formation_path); f.good()) {
                 formation_json = nlohmann::json::parse(f);
             }
@@ -293,44 +296,42 @@ namespace module::purpose {
                     game_phase = "timeout";
                 }
 
-                std::string set_play = "none";
+                std::string set_play_key = "none";
                 if (game_state.mode.value == GameState::Mode::DIRECT_FREEKICK) {
-                    set_play = "direct_free_kick";
+                    set_play_key = "direct_free_kick";
                 }
                 else if (game_state.mode.value == GameState::Mode::INDIRECT_FREEKICK) {
-                    set_play = "indirect_free_kick";
+                    set_play_key = "indirect_free_kick";
                 }
                 else if (game_state.mode.value == GameState::Mode::PENALTYKICK) {
-                    set_play = "penalty_kick";
+                    set_play_key = "penalty_kick";
                 }
                 else if (game_state.mode.value == GameState::Mode::CORNER_KICK) {
-                    set_play = "corner_kick";
+                    set_play_key = "corner_kick";
                 }
                 else if (game_state.mode.value == GameState::Mode::GOAL_KICK) {
-                    set_play = "goal_kick";
+                    set_play_key = "goal_kick";
                 }
                 else if (game_state.mode.value == GameState::Mode::THROW_IN) {
-                    set_play = "throw_in";
+                    set_play_key = "throw_in";
                 }
 
-                // kicking_team only meaningful during kickoff (when set_play is "none")
+                // kicking_team only meaningful during kickoff (when set_play_key is "none")
                 std::optional<int> kicking_team = std::nullopt;
-                if (set_play == "none") {
-                    kicking_team = game_state.our_kick_off
-                                       ? static_cast<int>(game_state.team.team_id)
-                                       : static_cast<int>(game_state.opponent.team_id);
+                if (set_play_key == "none") {
+                    kicking_team = game_state.our_kick_off ? static_cast<int>(game_state.team.team_id)
+                                                           : static_cast<int>(game_state.opponent.team_id);
                 }
 
-                auto formation_pos = utility::strategy::formation::compute_support_position(
-                    formation_json,
-                    static_cast<int>(global_config.player_id),
-                    game_phase,
-                    "playing",
-                    set_play,
-                    kicking_team,
-                    static_cast<int>(game_state.team.team_id),
-                    Eigen::Vector2d(rBFf.x(), rBFf.y()),
-                    fd.dimensions);
+                auto formation_pos = compute_support_position(formation_json,
+                                                              static_cast<int>(global_config.player_id),
+                                                              game_phase,
+                                                              "playing",
+                                                              set_play_key,
+                                                              kicking_team,
+                                                              static_cast<int>(game_state.team.team_id),
+                                                              Eigen::Vector2d(rBFf.x(), rBFf.y()),
+                                                              fd.dimensions);
 
                 if (formation_pos.has_value()) {
                     log<DEBUG>("Support (formation)!");
@@ -340,9 +341,8 @@ namespace module::purpose {
                                                    true,
                                                    game_state.team.team_colour));
                     emit<Task>(std::make_unique<WalkToFieldPosition>(
-                        utility::math::euler::pos_rpy_to_transform(
-                            Eigen::Vector3d(formation_pos->x(), formation_pos->y(), 0.0),
-                            Eigen::Vector3d(0, 0, M_PI)),
+                        pos_rpy_to_transform(Eigen::Vector3d(formation_pos->x(), formation_pos->y(), 0.0),
+                                             Eigen::Vector3d(0, 0, M_PI)),
                         true));
                     return;
                 }

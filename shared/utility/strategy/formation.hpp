@@ -177,8 +177,8 @@ namespace utility::strategy::formation {
         std::string relation = resolve_kicking_relation(kicking_team, own_team_id);
         std::string legacy   = resolve_legacy_mode(game_phase, state, set_play, relation);
 
-        std::string advertised = "advertised__phase_" + game_phase + "__state_" + state
-                                 + "__set_play_" + set_play + "__kicking_" + relation;
+        std::string advertised =
+            "advertised__phase_" + game_phase + "__state_" + state + "__set_play_" + set_play + "__kicking_" + relation;
         if (modes.contains(advertised)) {
             return &modes[advertised];
         }
@@ -200,8 +200,7 @@ namespace utility::strategy::formation {
         if (robot_cfg.contains(key) && robot_cfg[key].is_number()) {
             return robot_cfg[key].get<double>();
         }
-        if (mode.contains("defaults") && mode["defaults"].contains(key)
-            && mode["defaults"][key].is_number()) {
+        if (mode.contains("defaults") && mode["defaults"].contains(key) && mode["defaults"][key].is_number()) {
             return mode["defaults"][key].get<double>();
         }
         if (formation.contains("defaults") && formation["defaults"].contains(key)
@@ -219,8 +218,7 @@ namespace utility::strategy::formation {
                                         const nlohmann::json& formation,
                                         double fallback) {
         auto try_get = [&](const nlohmann::json& obj) -> std::optional<double> {
-            if (obj.contains(parent) && obj[parent].contains(child)
-                && obj[parent][child].is_number()) {
+            if (obj.contains(parent) && obj[parent].contains(child) && obj[parent][child].is_number()) {
                 return obj[parent][child].get<double>();
             }
             return std::nullopt;
@@ -244,22 +242,20 @@ namespace utility::strategy::formation {
     /// Compute where a support player should stand based on the formation JSON.
     /// Returns nullopt when: formation is empty, no mode resolves, or player is not in the mode.
     /// In all nullopt cases the caller should fall back to the Support module's own positioning.
-    inline std::optional<Eigen::Vector2d> compute_support_position(
-        const nlohmann::json& formation,
-        int player_number,
-        const std::string& game_phase,
-        const std::string& state,
-        const std::string& set_play,
-        std::optional<int> kicking_team,
-        int own_team_id,
-        const Eigen::Vector2d& ball_field,
-        const Dims& dims) {
+    inline std::optional<Eigen::Vector2d> compute_support_position(const nlohmann::json& formation,
+                                                                   int player_number,
+                                                                   const std::string& game_phase,
+                                                                   const std::string& state,
+                                                                   const std::string& set_play,
+                                                                   std::optional<int> kicking_team,
+                                                                   int own_team_id,
+                                                                   const Eigen::Vector2d& ball_field,
+                                                                   const Dims& dims) {
 
         if (formation.empty()) {
             return std::nullopt;
         }
-        const nlohmann::json* mode =
-            resolve_mode(formation, game_phase, state, set_play, kicking_team, own_team_id);
+        const nlohmann::json* mode = resolve_mode(formation, game_phase, state, set_play, kicking_team, own_team_id);
         if (mode == nullptr) {
             return std::nullopt;
         }
@@ -272,13 +268,9 @@ namespace utility::strategy::formation {
 
         nlohmann::json zero = 0.0;
         double offset_x =
-            resolve_measure(robot_cfg.value("offset", nlohmann::json::object()).value("x", zero),
-                            dims)
-                .value_or(0.0);
+            resolve_measure(robot_cfg.value("offset", nlohmann::json::object()).value("x", zero), dims).value_or(0.0);
         double offset_y =
-            resolve_measure(robot_cfg.value("offset", nlohmann::json::object()).value("y", zero),
-                            dims)
-                .value_or(0.0);
+            resolve_measure(robot_cfg.value("offset", nlohmann::json::object()).value("y", zero), dims).value_or(0.0);
 
         double attr_x = resolve_nested_scalar("attraction", "x", robot_cfg, *mode, formation, 1.0);
         double attr_y = resolve_nested_scalar("attraction", "y", robot_cfg, *mode, formation, 1.0);
