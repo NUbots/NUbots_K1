@@ -283,7 +283,8 @@ namespace module::purpose {
                 // the ball up towards our goal, we should help out the attacker however makes sense in the situation.
                 // Try formation-based positioning first; fall through to the Support module if no entry is found.
 
-                // Map GameState enums to the string keys used by the formation JSON
+                // Mapping GameState enums to the string keys used by the formation JSON.
+                // This is so we can drop in a new JSON quickly if needed and our code will still understand
                 std::string game_phase = "normal";
                 if (game_state.mode.value == GameState::Mode::PENALTY_SHOOTOUT) {
                     game_phase = "penalty_shoot_out";
