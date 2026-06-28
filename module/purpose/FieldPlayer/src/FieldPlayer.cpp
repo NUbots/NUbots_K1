@@ -93,8 +93,7 @@ namespace module::purpose {
             cfg.max_localisation_cost     = config["max_localisation_cost"].as<double>();
             cfg.search_when_lost          = config["search_when_lost"].as<bool>();
 
-            // Load the formation JSON from the same directory as FieldPlayer.yaml (the runtime
-            // "config" directory). If the file is absent, formation_json stays empty and the
+            // Load the formation JSON from the same directory as FieldPlayer.yaml. If the file is absent, formation_json stays empty and the
             // Support module fallback is used.
             std::filesystem::path formation_path = (std::filesystem::path("config") / config.file_name).parent_path()
                                                    / config["formation_file"].as<std::string>();
