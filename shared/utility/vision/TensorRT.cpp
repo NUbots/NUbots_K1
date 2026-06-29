@@ -71,9 +71,11 @@ namespace utility::vision {
             }
 
             auto config = std::unique_ptr<IBuilderConfig>(builder->createBuilderConfig());
+#if NV_TENSORRT_MAJOR < 10
             if (fp16 && builder->platformHasFastFp16()) {
                 config->setFlag(BuilderFlag::kFP16);
             }
+#endif
 
             auto plan = std::unique_ptr<IHostMemory>(builder->buildSerializedNetwork(*network, *config));
             if (plan == nullptr) {
