@@ -133,16 +133,20 @@ RUN install-package -p ${platform} libncurses-dev libncurses6 libtinfo6 libc6-de
 RUN pip3 install pyyaml mako
 
 # Install OpenCL C Headers
-RUN install-from-source https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2022.05.18.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local
+RUN OCL_PREFIX=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/${prefix}" || echo "/usr/local") && \
+    OCL_TOOLCHAIN=$([ "${platform}" = "orinnx" ] && echo "--toolchain-dir /usr/local" || echo "") && \
+    install-from-source https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2022.05.18.tar.gz \
+    --prefix ${OCL_PREFIX} \
+    ${OCL_TOOLCHAIN}
 
 
 # OpenCL loader library
 RUN install-package ruby autotools-dev automake libtool
-RUN install-from-source https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v2.3.1.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local
+RUN OCL_PREFIX=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/${prefix}" || echo "/usr/local") && \
+    OCL_TOOLCHAIN=$([ "${platform}" = "orinnx" ] && echo "--toolchain-dir /usr/local" || echo "") && \
+    install-from-source https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v2.3.1.tar.gz \
+    --prefix ${OCL_PREFIX} \
+    ${OCL_TOOLCHAIN}
 
 RUN if [ "${platform}" != "generic" ]; then \
     ln -sf libm.so.6      /l4t/targetfs/usr/lib/aarch64-linux-gnu/libm.so && \
@@ -322,9 +326,11 @@ RUN install-from-source https://github.com/ianlancetaylor/libbacktrace/archive/8
     --enable-static
 
 # Alsa and espeak
-RUN install-from-source https://github.com/alsa-project/alsa-lib/archive/refs/tags/v1.2.7.2.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local \
+RUN ALSA_PREFIX=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/${prefix}" || echo "/usr/local") && \
+    ALSA_TOOLCHAIN=$([ "${platform}" = "orinnx" ] && echo "--toolchain-dir /usr/local" || echo "") && \
+    install-from-source https://github.com/alsa-project/alsa-lib/archive/refs/tags/v1.2.7.2.tar.gz \
+    --prefix ${ALSA_PREFIX} \
+    ${ALSA_TOOLCHAIN} \
     --without-debug
 RUN install-package -p ${platform} alsa-utils
 
@@ -363,9 +369,11 @@ RUN install-from-source https://github.com/Tom0Brien/tinyrobotics/archive/refs/t
     -DBUILD_TESTS=OFF
 
 # lame
-RUN install-from-source https://downloads.sourceforge.net/lame/lame-3.100.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local
+RUN LAME_PREFIX=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/${prefix}" || echo "/usr/local") && \
+    LAME_TOOLCHAIN=$([ "${platform}" = "orinnx" ] && echo "--toolchain-dir /usr/local" || echo "") && \
+    install-from-source https://downloads.sourceforge.net/lame/lame-3.100.tar.gz \
+    --prefix ${LAME_PREFIX} \
+    ${LAME_TOOLCHAIN}
 
 # Nanopb for generating messages for NUSense
 RUN install-from-source https://github.com/nanopb/nanopb/archive/refs/tags/0.4.9.1.tar.gz

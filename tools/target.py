@@ -56,6 +56,9 @@ def run(target, username, uid, reset, **kwargs):
         # Ensure the platform image is built
         platform.build(defaults.image, target, username, uid, reset)
 
+        if target == "generic":
+            target += "_k1"
+
         # Tag the built platform image as the selected image
         err = subprocess.call(
             [
