@@ -34,7 +34,7 @@ nuclear_role(
   actuation::FootController
   # Skills
   skill::K1Walk
-  skill::KickWalk
+  skill::K1VisualKick
   skill::K1GetUp
   skill::K1Look
   skill::Say
