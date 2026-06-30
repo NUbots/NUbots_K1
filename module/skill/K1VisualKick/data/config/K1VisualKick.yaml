@@ -5,3 +5,10 @@ version: 2
 # How long to let the kick run before reporting the task as done. The SDK gives no
 # completion feedback.
 kick_duration: 3.0
+# Name of the boost::interprocess shared memory segment that NUbridge reads kick
+# decisions from and republishes as a ROS2 topic. Must match the "publishers" path
+# (with '/' replaced by '_') configured in NUbridge's topics.yaml.
+kick_decision_segment: _kick_ball
+# Maximum distance (metres) the ball can be from the robot for a kick to start or
+# continue. If the ball moves further away than this, the kick is stopped.
+max_kick_distance: 0.8

@@ -61,6 +61,7 @@ namespace module::planning {
             cfg.ball_distance_threshold = config["ball_distance_threshold"].as<double>();
             cfg.ball_angle_threshold    = config["ball_angle_threshold"].as<double>();
             cfg.target_angle_threshold  = config["target_angle_threshold"].as<Expression>();
+            cfg.kick_power              = config["kick_power"].as<double>();
             cfg.kick_leg                = config["kick_leg"].as<std::string>();
         });
 
@@ -111,16 +112,30 @@ namespace module::planning {
                     return;
                 }
 
+                // Calculate kick direction
+                Eigen::Vector3d kick_direction       = Eigen::Vector3d::Zero();
+                const Eigen::Vector2d ball_to_target = (kick_to.rPRr - rBRr).head<2>();
+                if (ball_to_target.norm() > 0.0) {
+                    kick_direction.head<2>() = ball_to_target.normalized() * cfg.kick_power;
+                }
+
                 // If the kick leg is forced left, kick left. If the kick leg is auto,
                 // kick with left leg if ball is more to the left
+                LimbID kick_leg;
                 if (cfg.kick_leg == LimbID::LEFT_LEG || (cfg.kick_leg == LimbID::UNKNOWN && rBRr.y() > 0.0)) {
                     log<INFO>("LEFT KICK!");
-                    emit<Task>(std::make_unique<Kick>(LimbID::LEFT_LEG));
+                    kick_leg = LimbID::LEFT_LEG;
                 }
                 else {  // kick leg is forced right or ball is more to the right and kick leg is auto
                     log<INFO>("RIGHT KICK!");
-                    emit<Task>(std::make_unique<Kick>(LimbID::RIGHT_LEG));
+                    kick_leg = LimbID::RIGHT_LEG;
                 }
+
+                auto kick_task       = std::make_unique<Kick>();
+                kick_task->leg       = kick_leg;
+                kick_task->target    = rBRr;
+                kick_task->direction = kick_direction;
+                emit<Task>(std::move(kick_task));
             });
     }
 
