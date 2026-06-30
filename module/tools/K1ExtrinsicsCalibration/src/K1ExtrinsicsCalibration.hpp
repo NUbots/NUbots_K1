@@ -48,11 +48,11 @@ namespace module::tools {
      * (del_roll, del_pitch, del_yaw) so that the projected YOLO field-landmark detections (X, L, T
      * intersections) align with the known ground-truth landmark positions.
      *
-     * This is the K1 variant of ExtrinsicsCalibration: the base head-pitch {p} <- camera {c} transform follows
-     * the K1 convention (Hpc_base = Hpk * Hkc, with Hpk read from K1Sensors.yaml) instead of URDF forward
-     * kinematics, the calibrated offsets are written back to K1Sensors.yaml, and (optionally) a calibrated Hpk is
-     * logged for teams using the native K1 convention. Intended to be run in the k1extrinsicscalibration role
-     * (K1Sensors / K1Camera / K1Walk / K1GetUp / K1Look + Booster HardwareIO).
+     * This is the K1 variant of ExtrinsicsCalibration: the base head-pitch {p} <- camera {c} transform (Hpc)
+     * is read directly from K1Sensors.yaml (translation + rotation_rpy), matching how K1Sensors constructs
+     * it at runtime. The calibrated offsets are written back to K1Sensors.yaml's Hpc block, and (optionally)
+     * a calibrated Hpc with offsets folded in is logged. Intended to be run in the k1extrinsicscalibration
+     * role (K1Sensors / K1Camera / K1Walk / K1GetUp / K1Look + Booster HardwareIO).
      *
      * The robot stands itself up and automatically sweeps its head through a yaw/pitch grid (via the PlanLook
      * LookAround provider, configured by the role-specific PlanLook.yaml) so the detections span the image
@@ -90,6 +90,10 @@ namespace module::tools {
             /// @brief Search bounds (half-width) on each offset delta [rad] (del_roll, del_pitch, del_yaw)
             Eigen::Vector3d offset_bounds = Eigen::Vector3d::Zero();
 
+            /// @brief Height [m] of the robot base above the ground when standing. K1's world frame has z=0 at
+            /// the robot base (2D odometry), so this offset is needed for correct ray-ground projection.
+            double standing_height = 0.0;
+
             /// @brief NLopt relative tolerance on the optimisation parameters
             double xtol_rel = 0.0;
 
@@ -102,9 +106,9 @@ namespace module::tools {
             /// @brief Maximum number of ICP iterations (re-associate then re-optimise) before giving up
             size_t max_icp_iterations = 0;
 
-            /// @brief When true, also log a calibrated Hpk (the offsets folded in) for teams using the native K1
-            /// convention to copy-paste into their own config. Does not modify K1Sensors.yaml's Hpk.
-            bool export_Hpk = false;
+            /// @brief When true, also log a calibrated Hpc (the offsets folded into rotation_rpy) for teams
+            /// that prefer a single transform without separate offsets. Does not modify K1Sensors.yaml's Hpc.
+            bool export_Hpc = false;
         } cfg;
 
         /// @brief A single raw detection, kept so it can be re-associated as the offsets are refined (ICP).
@@ -138,11 +142,7 @@ namespace module::tools {
             /// @brief Associated ground-truth landmark position in field {f} space
             Eigen::Vector3d rLFf = Eigen::Vector3d::Zero();
         };
-        /// @brief Base (offset-free) head-pitch {p} <- K1 camera frame {k} transform, read from K1Sensors.yaml.
-        /// Used to build Hpc_base = Hpk_base * Hkc and to export a calibrated Hpk (Hpk' = R_offset * Hpk_base).
-        Eigen::Isometry3d Hpk_base = Eigen::Isometry3d::Identity();
-
-        /// @brief Base (offset-free) head-pitch {p} from camera {c} transform, computed as Hpk_base * Hkc
+        /// @brief Base (offset-free) head-pitch {p} from camera {c} transform, read from K1Sensors.yaml
         Eigen::Isometry3d Hpc_base = Eigen::Isometry3d::Identity();
 
         /// @brief Current extrinsic offsets (roll, pitch, yaw) read from the K1Sensors config [rad]
@@ -247,12 +247,11 @@ namespace module::tools {
         void write_offsets(const Eigen::Vector3d& offsets);
 
         /**
-         * @brief Log a calibrated Hpk (head-pitch {p} <- K1 camera frame {k}) with the offsets folded in
-         * (Hpk' = R_offset * Hpk_base), formatted as a ready-to-paste K1Sensors.yaml `Hpk:` block. For teams
-         * using the native K1 convention (Hpk) rather than the NUbots Hpc + offsets. Does not modify any file.
+         * @brief Log a calibrated Hpc (head-pitch {p} <- camera {c}) with the offsets folded into rotation_rpy,
+         * formatted as a ready-to-paste K1Sensors.yaml `Hpc:` block. Does not modify any file.
          * @param offsets The calibrated offsets (roll, pitch, yaw) [rad]
          */
-        void log_exported_Hpk(const Eigen::Vector3d& offsets);
+        void log_exported_Hpc(const Eigen::Vector3d& offsets);
 
     public:
         /// @brief Called by the powerplant to build and setup the K1ExtrinsicsCalibration reactor.

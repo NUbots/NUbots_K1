@@ -85,46 +85,37 @@ namespace module::tools {
             cfg.max_association_distance = config["max_association_distance"].as<double>();
             cfg.min_head_pose_change     = config["min_head_pose_change"].as<Expression>();
             cfg.offset_bounds            = Eigen::Vector3d(config["offset_bounds"].as<Expression>());
+            cfg.standing_height          = config["standing_height"].as<double>();
 
             cfg.xtol_rel           = config["opt"]["xtol_rel"].as<double>();
             cfg.ftol_rel           = config["opt"]["ftol_rel"].as<double>();
             cfg.maxeval            = config["opt"]["maxeval"].as<size_t>();
             cfg.max_icp_iterations = config["max_icp_iterations"].as<size_t>();
-            cfg.export_Hpk         = config["export_Hpk"].as<bool>();
+            cfg.export_Hpc         = config["export_Hpc"].as<bool>();
 
-            // The base head-pitch {p} <- camera {c} transform follows the K1 convention used by K1Sensors:
-            // Hpc_base = Hpk * Hkc, where Hpk (head-pitch {p} <- K1 camera frame {k}) lives in K1Sensors.yaml and
-            // Hkc is the fixed camera-convention rotation. The roll/pitch/yaw offsets (the optimisation's initial
-            // guess) are read from the same file. NOTE: cfg.camera / cfg.is_left_camera currently both map to this
-            // single Hpk; a genuinely different right camera would require a per-camera Hpk in K1Sensors.yaml.
+            // The base head-pitch {p} <- camera {c} transform is read directly from K1Sensors.yaml as Hpc
+            // (translation + rotation_rpy), matching how K1Sensors constructs it at runtime. The roll/pitch/yaw
+            // offsets (the optimisation's initial guess) are read from the same Hpc block.
             camera_config_path = "config/K1Sensors.yaml";
-
-            // Hkc: rotate the camera optical frame (x forward, y right, z down) into the NUbots frame (x forward,
-            // y left, z up). Must match Hkc in module/input/K1Sensors/src/K1Sensors.cpp.
-            Eigen::Isometry3d Hkc = Eigen::Isometry3d::Identity();
-            Hkc.matrix() << 0, -1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, 0, 0, 0, 1;
 
             try {
                 YAML::Node k1_cfg = YAML::LoadFile(camera_config_path);
 
-                // Hpk (head-pitch {p} <- K1 camera frame {k}), parsed the same way as K1Sensors
-                const auto& Hpk_config = k1_cfg["Hpk"];
-                const auto translation = Hpk_config["translation"];
-                Hpk_base.translation() << translation[0].as<double>(), translation[1].as<double>(),
+                // Hpc (head-pitch {p} <- camera {c}), parsed the same way as K1Sensors
+                const auto& Hpc_config = k1_cfg["Hpc"];
+                const auto translation = Hpc_config["translation"];
+                Hpc_base               = Eigen::Isometry3d::Identity();
+                Hpc_base.translation() << translation[0].as<double>(), translation[1].as<double>(),
                     translation[2].as<double>();
-                const auto rotation = Hpk_config["rotation"];
-                Eigen::Matrix3d Rpk;
-                Rpk << rotation[0][0].as<double>(), rotation[0][1].as<double>(), rotation[0][2].as<double>(),
-                    rotation[1][0].as<double>(), rotation[1][1].as<double>(), rotation[1][2].as<double>(),
-                    rotation[2][0].as<double>(), rotation[2][1].as<double>(), rotation[2][2].as<double>();
-                Hpk_base.linear() = Rpk;
-
-                Hpc_base = Hpk_base * Hkc;
+                const auto rotation_rpy = Hpc_config["rotation_rpy"];
+                Hpc_base.linear()       = rpy_intrinsic_to_mat(Eigen::Vector3d(rotation_rpy[0].as<double>(),
+                                                                         rotation_rpy[1].as<double>(),
+                                                                         rotation_rpy[2].as<double>()));
 
                 // Current extrinsic offsets form the optimisation's initial guess
-                current_offsets = Eigen::Vector3d(k1_cfg["roll_offset"].as<Expression>(),
-                                                  k1_cfg["pitch_offset"].as<Expression>(),
-                                                  k1_cfg["yaw_offset"].as<Expression>());
+                current_offsets = Eigen::Vector3d(k1_cfg["Hpc"]["roll_offset"].as<Expression>(),
+                                                  k1_cfg["Hpc"]["pitch_offset"].as<Expression>(),
+                                                  k1_cfg["Hpc"]["yaw_offset"].as<Expression>());
                 log<INFO>(fmt::format(
                     "Calibrating {} camera from {}. Initial offsets (deg): roll = {:.3f}, pitch = {:.3f}, yaw = {:.3f}",
                     cfg.camera,
@@ -191,11 +182,17 @@ namespace module::tools {
                 Eigen::Isometry3d Hwt = Htw.inverse();
                 Eigen::Isometry3d Hwp = Hwt * Htp;
 
-                Eigen::Vector3d rpy   = mat_to_rpy_intrinsic(Hwt.rotation());
-                Eigen::Isometry3d Hft = Eigen::Isometry3d::Identity();
-                Hft.linear()          = rpy_intrinsic_to_mat(Eigen::Vector3d(rpy.x(), rpy.y(), 0.0));
-                Hft.translation().z() = Hwt.translation().z();
-                Eigen::Isometry3d Hfw = Hft * Htw;
+                // K1's world frame has z=0 at the robot base (2D odometry), not at ground level.
+                // Shift Hwp up by standing_height so that z=0 in projection space corresponds to the
+                // ground plane. Without this, the ray-ground intersection is at robot-base height and
+                // projected landmarks end up far from ground-truth (which is at field z=0 = ground).
+                Hwp.translation().z() += cfg.standing_height;
+
+                // For K1 calibration, the robot is placed at field centre facing the goal with zero
+                // odometry. After the standing_height shift above, z=0 in the projection frame equals
+                // the field ground plane. The world x/y origin equals the field centre, and the yaw is
+                // aligned with the goal direction. Therefore Hfw = Identity.
+                Eigen::Isometry3d Hfw = Eigen::Isometry3d::Identity();
 
                 // Store this frame's raw detections. Association is deferred to the ICP loop so it can be
                 // re-evaluated as the offsets are refined.
@@ -247,15 +244,30 @@ namespace module::tools {
         // Recover each detection's offset-independent camera-frame ray (the pixel ray with the live offsets
         // divided back out) and stash the raw frame for later (re-)association.
         const Eigen::Isometry3d Hcw(field_intersections.Hcw);
+
+        // Skip frames where Hcw is identity (K1Camera hadn't received Sensors yet)
+        if (Hcw.translation().isZero() && Hcw.linear().isIdentity()) {
+            return;
+        }
+
         Frame frame;
         frame.Hwp = Hwp;
         frame.Hfw = Hfw;
         frame.observations.reserve(field_intersections.intersections.size());
+
         for (const auto& intersection : field_intersections.intersections) {
             Observation obs;
             obs.uICc = (Hcw * intersection.rIWw).normalized();
+            // Skip degenerate rays (e.g. from rIWw ≈ 0 when Hcw was identity at capture time)
+            if (!obs.uICc.allFinite() || obs.uICc.norm() < 0.5) {
+                continue;
+            }
             obs.type = intersection.type;
             frame.observations.push_back(obs);
+        }
+
+        if (frame.observations.empty()) {
+            return;
         }
 
         collected_detections += frame.observations.size();
@@ -330,7 +342,75 @@ namespace module::tools {
             // Reassociate every collected detection at the current best offsets
             const std::vector<int> signature = associate(current_offsets);
             if (samples.empty()) {
-                log<ERROR>("No detections could be associated with any landmark; aborting calibration.");
+                // Dump diagnostic info: project a few detections and show where they land vs landmarks
+                log<ERROR>("No detections could be associated with any landmark. Dumping diagnostics...");
+                size_t diag_count = 0;
+                for (const auto& frame : frames) {
+                    for (const auto& obs : frame.observations) {
+                        if (diag_count >= 5) {
+                            break;
+                        }
+                        Sample probe;
+                        probe.uICc = obs.uICc;
+                        probe.Hwp  = frame.Hwp;
+                        probe.Hfw  = frame.Hfw;
+                        const Eigen::Vector3d rIFf = project_to_field(current_offsets, probe);
+
+                        // Camera origin in world for this frame
+                        const Eigen::Matrix3d R = offset_rotation(current_offsets);
+                        Eigen::Isometry3d Hpc   = Eigen::Isometry3d::Identity();
+                        Hpc.linear()            = R * Hpc_base.linear();
+                        Hpc.translation()       = R * Hpc_base.translation();
+                        const Eigen::Isometry3d Hwc = frame.Hwp * Hpc;
+
+                        // Find nearest same-type landmark
+                        double best_dist   = 1e30;
+                        int best_landmark  = -1;
+                        int same_type_count = 0;
+                        for (size_t l = 0; l < landmarks.size(); ++l) {
+                            if (landmarks[l].type == obs.type) {
+                                same_type_count++;
+                                double dist = (landmarks[l].rLFf - rIFf).norm();
+                                if (dist < best_dist) {
+                                    best_dist     = dist;
+                                    best_landmark = static_cast<int>(l);
+                                }
+                            }
+                        }
+
+                        log<ERROR>(fmt::format(
+                            "  det[{}] type={} uICc=({:.3f},{:.3f},{:.3f}) "
+                            "cam_origin_w=({:.3f},{:.3f},{:.3f}) "
+                            "proj_field=({:.3f},{:.3f},{:.3f}) "
+                            "nearest_lm[{}]=({:.3f},{:.3f},{:.3f}) dist={:.3f} same_type_lms={}",
+                            diag_count,
+                            static_cast<int>(obs.type),
+                            obs.uICc.x(),
+                            obs.uICc.y(),
+                            obs.uICc.z(),
+                            Hwc.translation().x(),
+                            Hwc.translation().y(),
+                            Hwc.translation().z(),
+                            rIFf.x(),
+                            rIFf.y(),
+                            rIFf.z(),
+                            best_landmark,
+                            best_landmark >= 0 ? landmarks[best_landmark].rLFf.x() : 0.0,
+                            best_landmark >= 0 ? landmarks[best_landmark].rLFf.y() : 0.0,
+                            best_landmark >= 0 ? landmarks[best_landmark].rLFf.z() : 0.0,
+                            best_dist,
+                            same_type_count));
+                        diag_count++;
+                    }
+                    if (diag_count >= 5) {
+                        break;
+                    }
+                }
+                log<ERROR>(fmt::format("Hpc_base t=({:.4f},{:.4f},{:.4f}) standing_height={:.3f}",
+                                       Hpc_base.translation().x(),
+                                       Hpc_base.translation().y(),
+                                       Hpc_base.translation().z(),
+                                       cfg.standing_height));
                 return;
             }
 
@@ -409,10 +489,10 @@ namespace module::tools {
             write_offsets(current_offsets);
             log<INFO>("New offsets written to config. Calibration complete.");
 
-            // For teams using the native K1 convention (Hpk rather than the NUbots Hpc + offsets), also emit a
-            // calibrated Hpk with the offsets folded in. This only logs; K1Sensors.yaml's Hpk is left untouched.
-            if (cfg.export_Hpk) {
-                log_exported_Hpk(current_offsets);
+            // Optionally log a calibrated Hpc with the offsets folded into the rotation_rpy, for teams that
+            // prefer a single transform without separate offsets. Does not modify K1Sensors.yaml's Hpc block.
+            if (cfg.export_Hpc) {
+                log_exported_Hpc(current_offsets);
             }
         }
     }
@@ -465,9 +545,9 @@ namespace module::tools {
         try {
             YAML::Node cam_cfg = YAML::LoadFile(camera_config_path);
             // Write back as "<degrees> * pi / 180" expression strings so the config stays human-readable
-            cam_cfg["roll_offset"]  = fmt::format("{} * pi / 180", offsets.x() * 180.0 / M_PI);
-            cam_cfg["pitch_offset"] = fmt::format("{} * pi / 180", offsets.y() * 180.0 / M_PI);
-            cam_cfg["yaw_offset"]   = fmt::format("{} * pi / 180", offsets.z() * 180.0 / M_PI);
+            cam_cfg["Hpc"]["roll_offset"]  = fmt::format("{} * pi / 180", offsets.x() * 180.0 / M_PI);
+            cam_cfg["Hpc"]["pitch_offset"] = fmt::format("{} * pi / 180", offsets.y() * 180.0 / M_PI);
+            cam_cfg["Hpc"]["yaw_offset"]   = fmt::format("{} * pi / 180", offsets.z() * 180.0 / M_PI);
             std::ofstream file(camera_config_path);
             file << cam_cfg;
             log<INFO>(fmt::format("Wrote optimised offsets to {}", camera_config_path));
@@ -477,40 +557,32 @@ namespace module::tools {
         }
     }
 
-    void K1ExtrinsicsCalibration::log_exported_Hpk(const Eigen::Vector3d& offsets) {
-        // Fold the calibrated offsets into Hpk for teams using the native K1 convention (Hpk, not the NUbots
-        // Hpc + offsets). The runtime applies Hpc = R_offset * Hpk * Hkc, so the equivalent offset-free transform
-        // is Hpk' = R_offset * Hpk_base. R_offset is a pure rotation premultiply, which also rotates the
-        // translation about the {p} origin (Hpk'.translation = R_offset * Hpk_base.translation) - matching how the
-        // NUbots Camera module applies the offset to the full transform.
-        const Eigen::Matrix3d R      = offset_rotation(offsets);
-        Eigen::Isometry3d Hpk_export = Eigen::Isometry3d::Identity();
-        Hpk_export.linear()          = R * Hpk_base.linear();
-        Hpk_export.translation()     = R * Hpk_base.translation();
+    void K1ExtrinsicsCalibration::log_exported_Hpc(const Eigen::Vector3d& offsets) {
+        // Fold the calibrated offsets into Hpc so the result is a single transform with no separate offsets.
+        // The runtime applies Hpc_effective = R_offset * Hpc_base, so the equivalent offset-free transform is
+        // Hpc' with Hpc'.linear = R_offset * Hpc_base.linear and Hpc'.translation = R_offset * Hpc_base.translation.
+        const Eigen::Matrix3d R       = offset_rotation(offsets);
+        Eigen::Isometry3d Hpc_export  = Eigen::Isometry3d::Identity();
+        Hpc_export.linear()           = R * Hpc_base.linear();
+        Hpc_export.translation()      = R * Hpc_base.translation();
 
-        const Eigen::Vector3d t = Hpk_export.translation();
-        const Eigen::Matrix3d r = Hpk_export.linear();
+        const Eigen::Vector3d t   = Hpc_export.translation();
+        const Eigen::Vector3d rpy = mat_to_rpy_intrinsic(Hpc_export.linear());
         log<INFO>(fmt::format(
-            "Exported calibrated Hpk for native-K1-convention teams. Paste this block into your config and set "
-            "roll_offset / pitch_offset / yaw_offset to 0 (the offsets are folded into Hpk):\n"
-            "Hpk:\n"
+            "Exported calibrated Hpc. Paste this block into K1Sensors.yaml and set "
+            "roll_offset / pitch_offset / yaw_offset to 0 (the offsets are folded into rotation_rpy):\n"
+            "Hpc:\n"
             "  translation: [{:.10g}, {:.10g}, {:.10g}]\n"
-            "  rotation:\n"
-            "    - [{:.10g}, {:.10g}, {:.10g}]\n"
-            "    - [{:.10g}, {:.10g}, {:.10g}]\n"
-            "    - [{:.10g}, {:.10g}, {:.10g}]",
+            "  rotation_rpy: [{:.10g}, {:.10g}, {:.10g}]\n"
+            "  roll_offset: 0.0\n"
+            "  pitch_offset: 0.0\n"
+            "  yaw_offset: 0.0",
             t.x(),
             t.y(),
             t.z(),
-            r(0, 0),
-            r(0, 1),
-            r(0, 2),
-            r(1, 0),
-            r(1, 1),
-            r(1, 2),
-            r(2, 0),
-            r(2, 1),
-            r(2, 2)));
+            rpy.x(),
+            rpy.y(),
+            rpy.z()));
     }
 
 }  // namespace module::tools

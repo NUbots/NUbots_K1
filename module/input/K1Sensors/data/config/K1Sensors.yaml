@@ -17,3 +17,6 @@ Hhp:
 Hpc:
   translation: [0.065, 0.035, 0.0915]
   rotation_rpy: [-0.04, 0.05, -0.07]
+  roll_offset: 0.0
+  pitch_offset: 0.0
+  yaw_offset: 0.0

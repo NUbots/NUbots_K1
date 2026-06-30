@@ -56,6 +56,10 @@ namespace module::input {
         std::vector<std::unique_ptr<CameraContext>> cameras;
         std::vector<std::pair<NUClear::clock::time_point, Eigen::Isometry3d>> Hcws;
 
+        /// @brief Most recent Sensors.Hcw, used as fallback when the time-based buffer is empty
+        Eigen::Isometry3d last_Hcw = Eigen::Isometry3d::Identity();
+        bool has_Hcw               = false;
+
         void camera_thread(CameraContext& ctx);
         void stop_cameras();
 

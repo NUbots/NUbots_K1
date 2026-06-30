@@ -2,7 +2,7 @@
 
 ## Description
 
-The K1 variant of `ExtrinsicsCalibration`. Automatically tunes the K1 camera's extrinsic offsets (`roll_offset`, `pitch_offset`, `yaw_offset` in `K1Sensors.yaml`) so that the offsets no longer have to be hand-tuned after a game. Unlike the NUgus `ExtrinsicsCalibration`, the base head-pitch↔camera transform follows the K1 convention (`Hpc_base = Hpk * Hkc`, with `Hpk` read from `config/K1Sensors.yaml`) rather than URDF forward kinematics, and it consumes the K1 sensor pipeline (run it in the `k1extrinsicscalibration` role).
+The K1 variant of `ExtrinsicsCalibration`. Automatically tunes the K1 camera's extrinsic offsets (`roll_offset`, `pitch_offset`, `yaw_offset` in `K1Sensors.yaml`) so that the offsets no longer have to be hand-tuned after a game. Unlike the NUgus `ExtrinsicsCalibration`, the base head-pitch↔camera transform (`Hpc`, with `translation` and `rotation_rpy`) is read directly from `config/K1Sensors.yaml` rather than URDF forward kinematics, and it consumes the K1 sensor pipeline (run it in the `k1extrinsicscalibration` role).
 
 The module assumes the robot is placed at the **centre of the field, looking straight toward the goal**, and that the **field type is known** (lab or RoboCup field) via the `FieldDescription`. Because the field dimensions are known, the ground-truth positions of the field landmarks (X, L and T intersections) are known to a high degree of accuracy.
 
@@ -17,10 +17,10 @@ The YOLO network detects the field landmarks and projects them onto the ground p
 1. **Recover the geometry without changing the vision pipeline.** Each `FieldIntersection` already carries its
    world-space ground projection $r^{w}_{I/W}$ and the frame transform $H^{c}_{w}$. The offset-independent camera-frame ray
    is recovered as $u_{I/C}^c = (H^{c}_{w} \cdot r^{w}_{I/W}).normalized()$. The offset-free $H^{p}_{w}$ (world from head-pitch) comes
-   from `Sensors` ($H^{w}_{t} \cdot H^{t}_{p}$), and the base $H^{c}_{p}$ (head-pitch from camera) is built from the K1 convention
-   $H^{c}_{p,\text{base}} = H^{k}_{p} \cdot H^{c}_{k}$, where $H^{k}_{p}$ (`Hpk`) is read from `config/K1Sensors.yaml` and $H^{c}_{k}$ (`Hkc`) is
-   the fixed camera-convention rotation (matching `K1Sensors`). The candidate transform is
-   $H^{c}_{w}(\theta) = H^{c}_{p,\text{base}} \cdot R_{\text{offset}}(\theta) \cdot H^{p}_{w}$.
+   from `Sensors` ($H^{w}_{t} \cdot H^{t}_{p}$), and the base $H^{c}_{p}$ (head-pitch from camera) is read directly from
+   `config/K1Sensors.yaml` (`Hpc.translation` + `Hpc.rotation_rpy`), matching how `K1Sensors` constructs it at
+   runtime. The candidate transform is
+   $H^{c}_{w}(\theta) = R_{\text{offset}}(\theta) \cdot H^{c}_{p,\text{base}} \cdot H^{p}_{w}$.
 2. **Known field pose.** From the placement assumption, the field-from-world transform $H^{f}_{w}$ is synthesised:
    the torso is at the field centre $(x = y = 0)$ facing the goal, with roll/pitch/height taken
    from `Sensors`.
@@ -39,11 +39,11 @@ The YOLO network detects the field landmarks and projects them onto the ground p
      once the associations stop changing or `max_icp_iterations` is reached. This lets a detection that was
      initially mis-matched (because the starting offsets were off) snap to the correct landmark as the fit improves,
      rather than being permanently frozen to the wrong target.
-5. **Write back.** The optimised offsets are written back to `config/K1Sensors.yaml` as
-   `"<degrees> * pi / 180"` expression strings (where $\text{degrees}$ is the angle in degrees). If `export_Hpk` is
-   enabled, a calibrated $H^{k}_{p}$ (`Hpk`) with the offsets folded in ($H^{k}_{p}{}' = R_{\text{offset}} \cdot H^{k}_{p}$) is also
-   logged as a ready-to-paste `Hpk:` block — for teams using the native K1 convention (`Hpk`) instead of the NUbots
-   $H^{c}_{p}$ + offsets; the `Hpk` stored in `K1Sensors.yaml` is left unchanged. The robot keeps standing and holds
+5. **Write back.** The optimised offsets are written back to `config/K1Sensors.yaml`'s `Hpc` block as
+   `"<degrees> * pi / 180"` expression strings (where $\text{degrees}$ is the angle in degrees). If `export_Hpc` is
+   enabled, a calibrated $H^{c}_{p}$ with the offsets folded into `rotation_rpy` is also logged as a ready-to-paste
+   `Hpc:` block — for teams that prefer a single transform without separate offsets; the `Hpc.rotation_rpy` stored
+   in `K1Sensors.yaml` is left unchanged. The robot keeps standing and holds
    its head still afterwards (it does **not** exit, which would drop it) — stop the binary once the offsets are written.
 
 ## Usage
@@ -62,8 +62,8 @@ configuration. Run again with the other camera to calibrate both.
 
 - `message::skill::Walk` (zero velocity) and `message::strategy::FallRecovery` tasks to stand the robot, and a
   `message::planning::LookAround` task so the `PlanLook` provider sweeps the head through the scan grid.
-- The optimised offsets are logged and written back to `config/K1Sensors.yaml` when the optimisation succeeds;
-  with `export_Hpk` enabled, a calibrated `Hpk` block is additionally logged for copy-paste.
+- The optimised offsets are logged and written back to `config/K1Sensors.yaml`'s `Hpc` block when the optimisation succeeds;
+  with `export_Hpc` enabled, a calibrated `Hpc` block (offsets folded in) is additionally logged for copy-paste.
 
 ## Dependencies
 
