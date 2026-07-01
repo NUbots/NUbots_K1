@@ -54,6 +54,7 @@ namespace module::strategy {
     using message::localisation::Ball;
     using message::localisation::Field;
     using message::localisation::Robots;
+    using message::planning::Adjust;
     using message::planning::WalkTo;
     using message::strategy::PositionBehindBall;
     using message::strategy::WalkToFieldPosition;
@@ -215,6 +216,14 @@ namespace module::strategy {
                 const double err_y = (rRFf - rBFf).dot(uTBf_p);
                 // Heading error (difference between robot and desired heading)
                 const double err_z = normalise_angle(desired_heading - robot_heading);
+
+                // If close to the ball but badly angled, orbit it to fix the approach angle instead of using
+                // the backoff-based fine approach below
+                if (rBRr.head(2).norm() < cfg.adjust_range_threshold && std::abs(err_z) > cfg.max_angle_error) {
+                    log<DEBUG>("Badly angled near the ball, adjusting approach angle.");
+                    emit<Task>(std::make_unique<Adjust>(desired_heading));
+                    return;
+                }
 
                 /* Adjustment target point for a better ball approach */
 

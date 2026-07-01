@@ -18,6 +18,18 @@ pivot_ball_velocity: 0.8
 pivot_ball_velocity_x: 0.0
 pivot_ball_velocity_y: -0.2
 
+# Adjust (orbit the ball to fix approach angle) tuning values
+adjust_range: 0.5
+adjust_vx_limit: 0.5
+adjust_vy_limit: 0.6
+adjust_vtheta_limit: 1.5
+adjust_vtheta_factor: 4.5
+adjust_tangential_speed_far: 0.9
+adjust_tangential_speed_near: 0.4
+adjust_near_threshold: 0.8
+adjust_no_turn_threshold: 0.1
+adjust_turn_first_threshold: 0.5
+
 max_align_radius: 0.75 # Radius [m] to begin aligning with target heading
 min_align_radius: 0.4 # Radius [m] to stay aligning with the target heading
 max_angle_error: 45 * pi / 180 # Maximum angle error before only allowing turning on the spot

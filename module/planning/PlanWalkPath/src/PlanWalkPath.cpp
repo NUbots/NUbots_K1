@@ -33,6 +33,8 @@
 
 #include "message/behaviour/state/Stability.hpp"
 #include "message/input/Sensors.hpp"
+#include "message/localisation/Ball.hpp"
+#include "message/localisation/Field.hpp"
 #include "message/localisation/Robot.hpp"
 #include "message/planning/WalkPath.hpp"
 #include "message/skill/Walk.hpp"
@@ -51,7 +53,10 @@ namespace module::planning {
 
     using message::behaviour::state::Stability;
     using message::input::Sensors;
+    using message::localisation::Ball;
+    using message::localisation::Field;
     using message::localisation::Robots;
+    using message::planning::Adjust;
     using message::planning::PivotAroundPoint;
     using message::planning::TurnOnSpot;
     using message::planning::WalkProposal;
@@ -62,6 +67,7 @@ namespace module::planning {
 
     using message::strategy::StandStill;
 
+    using utility::math::angle::normalise_angle;
     using utility::math::angle::vector_to_bearing;
     using utility::math::euler::rpy_intrinsic_to_mat;
     using utility::math::geometry::intersection_line_and_circle;
@@ -270,6 +276,58 @@ namespace module::planning {
                                                sign * cfg.pivot_ball_velocity);
             emit<Task>(std::make_unique<WalkProposal>(pivot_vector));
         });
+
+        // Orbit the ball at a fixed range to fix the robot's approach angle before committing to a kick approach
+        on<Provide<Adjust>, With<Ball>, With<Sensors>, With<Field>>().then(
+            [this](const Adjust& adjust, const Ball& ball, const Sensors& sensors, const Field& field) {
+                // Ball and robot positions/heading in field frame
+                const Eigen::Vector3d rBFf  = field.Hfw * ball.rBWw;
+                const Eigen::Isometry3d Hfr = field.Hfw * sensors.Hrw.inverse();
+                const Eigen::Vector3d rRFf  = Hfr.translation();
+                const double theta_robot_f  = vector_to_bearing(Hfr.linear().col(0).head(2));
+
+                // Bearing of the robot as seen from the ball, field frame
+                const double dir_rb_f  = std::atan2(rRFf.y() - rBFf.y(), rRFf.x() - rBFf.x());
+                const double delta_dir = normalise_angle(adjust.kick_dir - dir_rb_f);
+
+                // Ball position relative to the robot, robot frame
+                const Eigen::Vector3d rBRr = sensors.Hrw * ball.rBWw;
+                const double ball_range    = rBRr.head(2).norm();
+                const double ball_yaw      = std::atan2(rBRr.y(), rBRr.x());
+
+                // Tangential orbit speed: switch to the near speed once the arc-length to the correct kick angle
+                // (angle error * ball range) is small
+                const double st = std::abs(delta_dir) * ball_range < cfg.adjust_near_threshold
+                                       ? cfg.adjust_tangential_speed_near
+                                       : cfg.adjust_tangential_speed_far;
+                // Radial speed to close in on the target orbit range, capped at 0.5 m/s (fixed in the source)
+                const double sr = std::clamp(ball_range - cfg.adjust_range, 0.0, 0.5);
+
+                // Tangential and radial directions, converted from field frame to robot frame
+                const double theta_t_r = dir_rb_f + (M_PI / 2.0) * (delta_dir > 0 ? -1.0 : 1.0) - theta_robot_f;
+                const double theta_r_r = dir_rb_f - theta_robot_f;
+
+                double vx     = st * std::cos(theta_t_r) + sr * std::cos(theta_r_r);
+                double vy     = st * std::sin(theta_t_r) + sr * std::sin(theta_r_r);
+                double vtheta = ball_yaw * cfg.adjust_vtheta_factor;
+
+                // Don't bother turning for a tiny ball yaw error
+                if (std::abs(ball_yaw) < cfg.adjust_no_turn_threshold) {
+                    vtheta = 0.0;
+                }
+                // If badly misaligned with the ball, turn on the spot first rather than translating
+                if (std::abs(ball_yaw) > cfg.adjust_turn_first_threshold && std::abs(delta_dir) < M_PI / 4.0) {
+                    vx = 0.0;
+                    vy = 0.0;
+                }
+
+                // vx cannot go negative: Adjust only ever orbits forward/sideways, never backs away from the ball
+                vx     = std::clamp(vx, 0.0, cfg.adjust_vx_limit);
+                vy     = std::clamp(vy, -cfg.adjust_vy_limit, cfg.adjust_vy_limit);
+                vtheta = std::clamp(vtheta, -cfg.adjust_vtheta_limit, cfg.adjust_vtheta_limit);
+
+                emit<Task>(std::make_unique<WalkProposal>(Eigen::Vector3d(vx, vy, vtheta)));
+            });
 
         // Intercept Walk commands and apply smoothing
         on<Provide<WalkProposal>, Every<UPDATE_FREQUENCY, Per<std::chrono::seconds>>>().then([this](const WalkProposal&
