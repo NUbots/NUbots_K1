@@ -76,17 +76,46 @@ namespace module::skill {
 
     class K1VisualKick : public ::extension::behaviour::BehaviourReactor {
     private:
+        enum class KickProfile {
+            BALANCED,
+            POWERFUL,
+        };
+
         /// @brief Stores configuration values
         struct Config {
-            /// @brief Which version of Booster's visual kick to use
-            message::booster::VisualKickVer version = message::booster::VisualKickVer::V2;
-            /// @brief How long to let the kick run before reporting the task as done
-            NUClear::clock::duration kick_duration{};
             /// @brief Name of the shared memory segment NUbridge publishes kick decisions from
             std::string kick_decision_segment{};
             /// @brief Maximum distance (metres) the ball can be from the robot for a kick to proceed
             double max_kick_distance = 0.0;
+            /// @brief Which version of Booster's visual kick to use for a balanced kick
+            message::booster::VisualKickVer balanced_version = message::booster::VisualKickVer::V1;
+            /// @brief Which version of Booster's visual kick to use for a powerful kick
+            message::booster::VisualKickVer powerful_version = message::booster::VisualKickVer::V2;
+            /// @brief How long to let a balanced kick run before reporting the task as done
+            NUClear::clock::duration balanced_duration{};
+            /// @brief How long to let a powerful kick run before reporting the task as done
+            NUClear::clock::duration powerful_duration{};
+            /// @brief Maximum angular error for a goal to be considered in the kicking path
+            double goal_angle_threshold = 0.25;
+            /// @brief Maximum distance for a visible goal to be considered close enough for a powerful kick
+            double goal_distance_threshold = 4.0;
+            /// @brief Maximum lateral offset for a robot to be considered in front of the kicker
+            double obstacle_angle_threshold = 0.35;
+            /// @brief Maximum distance for an opponent in front to force a balanced kick
+            double obstacle_distance_threshold = 1.0;
         } cfg;
+
+        /// @brief The active kick profile for the current task
+        KickProfile active_profile = KickProfile::BALANCED;
+
+        /// @brief The duration that the current profile should remain active
+        NUClear::clock::duration last_profile_duration{};
+
+        /// @brief Whether the latest perception suggests a clear goal is in the path
+        bool has_clear_goal_context = false;
+
+        /// @brief Whether the latest perception suggests an opponent is blocking the path
+        bool has_obstacle_context = false;
 
         /// @brief The time the current visual kick was started
         NUClear::clock::time_point kick_start_time{};

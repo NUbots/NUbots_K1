@@ -1,10 +1,5 @@
 # Controls the minimum log level that NUClear log will display
 log_level: INFO
-# What version of Booster's visual kick to use (1 = standard, 2 = hard)
-version: 2
-# How long to let the kick run before reporting the task as done. The SDK gives no
-# completion feedback.
-kick_duration: 3.0
 # Name of the boost::interprocess shared memory segment that NUbridge reads kick
 # decisions from and republishes as a ROS2 topic. Must match the "publishers" path
 # (with '/' replaced by '_') configured in NUbridge's topics.yaml.
@@ -12,3 +7,20 @@ kick_decision_segment: _kick_ball
 # Maximum distance (metres) the ball can be from the robot for a kick to start or
 # continue. If the ball moves further away than this, the kick is stopped.
 max_kick_distance: 0.8
+
+# Kick profiles tuned for the Booster K1. version: 1 = standard, 2 = hard.
+# duration is how long to let the kick run before reporting the task as done
+# (the SDK gives no completion feedback).
+profiles:
+  balanced:
+    version: 1
+    duration: 1.2
+  powerful:
+    version: 2
+    duration: 1.8
+
+autonomous:
+  goal_angle_threshold: 0.25
+  goal_distance_threshold: 4.0
+  obstacle_angle_threshold: 0.35
+  obstacle_distance_threshold: 1.0
