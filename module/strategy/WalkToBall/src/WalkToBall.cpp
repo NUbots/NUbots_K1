@@ -90,6 +90,7 @@ namespace module::strategy {
             cfg.err_x_ok               = config["err_x_ok"].as<double>();
             cfg.err_y_ok               = config["err_y_ok"].as<double>();
             cfg.err_z_ok               = config["err_z_ok"].as<Expression>();
+            cfg.adjust_range_threshold = config["adjust_range_threshold"].as<double>();
         });
 
         on<Startup, Trigger<FieldDescription>>().then("Update Goal Position", [this](const FieldDescription& fd) {
