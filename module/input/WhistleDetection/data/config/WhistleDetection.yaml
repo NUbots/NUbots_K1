@@ -4,7 +4,7 @@ log_level: INFO
 use_whistle_detection: true # should this module emit a Whistle message? true: yes, false: no. Note: it will still run and log the whistle detection, but it won't emit a Whistle message to the system.
 
 # ALSA capture device name. Use "default" or a specific device like "hw:0,0".
-device: "plughw:0,0"
+device: "default"
 
 # Capture sample rate in Hz. 16000 covers the full whistle range (2-5 kHz) with
 # comfortable headroom to Nyquist (8 kHz).
