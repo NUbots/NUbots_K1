@@ -251,8 +251,10 @@ namespace module::input {
                     msg->lens.k            = {k1, k2};
 
                     Eigen::Isometry3d Hcw = Eigen::Isometry3d::Identity();
+                    size_t hcw_buf_size   = 0;
                     {
                         std::lock_guard<std::mutex> lock(sensors_mutex);
+                        hcw_buf_size = Hcws.size();
 
                         if (!Hcws.empty()) {
                             auto Hcw_it =
@@ -274,9 +276,20 @@ namespace module::input {
                                           : std::prev(Hcw_it)->second;
                             }
                         }
+                        else if (has_Hcw) {
+                            Hcw = last_Hcw;
+                        }
+                        else {
+                            log<WARN>("K1Camera: Hcw buffer is EMPTY and no Sensors received yet, using identity");
+                        }
                     }
 
                     msg->Hcw = Hcw;
+                    log<DEBUG>(fmt::format("K1Camera: attaching Hcw trans=({:.6f},{:.6f},{:.6f}) buf_size={}",
+                                           Hcw.translation().x(),
+                                           Hcw.translation().y(),
+                                           Hcw.translation().z(),
+                                           hcw_buf_size));
                     emit(graph("Camera Pose",
                                msg->Hcw.translation().x(),
                                msg->Hcw.translation().y(),
@@ -319,6 +332,8 @@ namespace module::input {
                                           return v.first < (now - std::chrono::milliseconds(500));
                                       })));
             Hcws.emplace_back(sensors.timestamp, Eigen::Isometry3d(sensors.Hcw));
+            last_Hcw = Eigen::Isometry3d(sensors.Hcw);
+            has_Hcw  = true;
         });
 
         on<Shutdown>().then([this] { stop_cameras(); });

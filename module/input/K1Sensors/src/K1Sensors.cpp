@@ -5,6 +5,7 @@
 #include <boost/interprocess/sync/interprocess_condition.hpp>
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
 #include <boost/interprocess/sync/scoped_lock.hpp>
+#include <cmath>
 
 #include "extension/Configuration.hpp"
 
@@ -13,9 +14,12 @@
 #include "message/input/Sensors.hpp"
 #include "message/platform/RawSensors.hpp"
 
+#include "utility/input/FrameID.hpp"
+#include "utility/input/ServoID.hpp"
 #include "utility/math/euler.hpp"
-#include "utility/platform/RawSensors.hpp"
 #include "utility/nusight/NUhelpers.hpp"
+#include "utility/platform/RawSensors.hpp"
+#include "utility/support/yaml_expression.hpp"
 
 
 namespace bip = boost::interprocess;
@@ -31,8 +35,11 @@ namespace module::input {
     using message::input::Sensors;
     using message::platform::RawSensors;
 
+    using utility::input::FrameID;
+    using utility::input::ServoID;
     using utility::math::euler::mat_to_rpy_intrinsic;
     using utility::math::euler::rpy_intrinsic_to_mat;
+    using utility::support::Expression;
 
 
     struct SharedPoseHeader {
@@ -121,6 +128,19 @@ namespace module::input {
             const auto Hpc_rpy = Hpc_config["rotation_rpy"];
             cfg.Hpc.linear()   = rpy_intrinsic_to_mat(
                 Eigen::Vector3d(Hpc_rpy[0].as<double>(), Hpc_rpy[1].as<double>(), Hpc_rpy[2].as<double>()));
+
+            // Apply extrinsic calibration offsets: Hpc_effective = R_offset * Hpc_base
+            // Convention matches K1ExtrinsicsCalibration: R_offset = Rx(yaw) * Rz(pitch) * Ry(roll)
+            const double roll_offset  = Hpc_config["roll_offset"].as<Expression>();
+            const double pitch_offset = Hpc_config["pitch_offset"].as<Expression>();
+            const double yaw_offset   = Hpc_config["yaw_offset"].as<Expression>();
+            const Eigen::Matrix3d R_offset =
+                (Eigen::AngleAxisd(yaw_offset, Eigen::Vector3d::UnitX())
+                 * Eigen::AngleAxisd(pitch_offset, Eigen::Vector3d::UnitZ())
+                 * Eigen::AngleAxisd(roll_offset, Eigen::Vector3d::UnitY()))
+                    .toRotationMatrix();
+            cfg.Hpc.linear()      = R_offset * cfg.Hpc.linear();
+            cfg.Hpc.translation() = R_offset * cfg.Hpc.translation();
 
             // Hhp: head frame to pitch frame
             const auto& Hhp_config = config["Hhp"];
@@ -227,6 +247,9 @@ namespace module::input {
                 const Eigen::Isometry3d Htp = compute_Htp(sensors);
                 const Eigen::Isometry3d Htc = Htp * cfg.Hpc;
                 sensors->Htw                = Htc * sensors->Hcw;
+
+                // Populate the HEAD_PITCH frame transform for consumers (e.g. K1ExtrinsicsCalibration)
+                sensors->Htx[FrameID::HEAD_PITCH] = Htp.matrix();
             }
 
             bool new_left_down   = raw_sensors.buttons.left;

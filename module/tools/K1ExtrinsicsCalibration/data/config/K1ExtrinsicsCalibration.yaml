@@ -1,0 +1,44 @@
+# Controls the minimum log level that NUClear log will display
+log_level: INFO
+
+# Which camera to calibrate. Either "Left" or "Right". Only one camera is calibrated per run; run again with the
+# other camera selected to calibrate both. The base head-pitch<-camera transform (Hpc) is read from K1Sensors.yaml.
+camera: "Left"
+
+# When true, also log (INFO) a calibrated Hpc block with the offsets folded into rotation_rpy, for teams that
+# prefer a single transform without separate offsets. The offsets are still written back to K1Sensors.yaml;
+# the Hpc.rotation_rpy stored there is left unchanged.
+export_Hpc: false
+
+# Minimum number of associated detection<->landmark samples required before running the optimisation
+min_samples: 2000
+
+# Maximum distance [m] in field space for a detection to be associated with a ground-truth landmark.
+# Pairings beyond this distance (re-evaluated each ICP iteration) are rejected. The ICP loop will
+# tighten associations as offsets improve, so this can be generous for the initial pass. Keep below
+# half the spacing between same-type landmarks to avoid systematic mis-association.
+max_association_distance: 0.75
+
+# Minimum head yaw/pitch change [rad] since the last captured frame before a new frame is gathered. The head
+# sweeps automatically (the PlanLook provider steps through the grid in the role-specific PlanLook.yaml); this
+# spreads samples across distinct viewpoints instead of over-sampling whichever pose the head is lingering in.
+min_head_pose_change: 0.5 * pi / 180
+
+# Maximum number of ICP iterations. Each iteration re-associates every collected detection at the current best
+# offsets, then re-optimises with those associations held fixed. The loop stops early once the associations stop
+# changing.
+max_icp_iterations: 100
+
+# Search bounds (half-width) on each offset delta [rad]: del_roll, del_pitch, del_yaw
+offset_bounds: [10.0 * pi / 180, 10.0 * pi / 180, 10.0 * pi / 180]
+
+# Height [m] of the robot base (trunk) above the ground when standing. K1's world frame has z=0 at the robot
+# base (2D odometry), so this offset is required for the ray-ground intersection to project detections onto the
+# actual ground plane (where the field landmarks live). Measure from robot base frame origin to ground contact.
+standing_height: 0.36
+
+# NLopt BOBYQA optimisation parameters
+opt:
+  xtol_rel: 1.0e-6
+  ftol_rel: 1.0e-6
+  maxeval: 1000
