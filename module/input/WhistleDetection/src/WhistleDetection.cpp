@@ -127,7 +127,6 @@ namespace module::input {
 
             start_time = NUClear::clock::now();
             log<DEBUG>("Whistle detection startup delay: ", cfg.startup_delay, " ms");
-            log<DEBUG>("Current time is ", start_time, " ms");
         });
 
         // Poll for audio every 10 ms. Non-blocking reads accumulate into sample_buffer;

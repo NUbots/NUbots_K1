@@ -12,7 +12,7 @@ nuclear_role(
   network::PlotJuggler
   output::Overview
   # Sensors for button testing
-  input::SensorFilter
+  input::K1Sensors
   input::WhistleDetection # this is the module under test
   input::GameController
   # Platform

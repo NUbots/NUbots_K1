@@ -133,10 +133,10 @@ namespace module::network {
                                 log<DEBUG>("Received message from player",
                                            incoming_msg.current_pose.player_id,
                                            "| position (x, y):",
-                                           incoming_msg.current_pose.position().x(),
-                                           incoming_msg.current_pose.position().y(),
+                                           incoming_msg.current_pose.position.x(),
+                                           incoming_msg.current_pose.position.y(),
                                            "| going_for_ball:",
-                                           incoming_msg.going_for_ball());
+                                           incoming_msg.going_for_ball);
                                 emit(std::make_unique<Message>(std::move(incoming_msg)));
                             }
                         });
