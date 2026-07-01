@@ -97,6 +97,18 @@ namespace module::planning {
             cfg.pivot_ball_velocity_x = config["pivot_ball_velocity_x"].as<double>();
             cfg.pivot_ball_velocity_y = config["pivot_ball_velocity_y"].as<double>();
 
+            // Adjust tuning
+            cfg.adjust_range                  = config["adjust_range"].as<double>();
+            cfg.adjust_vx_limit                = config["adjust_vx_limit"].as<double>();
+            cfg.adjust_vy_limit                = config["adjust_vy_limit"].as<double>();
+            cfg.adjust_vtheta_limit            = config["adjust_vtheta_limit"].as<double>();
+            cfg.adjust_vtheta_factor           = config["adjust_vtheta_factor"].as<double>();
+            cfg.adjust_tangential_speed_far    = config["adjust_tangential_speed_far"].as<double>();
+            cfg.adjust_tangential_speed_near   = config["adjust_tangential_speed_near"].as<double>();
+            cfg.adjust_near_threshold          = config["adjust_near_threshold"].as<double>();
+            cfg.adjust_no_turn_threshold       = config["adjust_no_turn_threshold"].as<double>();
+            cfg.adjust_turn_first_threshold    = config["adjust_turn_first_threshold"].as<double>();
+
             cfg.obstacle_radius = config["obstacle_radius"].as<double>();
 
             // Exponential smoothing configuration

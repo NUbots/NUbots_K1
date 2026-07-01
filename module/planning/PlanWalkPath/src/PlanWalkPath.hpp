@@ -76,6 +76,27 @@ namespace module::planning {
             /// @brief Pivot ball side velocity
             double pivot_ball_velocity_y = 0.0;
 
+            /// @brief Distance to maintain from the ball while orbiting during Adjust
+            double adjust_range = 0.0;
+            /// @brief Maximum forward/backward speed during Adjust
+            double adjust_vx_limit = 0.0;
+            /// @brief Maximum sideways speed during Adjust
+            double adjust_vy_limit = 0.0;
+            /// @brief Maximum angular speed during Adjust
+            double adjust_vtheta_limit = 0.0;
+            /// @brief Gain turning to face the ball during Adjust
+            double adjust_vtheta_factor = 0.0;
+            /// @brief Tangential orbit speed while far from the correct kick angle
+            double adjust_tangential_speed_far = 0.0;
+            /// @brief Tangential orbit speed while close to the correct kick angle
+            double adjust_tangential_speed_near = 0.0;
+            /// @brief Arc-length threshold (angle error * ball range) below which the near speed is used
+            double adjust_near_threshold = 0.0;
+            /// @brief Ball yaw error below which no turning is applied
+            double adjust_no_turn_threshold = 0.0;
+            /// @brief Ball yaw error above which the robot turns in place rather than translating
+            double adjust_turn_first_threshold = 0.0;
+
             /// @brief Radius to avoid obstacles
             double obstacle_radius = 0.0;
 
