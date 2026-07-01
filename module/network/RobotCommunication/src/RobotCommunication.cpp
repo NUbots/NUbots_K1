@@ -99,6 +99,7 @@ namespace module::network {
                     }
 
                     cfg.receive_port = new_receive_port;
+                    log<INFO>("Sending and receiving packets to ", cfg.broadcast_ip, ":", cfg.receive_port);
 
                     // Bind our new handle
                     std::tie(listen_handle, std::ignore, std::ignore) =
@@ -129,7 +130,13 @@ namespace module::network {
                             // Port-per-team ensures only teammates broadcast on this port
                             // Filter out messages from ourselves only
                             if (!own_player_message) {
-                                log<DEBUG>("Message received from teammate ID", incoming_msg.current_pose.player_id);
+                                log<DEBUG>("Received message from player",
+                                           incoming_msg.current_pose.player_id,
+                                           "| position (x, y):",
+                                           incoming_msg.current_pose.position().x(),
+                                           incoming_msg.current_pose.position().y(),
+                                           "| going_for_ball:",
+                                           incoming_msg.going_for_ball());
                                 emit(std::make_unique<Message>(std::move(incoming_msg)));
                             }
                         });

@@ -166,6 +166,7 @@ namespace module::purpose {
                 position.x()       = std::clamp(position.x(), -half_length, half_length);
                 position.y()       = std::clamp(position.y(), -half_width, half_width);
 
+                log<DEBUG>("Support!");
                 emit<Task>(
                     std::make_unique<WalkToFieldPosition>(pos_rpy_to_transform(position, Eigen::Vector3d(0, 0, 0)),
                                                           true));
