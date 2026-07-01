@@ -148,6 +148,7 @@ def run(target, local, user, config, toolchain, **kwargs):
                 "--include=local/man/**",
                 "--exclude=*",
                 "--checksum",
+                "--delete",
                 "--prune-empty-dirs",
                 "-e ssh",
                 source_dir,
