@@ -31,6 +31,7 @@
 #include "extension/Behaviour.hpp"
 #include "extension/Configuration.hpp"
 
+#include "message/booster/BoosterMode.hpp"
 #include "message/booster/BoosterVisualKick.hpp"
 #include "message/input/Sensors.hpp"
 #include "message/localisation/Ball.hpp"
@@ -43,6 +44,8 @@
 namespace module::skill {
 
     using extension::Configuration;
+    using message::booster::BoosterMode;
+    using message::booster::K1Mode;
     using message::input::Sensors;
     using message::localisation::Ball;
     using message::localisation::Field;
@@ -155,6 +158,10 @@ namespace module::skill {
 
                 if (run_reason == RunReason::NEW_TASK) {
                     log<INFO>("Starting visual kick");
+                    // Kicking requires movement, so request soccer mode from the Booster hardware.
+                    auto mode  = std::make_unique<BoosterMode>();
+                    mode->mode = K1Mode::SOCCER;
+                    emit(std::move(mode));
                     auto vk     = std::make_unique<VisualKick>();
                     vk->start   = true;
                     vk->version = cfg.version;

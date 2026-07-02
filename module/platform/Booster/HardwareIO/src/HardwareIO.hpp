@@ -18,9 +18,11 @@
 #include "message/booster/BoosterGetUp.hpp"
 #include "message/booster/BoosterHeadRot.hpp"
 #include "message/booster/BoosterMode.hpp"
+#include "message/booster/BoosterModeState.hpp"
 #include "message/booster/BoosterOdometry.hpp"
 #include "message/booster/BoosterVisualKick.hpp"
 #include "message/booster/BoosterWalk.hpp"
+#include "message/localisation/Field.hpp"
 #include "message/platform/RawSensors.hpp"
 
 
@@ -28,6 +30,20 @@ namespace module::platform::Booster {
 
     class HardwareIO : public NUClear::Reactor {
     private:
+        struct Config {
+            /// @brief Time to wait after commanding the gait to stop before switching into prep mode,
+            /// so the robot comes to a complete stop and does not fall from switching mid-stride
+            NUClear::clock::duration prep_settle_time{};
+        } cfg;
+
+        /// @brief Whether a switch into prep mode is pending (waiting for the gait to stop). Used to
+        /// cancel the deferred switch if another mode is requested in the meantime.
+        bool prep_pending = false;
+
+        /// @brief The robot's last known motion mode, refreshed whenever we poll the SDK. Used to drop
+        /// movement/look commands while the robot is in prep mode (where it must not move).
+        booster::robot::RobotMode current_mode = booster::robot::RobotMode::kUnknown;
+
         struct Buttons {
             bool left   = false;
             bool middle = false;
@@ -54,6 +70,13 @@ namespace module::platform::Booster {
         void battery_handler(const void* msg);
         void button_event_handler(const void* msg);
         void odometer_handler(const void* msg);
+
+        /// Query the robot's current motion mode from the SDK and publish it as a BoosterModeState so
+        /// other modules can read the actual mode the robot is in.
+        void publish_current_mode();
+
+        /// Change the robot's motion mode and publish the resulting mode.
+        void change_mode(booster::robot::RobotMode robot_mode);
 
         static std::string res_code_to_string(int32_t res_code) {
             std::string out;
