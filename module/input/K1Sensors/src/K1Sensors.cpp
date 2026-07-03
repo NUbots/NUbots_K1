@@ -10,9 +10,11 @@
 
 #include "extension/Configuration.hpp"
 
+#include "message/booster/BoosterModeState.hpp"
 #include "message/booster/BoosterOdometry.hpp"
 #include "message/input/Buttons.hpp"
 #include "message/input/Sensors.hpp"
+#include "message/localisation/Field.hpp"
 #include "message/platform/RawSensors.hpp"
 
 #include "utility/math/euler.hpp"
@@ -25,19 +27,26 @@ namespace bip = boost::interprocess;
 namespace module::input {
 
     using extension::Configuration;
+    using message::booster::BoosterModeState;
     using message::booster::BoosterOdometry;
     using message::input::ButtonLeftDown;
     using message::input::ButtonLeftUp;
     using message::input::ButtonMiddleDown;
     using message::input::ButtonMiddleUp;
     using message::input::Sensors;
+    using message::localisation::ResetFieldLocalisation;
     using message::platform::RawSensors;
 
     using utility::math::euler::mat_to_rpy_intrinsic;
     using utility::math::euler::rpy_intrinsic_to_mat;
 
 
+    // Must match the writer-side layout in NUbridge exactly (binary compatibility).
     struct SharedPoseHeader {
+        static constexpr uint32_t MAGIC   = 0x4E42504F;  // "NBPO"
+        static constexpr uint32_t VERSION = 1;
+        uint32_t magic{MAGIC};
+        uint32_t version{VERSION};
         bip::interprocess_mutex mutex;
         bip::interprocess_condition has_new_data;
         uint64_t sequence{0};
@@ -62,7 +71,21 @@ namespace module::input {
         }
 
         try {
-            pose_shared_memory      = std::make_unique<PoseSharedMemory>(cfg.pose_segment);
+            pose_shared_memory = std::make_unique<PoseSharedMemory>(cfg.pose_segment);
+
+            // Reject segments whose layout tag doesn't match ours (stale or mismatched
+            // NUbridge version, or a segment NUbridge hasn't initialised yet)
+            if (pose_shared_memory->header->magic != SharedPoseHeader::MAGIC
+                || pose_shared_memory->header->version != SharedPoseHeader::VERSION) {
+                pose_shared_memory.reset();
+                if (!pose_unavailable_logged) {
+                    log<WARN>("K1Sensors head_pose segment has unexpected magic/version (is NUbridge up to date?)",
+                              cfg.pose_segment);
+                    pose_unavailable_logged = true;
+                }
+                return;
+            }
+
             pose_unavailable_logged = false;
             log<INFO>("K1Sensors mapped head_pose segment", cfg.pose_segment);
         }
@@ -143,6 +166,30 @@ namespace module::input {
             std::lock_guard<std::mutex> odometry_lock(odometry_mutex);
             booster_odometry_has_offset = false;
             booster_odometry_offset     = {};
+        });
+
+
+        // When field localisation is reset, re-capture the BoosterOdometry zero offset so that odometry is
+        // reported relative to the robot's new post-reset pose.
+        on<Trigger<ResetFieldLocalisation>>().then([this] {
+            std::lock_guard<std::mutex> odometry_lock(odometry_mutex);
+            booster_odometry_has_offset = false;
+            booster_odometry_offset     = {};
+            log<INFO>("K1Sensors clearing BoosterOdometry offset after field localisation reset");
+        });
+
+
+        // Any motion mode change causes HardwareIO to reset the Booster odometry, so re-capture the
+        // zero offset from the first sample after the change, regardless of which mode was entered.
+        on<Trigger<BoosterModeState>>().then([this](const BoosterModeState& mode_state) {
+            std::lock_guard<std::mutex> odometry_lock(odometry_mutex);
+            const int mode = static_cast<int>(mode_state.mode);
+            if (last_booster_mode != -1 && mode != last_booster_mode) {
+                booster_odometry_has_offset = false;
+                booster_odometry_offset     = {};
+                log<INFO>("K1Sensors clearing BoosterOdometry offset after mode change");
+            }
+            last_booster_mode = mode;
         });
 
 

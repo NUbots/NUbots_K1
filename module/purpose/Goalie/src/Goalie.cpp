@@ -39,6 +39,7 @@
 #include "message/purpose/Purpose.hpp"
 #include "message/strategy/FindBall.hpp"
 #include "message/strategy/LookAtFeature.hpp"
+#include "message/strategy/StandStill.hpp"
 #include "message/strategy/WalkToFieldPosition.hpp"
 #include "message/strategy/Who.hpp"
 #include "message/support/FieldDescription.hpp"
@@ -65,6 +66,7 @@ namespace module::purpose {
     using message::purpose::ReadyAttack;
     using message::purpose::SoccerPosition;
     using message::strategy::LookAtBall;
+    using message::strategy::StandStill;
     using message::strategy::WalkToFieldPosition;
     using message::strategy::Who;
     using message::support::FieldDescription;
@@ -100,9 +102,25 @@ namespace module::purpose {
                          const GameState& game_state,
                          const GlobalConfig& global_config,
                          const FieldDescription& fd) {
-                // If play is stopped, do nothing
+                // If play is stopped, stand still
                 if (game_state.stopped) {
-                    log<DEBUG>("Play is stopped, do nothing.");
+                    log<DEBUG>("Play is stopped, standing still.");
+                    emit<Task>(std::make_unique<StandStill>());
+                    return;
+                }
+
+                // Do not play until localisation has converged, e.g. when re-entering an already-playing
+                // game after being unpenalised or restarted. Stand still and scan for field features so
+                // the goalie doesn't walk to the wrong goal with a wrong or unconverged pose.
+                if (!field.localised) {
+                    log<DEBUG>("Not localised, standing still and looking around to localise.");
+                    emit(std::make_unique<Purpose>(global_config.player_id,
+                                                   SoccerPosition::UNKNOWN,
+                                                   true,
+                                                   false,
+                                                   game_state.team.team_colour));
+                    emit<Task>(std::make_unique<LookAround>(), 1);
+                    emit<Task>(std::make_unique<StandStill>(), 1);
                     return;
                 }
 
@@ -203,9 +221,11 @@ namespace module::purpose {
                     return;
                 }
 
-                if (is_closest && set_play) {
-                    log<DEBUG>("Goalie is in the best position to take the set play, readying attack.");
+                // Only ready to take the set play if it is ours, otherwise fall through and defend the goals
+                if (is_closest && set_play && game_state.our_kick_off) {
+                    log<DEBUG>("Goalie is in the best position to take our set play, readying attack.");
                     emit<Task>(std::make_unique<ReadyAttack>());
+                    return;
                 }
 
                 // We are not the closest, but the ball is in our half, so we should defend the goals.

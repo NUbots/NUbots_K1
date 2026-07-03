@@ -28,6 +28,7 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <fmt/format.h>
 
 #include "extension/Configuration.hpp"
 
@@ -52,7 +53,7 @@ namespace module::network {
     using message::input::Sensors;
     using message::localisation::Ball;
     using message::localisation::Field;
-    using message::planning::WalkTo;
+    using message::planning::WalkToDebug;
     using message::purpose::Purpose;
     using message::purpose::SoccerPosition;
     using message::skill::Kick;
@@ -129,7 +130,14 @@ namespace module::network {
                             // Port-per-team ensures only teammates broadcast on this port
                             // Filter out messages from ourselves only
                             if (!own_player_message) {
-                                log<DEBUG>("Message received from teammate ID", incoming_msg.current_pose.player_id);
+                                log<INFO>("Message received from teammate ID",
+                                          incoming_msg.current_pose.player_id,
+                                          "position:",
+                                          incoming_msg.current_pose.position.x(),
+                                          incoming_msg.current_pose.position.y(),
+                                          incoming_msg.current_pose.position.z(),
+                                          "going for ball:",
+                                          incoming_msg.going_for_ball);
                                 emit(std::make_unique<Message>(std::move(incoming_msg)));
                             }
                         });
@@ -160,7 +168,7 @@ namespace module::network {
            Optional<With<Field>>,
            Optional<With<GameState>>,
            Optional<With<Purpose>>,
-           Optional<With<WalkTo>>,
+           Optional<With<WalkToDebug>>,
            With<GlobalConfig>>()
             .then([this](const std::shared_ptr<const Ball>& loc_ball,
                          const std::shared_ptr<const WalkState>& walk_state,
@@ -169,7 +177,7 @@ namespace module::network {
                          const std::shared_ptr<const Field>& field,
                          const std::shared_ptr<const GameState>& game_state,
                          const std::shared_ptr<const Purpose>& purpose,
-                         const std::shared_ptr<const WalkTo>& walk_to,
+                         const std::shared_ptr<const WalkToDebug>& walk_to,
                          const GlobalConfig& config) {
                 auto msg = std::make_unique<Message>();
 
@@ -283,6 +291,29 @@ namespace module::network {
                 // Purpose information, simple a bool in the new proto
                 msg->going_for_ball = (purpose && purpose->purpose.value == SoccerPosition::ATTACK);
 
+                // Single-line summary of the outgoing broadcast
+                log<INFO>(fmt::format(
+                    "Broadcast: id={} {} pose=({:.2f}, {:.2f}, {:.2f}) walk=({:.2f}, {:.2f}, {:.2f}) "
+                    "target=({:.2f}, {:.2f}, {:.2f}) kick=({:.2f}, {:.2f}) ball=({:.2f}, {:.2f}) age={:.1f}s "
+                    "going_for_ball={}",
+                    msg->current_pose.player_id,
+                    msg->state == message::input::State::PENALISED ? "PENALISED" : "UNPENALISED",
+                    msg->current_pose.position.x(),
+                    msg->current_pose.position.y(),
+                    msg->current_pose.position.z(),
+                    msg->walk_command.x(),
+                    msg->walk_command.y(),
+                    msg->walk_command.z(),
+                    msg->target_pose.position.x(),
+                    msg->target_pose.position.y(),
+                    msg->target_pose.position.z(),
+                    msg->kick_target.x(),
+                    msg->kick_target.y(),
+                    msg->ball.position.x(),
+                    msg->ball.position.y(),
+                    msg->ball.age,
+                    msg->going_for_ball));
+
                 // Check serialised size before sending
                 auto payload = NUClear::util::serialise::Serialise<Message>::serialise(*msg);
                 if (payload.size() > cfg.max_message_size) {
@@ -310,6 +341,7 @@ namespace module::network {
                         log<DEBUG>("Messages sent this game:", messages_sent, "/ ", cfg.max_messages_per_game);
                     }
                 }
+
 
                 emit<Scope::UDP>(msg, cfg.broadcast_ip, cfg.send_port);
             });
