@@ -1,5 +1,5 @@
 # Controls the minimum log level that NUClear log will display
-log_level: INFO
+log_level: DEBUG
 
 # Maximum velocity command per axis [vx (m/s), vy (m/s), vtheta (rad/s)]
 max_velocity: [1.0, 0.5, 1.0]
