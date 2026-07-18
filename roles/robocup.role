@@ -20,12 +20,13 @@ nuclear_role(
   input::K1Sensors
   input::K1Camera
   input::GameController
+  input::WhistleDetection
   network::RobotCommunication
   # Vision
-  vision::VisualMesh
-  vision::GreenHorizonDetector
+  # vision::VisualMesh
+  # vision::GreenHorizonDetector
   # vision::BallDetector
-  vision::FieldLineDetector
+  # vision::FieldLineDetector
   vision::Yolo
   # Localisation
   localisation::FieldLocalisationNLopt
@@ -39,7 +40,7 @@ nuclear_role(
   actuation::FootController
   # Skills
   skill::K1Walk
-  skill::K1VisualKick
+  skill::KickWalk
   skill::K1GetUp
   skill::K1Look
   # Planners

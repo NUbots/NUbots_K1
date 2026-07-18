@@ -27,6 +27,9 @@ namespace module::input {
             std::string pose_segment;
             Eigen::Isometry3d Hhp = Eigen::Isometry3d::Identity();
             Eigen::Isometry3d Hpc = Eigen::Isometry3d::Identity();
+            /// @brief Deadband below which normalized odometry components are snapped to zero, to
+            /// avoid tiny floating-point residuals (e.g. ~1e-10) being treated as real motion
+            double odometry_deadband = 0.0;
         } cfg;
 
         std::mutex pose_mutex;
@@ -36,6 +39,9 @@ namespace module::input {
         std::mutex odometry_mutex;
         bool booster_odometry_has_offset = false;
         std::array<double, 3> booster_odometry_offset{};
+        /// @brief Last Booster motion mode seen, used to clear the odometry offset whenever the mode
+        /// changes (-1 = no mode seen yet)
+        int last_booster_mode = -1;
 
         bool left_down   = false;
         bool middle_down = false;
