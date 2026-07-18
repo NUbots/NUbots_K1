@@ -30,6 +30,18 @@ pivot_angular_velocity: 0.8
 pivot_radius: 0.4
 pivot_forward_velocity: 0.0
 
+# Adjust (orbit the ball to fix approach angle) tuning values
+adjust_range: 0.5
+adjust_vx_limit: 0.5
+adjust_vy_limit: 0.6
+adjust_vtheta_limit: 1.5
+adjust_vtheta_factor: 4.5
+adjust_tangential_speed_far: 0.9
+adjust_tangential_speed_near: 0.4
+adjust_near_threshold: 0.8
+adjust_no_turn_threshold: 0.1
+adjust_turn_first_threshold: 0.5
+
 # Radius around obstacles to avoid
 obstacle_radius: 0.8
 
