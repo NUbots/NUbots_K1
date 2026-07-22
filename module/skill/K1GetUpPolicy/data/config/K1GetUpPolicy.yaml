@@ -3,7 +3,15 @@ log_level: INFO
 # mujoco_playground K1Getup fall-recovery policy (72-obs / 22-action ONNX). Actions are
 # offsets on the CURRENT joint configuration (Go1Getup convention). All joint arrays are
 # in the Booster SDK JointIndexK1 serial order.
-model_path: "k1_getup.onnx"
+# Variants: k1_getup_frasa_20260716_1250M.onnx (FRASA single-kernel reward, 1.25B),
+# k1_getup_v4_20260716_1250M.onnx (shaped reward v4, 1.25B), and the 2026-07-17
+# warm-started 150M runs (both init from the FRASA 1.25B checkpoint, body-wide
+# oscillation cost added): k1_getup_frasa_warm_20260717_150M.onnx (weighted-hips
+# FRASA kernel) / k1_getup_v5_warm_20260717_150M.onnx (shaped reward v5).
+# k1_getup_v6_20260717_1153M.onnx: shaped reward v6, fresh 1.15B-step run (2026-07-17).
+# k1_getup_v7_20260718_300M.onnx: v7 rewards (height_progress potential, hand_support,
+# staged orientation, no leg_activity), 300M scratch (2026-07-18).
+model_path: "k1_getup_v19_20260722_1833M.onnx"
 
 # |roll| and |pitch| below this angle (rad) count as upright; sustained for
 # upright_time seconds (with knees extended) the get-up reports Done.
