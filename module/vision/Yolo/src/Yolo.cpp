@@ -96,7 +96,12 @@ namespace module::vision {
 
                 // Try TensorRT first, building the engine from the ONNX model on this device.
                 // The built engine is cached on disk, so this is only slow the first time.
+                // Only attempted when a GPU is requested: CUDA initialisation on a machine
+                // with no visible GPU can crash inside the driver (not a catchable throw).
                 try {
+                    if (device != "GPU") {
+                        throw std::runtime_error("device is not GPU, skipping TensorRT");
+                    }
                     log<INFO>("Building TensorRT engine from: ", model_path);
                     trt = std::make_unique<utility::vision::TensorRT>(model_path);
                     log<INFO>("TensorRT engine ready");
@@ -154,6 +159,10 @@ namespace module::vision {
                     case utility::vision::fourcc("RGBA"):
                         img_cv = cv::Mat(height, width, CV_8UC4, const_cast<uint8_t*>(img.data.data()));
                         cv::cvtColor(img_cv, img_cv, cv::COLOR_RGBA2BGR);
+                        break;
+                    case utility::vision::fourcc("RGB8"):  // packed 8-bit RGB (e.g. the NUSim camera bridge)
+                        img_cv = cv::Mat(height, width, CV_8UC3, const_cast<uint8_t*>(img.data.data()));
+                        cv::cvtColor(img_cv, img_cv, cv::COLOR_RGB2BGR);
                         break;
                     default: log<WARN>("Image format not supported: ", utility::vision::fourcc(img.format)); return;
                 }

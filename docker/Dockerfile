@@ -341,6 +341,15 @@ RUN INCLUDE_PREFIX=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/usr/loc
     --prefix ${INCLUDE_PREFIX} --no-toolchain \
     --header-path include/zstr
 
+# Make the OpenCL loader visible at the standard prefix for generic builds before VisualMesh,
+# which probes OpenCL at build time and otherwise bakes VISUALMESH_DISABLE_OPENCL into its
+# exported cmake config. The loader was installed to the Jetson targetfs prefix above; the
+# CL headers themselves come from the opencl-c-headers apt package (/usr/include/CL).
+RUN if [ "${platform}" != "orinnx" ]; then \
+        cp -a /l4t/targetfs/usr/local/lib/libOpenCL.* /usr/local/lib/ && \
+        ldconfig; \
+    fi
+
 # Visual Mesh
 RUN install-from-source https://github.com/NUbots/VisualMesh/archive/64c49fce3a17bbee73339eaee556f47a80b93c40.tar.gz \
     -DBUILD_TENSORFLOW_OP=OFF \
@@ -394,6 +403,22 @@ RUN install-package -p ${platform} libusb-1.0-0-dev libcurl4-openssl-dev zlib1g-
 #######################################
 ### ADD NEW PROGRAMS/LIBRARIES HERE ###
 #######################################
+
+# Shared TinyXML2: the Booster SDK's prebuilt libfastrtps.so.2.13 has a NEEDED entry for
+# libtinyxml2.so.9, but the earlier tinyxml2 layer only produces the static archive.
+# Kept down here so the expensive source-build layers above stay cached.
+RUN install-from-source https://github.com/leethomason/tinyxml2/archive/refs/tags/9.0.0.tar.gz \
+    -DBUILD_SHARED_LIBS=ON
+
+# Several layers above (alsa-lib, lame, libbacktrace, gperftools, the OpenCL loader)
+# install to the Jetson targetfs prefix even for generic builds; the binaries are
+# host-arch, only the install path is wrong, so find_package fails for generic.
+# Copy everything across without clobbering what /usr/local already has.
+RUN if [ "${platform}" != "orinnx" ]; then \
+        cp -an /l4t/targetfs/usr/local/include/. /usr/local/include/ && \
+        cp -an /l4t/targetfs/usr/local/lib/. /usr/local/lib/ && \
+        ldconfig; \
+    fi
 
 # Install tools needed for building individual modules as well as development tools
 RUN install-package \

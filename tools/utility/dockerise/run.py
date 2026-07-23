@@ -98,7 +98,7 @@ def _setup_internal_image(image, rebuild, clean_volume, clean_uv_cache):
 
     # Rebuild the image if we are rebuilding
     if rebuild:
-        platform.build(repository, target)
+        platform.build(repository, target, defaults.local_user, os.getuid(), False)
 
     # Find the current target for this platform
     target = target if target != "selected_k1" else platform.selected(repository, defaults.local_user)
@@ -204,6 +204,26 @@ def run(func, image, hostname="docker", ports=[], docker_context=None):
         for v in kwargs["volume"]:
             docker_args.extend(["--volume", v])
 
+        # The image's OpenVINO was built with ENABLE_INTEL_CPU=OFF (no CPU inference
+        # device), which breaks Yolo and the locomotion policy skills
+        # ("Device with \"CPU\" name is not registered" / "CompiledModel was not
+        # initialized"). If the official runtime has been extracted to
+        # ~/.cache/ov_overlay (preferred: survives reboots) or /tmp/ov_overlay
+        # (see NUSim docs/K1_MUJOCO_SETUP.md), mount it over the baked one and make the
+        # loader prefer it. Check for the CPU plugin itself, not just the directory —
+        # a docker-created empty mount stub at /tmp/ov_overlay must not count.
+        ov_env = []
+        for ov_overlay in (
+            os.path.expanduser("~/.cache/ov_overlay/runtime/lib/intel64"),
+            "/tmp/ov_overlay/runtime/lib/intel64",
+        ):
+            if os.path.isfile(os.path.join(ov_overlay, "libopenvino_intel_cpu_plugin.so")):
+                print(f"Auto-mounting OpenVINO CPU overlay from {ov_overlay}")
+                docker_args.extend(["--volume", f"{ov_overlay}:/usr/local/runtime/lib/intel64:ro"])
+                ov_env = ["--env", "LD_LIBRARY_PATH=/usr/local/runtime/lib/intel64"]
+                break
+        docker_args.extend(ov_env)
+
         # Pass through GPUs if requested
         if kwargs["gpus"] is not None:
             docker_args.extend(["--gpus", kwargs["gpus"]])
@@ -286,12 +306,30 @@ def run(func, image, hostname="docker", ports=[], docker_context=None):
 
         docker_args.extend(["--network", network])
 
+        # Share the host IPC namespace so FastDDS shared-memory transport (SHM +
+        # data-sharing segments in /dev/shm) reaches other host-IPC containers,
+        # e.g. the NUSim K1 simulator. Without this, DDS discovery succeeds over
+        # UDP but segment opens fail ("Failed to open segment ... -> Function
+        # open_and_init_shared_segment_notification") and RPCs time out.
+        if _is_linux():
+            docker_args.extend(["--ipc", "host"])
+
         # Environment variables
         # This should be specified as VAR1=VALUE1,VAR2=VALUE2
-        if kwargs["environment"] is not None:
-            key_pairs = [["--env", key_pair] for key_pair in kwargs["environment"].split(",")]
+        user_env = kwargs["environment"] if kwargs["environment"] is not None else ""
+        if user_env:
+            key_pairs = [["--env", key_pair] for key_pair in user_env.split(",")]
             for key_pair in key_pairs:
                 docker_args.extend(key_pair)
+
+        # The Booster SDK refuses to create its DDS participant without a profiles file
+        # (participant profile "booster_dds"); default to the repo's copy so `./b run
+        # <role>` works against NUSim/the robot without remembering the flag.
+        if "FASTRTPS_DEFAULT_PROFILES_FILE" not in user_env:
+            docker_args.extend([
+                "--env",
+                f"FASTRTPS_DEFAULT_PROFILES_FILE=/home/{defaults.image_user}/{defaults.directory}/tools/fastdds_default_profiles.xml",
+            ])
 
         # Add the ports
         for port in ports:
