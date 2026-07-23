@@ -52,6 +52,7 @@ namespace module::skill {
             cfg.upright_angle       = config["upright_angle"].as<double>();
             cfg.upright_time        = config["upright_time"].as<double>();
             cfg.knee_extended_angle = config["knee_extended_angle"].as<double>();
+            cfg.settled_gyro        = config["settled_gyro"].as<double>();
 
             cfg.kp                 = load_joint_array<JOINT_COUNT>(config, "kp");
             cfg.kd                 = load_joint_array<JOINT_COUNT>(config, "kd");
@@ -171,7 +172,12 @@ namespace module::skill {
                 const bool knees_extended =
                     raw.servo.l_knee.present_position < cfg.knee_extended_angle
                     && raw.servo.r_knee.present_position < cfg.knee_extended_angle;
-                const bool upright = knees_extended && std::abs(raw.imu_rpy.x()) < cfg.upright_angle
+                // Posture alone also fires while the robot is still oscillating from a
+                // dynamic rise; require the gyro to be quiet too so the walk policy takes
+                // over a settled robot, not a moving one.
+                const bool settled = raw.gyroscope.norm() < cfg.settled_gyro;
+                const bool upright = knees_extended && settled
+                                     && std::abs(raw.imu_rpy.x()) < cfg.upright_angle
                                      && std::abs(raw.imu_rpy.y()) < cfg.upright_angle;
                 const auto now = NUClear::clock::now();
                 if (upright && !was_upright) {

@@ -33,6 +33,8 @@ namespace module::skill {
             double upright_time = 1.0;
             /// @brief both knees must be flexed less than this to count as standing (rad)
             double knee_extended_angle = 0.9;
+            /// @brief gyro norm must stay below this for the robot to count as settled (rad/s)
+            double settled_gyro = 0.5;
             /// @brief PD gains + per-joint action scale (training-time values, shared
             /// with the walk policy since both train against the same model)
             std::array<double, JOINT_COUNT> kp{};

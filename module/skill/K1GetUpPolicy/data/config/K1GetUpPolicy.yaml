@@ -14,9 +14,13 @@ log_level: INFO
 model_path: "k1_getup_v19_20260722_1833M.onnx"
 
 # |roll| and |pitch| below this angle (rad) count as upright; sustained for
-# upright_time seconds (with knees extended) the get-up reports Done.
+# upright_time seconds (with knees extended and gyro settled) the get-up reports Done.
 upright_angle: 0.35
-upright_time: 1.5
+upright_time: 2.0
+# Gyro norm must stay below this (rad/s) for the whole upright_time window — a
+# posture-only check fires while the robot is still oscillating from a dynamic rise
+# and hands the walk policy a moving robot.
+settled_gyro: 0.5
 # Both knees must be flexed less than this (rad) to count as standing — the torso is
 # already vertical mid-rise, so attitude alone hands off to the walk policy too early
 # (standing knee ~0.4 rad, mid-rise > 1 rad).
