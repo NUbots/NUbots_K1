@@ -3,7 +3,7 @@ log_level: DEBUG
 # mujoco_playground K1 joystick walk policy (82-obs / 22-action ONNX, contract pinned in
 # NUSim docs/OBS_ACTION_CONTRACT.md). All joint arrays are in the Booster SDK
 # JointIndexK1 serial order (head x2, L arm x4, R arm x4, L leg x6, R leg x6).
-model_path: "k1_walk.onnx"
+model_path: "k1_walk_v1_20260723_617M.onnx"
 
 gait_frequency: 1.5 # Hz, phase advance rate (training randomizes U(1.25, 1.75))
 stand_threshold: 0.01 # command norm below which the phase obs pins to [pi, pi] (standing)

@@ -11,7 +11,7 @@ log_level: INFO
 # k1_getup_v6_20260717_1153M.onnx: shaped reward v6, fresh 1.15B-step run (2026-07-17).
 # k1_getup_v7_20260718_300M.onnx: v7 rewards (height_progress potential, hand_support,
 # staged orientation, no leg_activity), 300M scratch (2026-07-18).
-model_path: "k1_getup_v19_20260722_1833M.onnx"
+model_path: "k1_getup_v20_20260723_864M.onnx"
 
 # |roll| and |pitch| below this angle (rad) count as upright; sustained for
 # upright_time seconds (with knees extended and gyro settled) the get-up reports Done.
