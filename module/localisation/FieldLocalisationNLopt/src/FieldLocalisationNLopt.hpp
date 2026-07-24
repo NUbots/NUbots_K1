@@ -275,6 +275,9 @@ namespace module::localisation {
             /// @brief Exponential filter smoothing factor for each state component (0 < alpha <= 1)
             /// @brief [x, y, theta] - Higher values = more responsive, Lower values = more smoothed
             Eigen::Vector3d alpha = Eigen::Vector3d(0.1, 0.1, 0.1);
+
+            /// @brief Number of accepted measurements since the last reset before the pose is trusted
+            int min_localised_measurements = 0;
         } cfg;
 
         /// @brief State vector (x,y,yaw) of the Hfw transform
@@ -301,6 +304,12 @@ namespace module::localisation {
 
         /// @brief Bool indicating where or not this is the first update
         bool startup = true;
+
+        /// @brief Bool indicating the pose estimate is trusted (enough accepted measurements since the last reset)
+        bool localised = false;
+
+        /// @brief Number of accepted measurements since the last reset
+        int num_accepted = 0;
 
         /// @brief Bool indicating ground truth localisation (Hfw) computed
         bool ground_truth_initialised = false;
@@ -335,7 +344,7 @@ namespace module::localisation {
          * @brief Find error between computed Hfw and ground truth if available
          * @param Hfw Computed Hfw to be compared against ground truth
          */
-        void debug_field_localisation(Eigen::Isometry3d Hfw);
+        void debug_field_localisation(const Eigen::Isometry3d& Hfw, const Eigen::Isometry3d& Htw);
 
         /**
          * @brief Run the field line optimisation
@@ -349,6 +358,13 @@ namespace module::localisation {
                                                                        const FieldIntersections& field_intersections,
                                                                        const std::shared_ptr<const Goals>& goals,
                                                                        bool uncertainty_optimisation = false);
+
+        /**
+         * @brief Compute goal post alignment cost for a proposed starting state.
+         * This is used during startup when there are not enough field line intersections
+         * but two goals are visible.
+         */
+        double goal_post_alignment_cost(const Eigen::Vector3d& state, const std::shared_ptr<const Goals>& goals);
 
         /**
          * @brief Perform data association between intersection observations and landmarks using nearest neighbour

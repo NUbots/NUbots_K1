@@ -43,7 +43,8 @@ type LocalisationViewProps = {
 
 const FieldDimensionOptions = [
   { label: "Lab", value: "lab" },
-  { label: "Robocup", value: "robocup" },
+  { label: "Robocup (Small)", value: "robocup_small" },
+  { label: "Robocup (Large)", value: "robocup_large" },
 ];
 
 // Apply the interfaces to the component's props
@@ -297,10 +298,9 @@ const MenuItem = (props: { label: string; onClick(): void; isVisible: boolean })
       className={`
         w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm font-medium
         transition-all duration-150 ease-out
-        ${
-          props.isVisible
-            ? "bg-auto-primary/20 text-auto-primary border border-auto-primary/30"
-            : "bg-auto-surface-2 text-auto-on-surface border border-auto-outline hover:bg-auto-surface-3"
+        ${props.isVisible
+          ? "bg-auto-primary/20 text-auto-primary border border-auto-primary/30"
+          : "bg-auto-surface-2 text-auto-on-surface border border-auto-outline hover:bg-auto-surface-3"
         }
         focus:outline-none focus:ring-1 focus:ring-auto-primary
         active:scale-[0.98]
@@ -628,14 +628,9 @@ const LocalisationViewModel: React.FC<{ model: LocalisationModel }> = observer((
     {model.fieldVisible && <FieldView model={model.field} />}
     {model.gridVisible && <GridView />}
 
-    {/* Goal labels - default to blue team if no robots available */}
+    {/* Goal labels in field frame: own goal (+x), opponent goal (-x). */}
     {model.goalsVisible && (
-      <GoalLabels
-        fieldModel={model.field}
-        teamColour={model.robots.length > 0 ? (model.target || model.robots[0]).teamColour : "blue"}
-        cameraPitch={model.camera.pitch}
-        cameraYaw={model.camera.yaw}
-      />
+      <GoalLabels fieldModel={model.field} cameraPitch={model.camera.pitch} cameraYaw={model.camera.yaw} />
     )}
 
     {model.robotVisible && model.robots.map((robot) => <RobotComponents key={robot.id} robot={robot} model={model} />)}

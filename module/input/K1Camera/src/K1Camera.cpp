@@ -65,6 +65,10 @@ namespace module::input {
 
     // Must match the writer-side layout in NUbridge exactly (binary compatibility).
     struct SharedImageHeader {
+        static constexpr uint32_t MAGIC   = 0x4E42494D;  // "NBIM"
+        static constexpr uint32_t VERSION = 1;
+        uint32_t magic{MAGIC};
+        uint32_t version{VERSION};
         bip::interprocess_mutex mutex;
         bip::interprocess_condition has_new_frame;
         uint64_t sequence{0};
