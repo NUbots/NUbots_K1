@@ -4,6 +4,7 @@
 
 #include "extension/Configuration.hpp"
 
+#include "message/actuation/K1Servos.hpp"
 #include "message/behaviour/state/Stability.hpp"
 #include "message/booster/BoosterLowCmd.hpp"
 #include "message/booster/BoosterMode.hpp"
@@ -162,8 +163,6 @@ namespace module::skill {
                     motor.kd     = static_cast<float>(cfg.kd[j]);
                     motor.weight = 0.0f;
                 }
-                emit(std::move(low));
-
                 // --- completion: upright attitude AND knees near extension, sustained ---
                 // Attitude alone fires mid-rise (torso is vertical while still deep in a
                 // crouch) and hands the robot to the walk policy before it can balance;
@@ -193,7 +192,13 @@ namespace module::skill {
                     emit<Task>(std::make_unique<Done>());
                     return;
                 }
-                emit<Task>(std::make_unique<Continue>());
+
+                // Emit the command as a Director-arbitrated K1Servos subtask (not a raw
+                // BoosterLowCmd), so get-up owns the low-level channel by priority while it
+                // runs. The subtask keeps the GetUp task alive, so no Continue is needed.
+                auto k1_servos     = std::make_unique<message::actuation::K1Servos>();
+                k1_servos->command = *low;
+                emit<Task>(std::move(k1_servos));
             });
     }
 

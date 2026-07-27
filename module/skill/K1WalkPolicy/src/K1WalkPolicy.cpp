@@ -5,6 +5,7 @@
 
 #include "extension/Configuration.hpp"
 
+#include "message/actuation/K1Servos.hpp"
 #include "message/behaviour/state/Stability.hpp"
 #include "message/behaviour/state/WalkState.hpp"
 #include "message/booster/BoosterHeadRot.hpp"
@@ -302,7 +303,13 @@ namespace module::skill {
                 low->motor_cmd[HEAD_PITCH].q  = static_cast<float>(head_target.y());
                 low->motor_cmd[HEAD_PITCH].kp = static_cast<float>(cfg.head_kp);
                 low->motor_cmd[HEAD_PITCH].kd = static_cast<float>(cfg.head_kd);
-                emit(std::move(low));
+
+                // Emit the command as a Director-arbitrated K1Servos subtask (not a raw
+                // BoosterLowCmd), so the Director owns the low-level channel and subsumes
+                // walk when a higher-priority kick or get-up is active.
+                auto k1_servos     = std::make_unique<message::actuation::K1Servos>();
+                k1_servos->command = *low;
+                emit<Task>(std::move(k1_servos));
 
                 const auto state = cmd.isZero() ? WalkState::State::STOPPED : WalkState::State::WALKING;
                 if (int(state) != last_walk_state) {
