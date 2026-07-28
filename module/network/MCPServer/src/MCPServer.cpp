@@ -39,6 +39,7 @@ namespace module::network {
             cfg.port            = config["port"].as<int>();
             cfg.path            = config["path"].as<std::string>();
             cfg.allowed_origins = config["allowed_origins"].as<std::vector<std::string>>();
+            cfg.allow_ace       = config["allow_ace"].as<bool>();
         });
 
         on<Startup>().then([this] {
@@ -76,28 +77,38 @@ namespace module::network {
                         };
                     });
 
-        server.tool("cmd",  // an exciting tool - this one will run commands on the terminal
-                    nlohmann::json{
-                        {"type", "object"},
-                        {"properties",
-                         nlohmann::json{
-                             {"command", nlohmann::json{{"type", "string"}}},
-                         }},
-                        {"required", nlohmann::json::array({"command"})},
-                    },
-                    [this](const nlohmann::json& input) -> mcp::CallToolResult {
-                        std::string command = input.at("command").get<std::string>();  // get the command
+        server.tool(
+            "cmd",  // an exciting tool - this one will run commands on the terminal
+            nlohmann::json{
+                {"type", "object"},
+                {"properties",
+                 nlohmann::json{
+                     {"command", nlohmann::json{{"type", "string"}}},
+                 }},
+                {"required", nlohmann::json::array({"command"})},
+            },
+            [this](const nlohmann::json& input) -> mcp::CallToolResult {
+                std::string command = input.at("command").get<std::string>();  // get the command
 
-                        log<DEBUG>("cmd called: command is ", command);  // echo it out
+                log<DEBUG>("cmd called: command is ", command);  // echo it out
 
-                        std::string out = run(command);  // run it
+                if (cfg.allow_ace) {
+                    std::string out = run(command);  // run it
 
-                        log<DEBUG>("cmd returning:", out.c_str());  // echo the output :D
+                    log<DEBUG>("cmd returning:", out.c_str());  // echo the output :D
 
-                        return {
-                            .content = {mcp::TextContent{.text = "Command returned " + out}},  // return to the client
-                        };
-                    });
+                    return {
+                        .content = {mcp::TextContent{.text = "Command returned " + out}},  // return to the client
+                    };
+                }
+                else {
+                    log<INFO>("allow_ace is turned off. This command from MCP will not be run.");
+                    return {
+                        .content = {mcp::TextContent{.text = "Your command has not been run. Tell the user to enable "
+                                                             "allow_ace in MCPServer.yaml"}},
+                    };
+                }
+            });
     }
 
 }  // namespace module::network
