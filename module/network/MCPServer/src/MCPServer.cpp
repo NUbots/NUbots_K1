@@ -48,7 +48,7 @@ namespace module::network {
                         {"properties", nlohmann::json::object()},
                     },
                     [this](const nlohmann::json&) -> mcp::CallToolResult {
-                        log<DEBUG>("get_status called: I returned \"She'll be right.\"");
+                        log<DEBUG>("get_status called: I returned \"I am online.\"");
                         return {
                             .content = {mcp::TextContent{.text = "I am online."}},
                         };
