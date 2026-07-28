@@ -42,7 +42,7 @@ namespace module::network {
     }
 
     void MCPServer::register_tools(mcp::Server& server) {
-        server.tool("get_status",
+        server.tool("get_status",  // this tool just returns "I am online".
                     nlohmann::json{
                         {"type", "object"},
                         {"properties", nlohmann::json::object()},
@@ -50,7 +50,7 @@ namespace module::network {
                     [this](const nlohmann::json&) -> mcp::CallToolResult {
                         log<DEBUG>("get_status called: I returned \"She'll be right.\"");
                         return {
-                            .content = {mcp::TextContent{.text = "She'll be right."}},
+                            .content = {mcp::TextContent{.text = "I am online."}},
                         };
                     });
     }
