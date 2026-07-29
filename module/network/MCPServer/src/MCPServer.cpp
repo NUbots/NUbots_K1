@@ -109,6 +109,55 @@ namespace module::network {
                     };
                 }
             });
+
+        server.tool(
+            "log_to_user",  // log to user with the log level that Claude desires
+            nlohmann::json{
+                {"type", "object"},
+                {"properties",
+                 nlohmann::json{
+                     {"message", nlohmann::json{{"type", "string"}}},
+                     {"log_level",
+                      nlohmann::json{
+                          {"type", "string"},
+                          {"description", "NUClear log level to log the message at"},
+                          {"enum", nlohmann::json::array({"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"})},
+                      }},
+                 }},
+                {"required", nlohmann::json::array({"message", "log_level"})},
+            },
+            [this](const nlohmann::json& input) -> mcp::CallToolResult {
+                std::string message   = input.at("message").get<std::string>();    // get the message
+                std::string log_level = input.at("log_level").get<std::string>();  // get the log level
+
+                log<DEBUG>("log_to_user called: message is ", message, "and log level is ", log_level);  // echo it out
+
+                if (log_level == "TRACE") {
+                    log<TRACE>(message);
+                }
+                else if (log_level == "DEBUG") {
+                    log<DEBUG>(message);
+                }
+                else if (log_level == "INFO") {
+                    log<INFO>(message);
+                }
+                else if (log_level == "WARN") {
+                    log<WARN>(message);
+                }
+                else if (log_level == "ERROR") {
+                    log<ERROR>(message);
+                }
+                else if (log_level == "FATAL") {
+                    log<FATAL>(message);
+                }
+                else {
+                    log<WARN>("log_to_user got unknown log level:", log_level);
+                }
+
+                return {
+                    .content = {mcp::TextContent{.text = "This has been done now."}},
+                };
+            });
     }
 
 }  // namespace module::network

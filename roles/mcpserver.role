@@ -31,6 +31,5 @@ nuclear_role(
   strategy::StandStill
   # Purpose
   purpose::KeyboardWalk
-  # Platform
-  platform::${SUBCONTROLLER}::HardwareIO
+  # Platform platform::${SUBCONTROLLER}::HardwareIO
 )
