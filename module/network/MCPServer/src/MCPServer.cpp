@@ -6,12 +6,119 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <turbojpeg.h>
 
 #include "extension/Configuration.hpp"
+
+#include "message/input/Image.hpp"
+
+#include "utility/vision/Vision.hpp"
+#include "utility/vision/fourcc.hpp"
 
 namespace module::network {
 
     using extension::Configuration;
+    using message::input::Image;
+
+    namespace {
+        /// @brief Base64-encodes raw bytes for embedding in an MCP ImageContent block
+        std::string base64_encode(const std::vector<uint8_t>& bytes) {
+            static constexpr char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+            std::string out;
+            out.reserve(((bytes.size() + 2) / 3) * 4);
+
+            size_t i = 0;
+            for (; i + 2 < bytes.size(); i += 3) {
+                uint32_t chunk = (uint32_t(bytes[i]) << 16) | (uint32_t(bytes[i + 1]) << 8) | uint32_t(bytes[i + 2]);
+                out.push_back(table[(chunk >> 18) & 0x3F]);
+                out.push_back(table[(chunk >> 12) & 0x3F]);
+                out.push_back(table[(chunk >> 6) & 0x3F]);
+                out.push_back(table[chunk & 0x3F]);
+            }
+
+            const size_t remaining = bytes.size() - i;
+            if (remaining == 1) {
+                uint32_t chunk = uint32_t(bytes[i]) << 16;
+                out.push_back(table[(chunk >> 18) & 0x3F]);
+                out.push_back(table[(chunk >> 12) & 0x3F]);
+                out.push_back('=');
+                out.push_back('=');
+            }
+            else if (remaining == 2) {
+                uint32_t chunk = (uint32_t(bytes[i]) << 16) | (uint32_t(bytes[i + 1]) << 8);
+                out.push_back(table[(chunk >> 18) & 0x3F]);
+                out.push_back(table[(chunk >> 12) & 0x3F]);
+                out.push_back(table[(chunk >> 6) & 0x3F]);
+                out.push_back('=');
+            }
+
+            return out;
+        }
+
+        /// @brief Demosaics/unpacks a raw camera Image into a contiguous RGB8 buffer readable as a normal photo
+        std::vector<uint8_t> debayer_to_rgb8(const Image& image) {
+            const uint32_t width  = image.dimensions.x();
+            const uint32_t height = image.dimensions.y();
+
+            std::vector<uint8_t> rgb(size_t(width) * height * 3);
+
+            // utility::vision::getPixel only handles raw Bayer/YUV sensor formats, not already-packed RGBA/BGRA
+            // (e.g. what the Webots simulated camera emits), so unpack those directly instead of defaulting to black
+            if (image.format == utility::vision::fourcc("RGBA") || image.format == utility::vision::fourcc("BGRA")) {
+                const bool bgr = image.format == utility::vision::fourcc("BGRA");
+                for (size_t i = 0; i < size_t(width) * height; ++i) {
+                    rgb[i * 3 + 0] = image.data[i * 4 + (bgr ? 2 : 0)];
+                    rgb[i * 3 + 1] = image.data[i * 4 + 1];
+                    rgb[i * 3 + 2] = image.data[i * 4 + (bgr ? 0 : 2)];
+                }
+                return rgb;
+            }
+
+            for (uint32_t y = 0; y < height; ++y) {
+                for (uint32_t x = 0; x < width; ++x) {
+                    const utility::vision::Pixel p =
+                        utility::vision::getPixel(x, y, width, height, image.data, utility::vision::FOURCC(image.format));
+                    const size_t origin  = (size_t(y) * width + x) * 3;
+                    rgb[origin + 0]      = p.components.r;
+                    rgb[origin + 1]      = p.components.g;
+                    rgb[origin + 2]      = p.components.b;
+                }
+            }
+
+            return rgb;
+        }
+
+        /// @brief JPEG-encodes an RGB8 buffer
+        std::vector<uint8_t> encode_jpeg_rgb8(const std::vector<uint8_t>& rgb, uint32_t width, uint32_t height) {
+            auto deleter = [](void* ptr) {
+                if (ptr != nullptr) {
+                    tjDestroy(ptr);
+                }
+            };
+            std::unique_ptr<void, decltype(deleter)> compressor(tjInitCompress(), deleter);
+
+            unsigned long jpeg_size = 0;  // NOLINT(google-runtime-int) matches libjpeg-turbo API
+            uint8_t* compressed     = nullptr;
+
+            tjCompress2(compressor.get(),
+                       rgb.data(),
+                       int(width),
+                       0,
+                       int(height),
+                       TJPF_RGB,
+                       &compressed,
+                       &jpeg_size,
+                       TJSAMP_444,
+                       90,
+                       TJFLAG_FASTDCT);
+
+            std::vector<uint8_t> output(compressed, compressed + jpeg_size);
+            tjFree(compressed);
+
+            return output;
+        }
+    }  // namespace
 
     std::string run(const std::string& cmd) {
         std::array<char, 128> buffer;
@@ -62,6 +169,11 @@ namespace module::network {
                 host.reset();
             }
         });
+
+        on<Trigger<Image>>().then("Cache Latest Image", [this](const std::shared_ptr<const Image>& image) {
+            std::lock_guard<std::mutex> lock(image_mutex);
+            last_image = image;
+        });
     }
 
     void MCPServer::register_tools(mcp::Server& server) {
@@ -74,6 +186,37 @@ namespace module::network {
                         log<DEBUG>("get_status called: I returned \"I am online.\"");
                         return {
                             .content = {mcp::TextContent{.text = "I am online."}},
+                        };
+                    });
+
+        server.tool("get_image",  // give MCP the latest debayered camera image
+                    nlohmann::json{
+                        {"type", "object"},
+                        {"properties", nlohmann::json::object()},
+                    },
+                    [this](const nlohmann::json&) -> mcp::CallToolResult {
+                        std::shared_ptr<const Image> image;
+                        /* Mutex Scope */ {
+                            std::lock_guard<std::mutex> lock(image_mutex);
+                            image = last_image;
+                        }
+
+                        if (image == nullptr) {
+                            log<DEBUG>("get_image called: no image received from the camera yet");
+                            return {
+                                .content = {mcp::TextContent{.text = "No camera image has been received yet."}},
+                            };
+                        }
+
+                        const std::vector<uint8_t> rgb = debayer_to_rgb8(*image);
+                        const std::vector<uint8_t> jpeg =
+                            encode_jpeg_rgb8(rgb, image->dimensions.x(), image->dimensions.y());
+
+                        log<DEBUG>("get_image called: returning", image->dimensions.x(), "x", image->dimensions.y(),
+                                   "image (", jpeg.size(), "compressed bytes )");
+
+                        return {
+                            .content = {mcp::ImageContent{.data = base64_encode(jpeg), .mime_type = "image/jpeg"}},
                         };
                     });
 

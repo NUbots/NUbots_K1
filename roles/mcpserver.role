@@ -12,6 +12,7 @@ nuclear_role(
   network::MCPServer
   # Sensors
   input::SensorFilter
+  input::Camera
   # Director
   extension::Director
   # Servos
@@ -26,6 +27,13 @@ nuclear_role(
   # Planners
   planning::GetUpPlanner
   planning::FallingRelaxPlanner
+  platform::Webots
+  # Vision
+  vision::VisualMesh
+  vision::GreenHorizonDetector
+  vision::FieldLineDetector
+  vision::BallDetector
+  vision::Yolo
   # Strategies
   strategy::FallRecovery
   strategy::StandStill

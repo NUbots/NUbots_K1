@@ -3,9 +3,12 @@
 
 #include <mcp/http_server_host.hpp>
 #include <memory>
+#include <mutex>
 #include <nuclear>
 #include <string>
 #include <vector>
+
+#include "message/input/Image.hpp"
 
 namespace module::network {
 
@@ -27,6 +30,11 @@ namespace module::network {
 
         /// @brief The MCP Streamable HTTP host, created on Startup and stopped on Shutdown
         std::unique_ptr<mcp::HttpServerHost> host{};
+
+        /// @brief Guards last_image, which is written from the camera reaction and read from MCP tool calls
+        std::mutex image_mutex;
+        /// @brief The most recent raw camera image, if one has been seen yet
+        std::shared_ptr<const message::input::Image> last_image{};
 
         /// @brief Register the tools exposed to each MCP session
         void register_tools(mcp::Server& server);
