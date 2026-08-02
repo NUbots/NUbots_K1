@@ -112,10 +112,10 @@ ARG jobs=1
 # Install prefix/toolchain-dir for source-built dependencies below, computed once per platform
 RUN if [ "${platform}" = "orinnx" ]; then \
     echo "DEP_PREFIX=/l4t/targetfs${prefix}" > /root/.dep_env && \
-    echo "DEP_TOOLCHAIN=--toolchain-dir /usr/local" >> /root/.dep_env; \
+    echo "DEP_TOOLCHAIN='--toolchain-dir /usr/local'" >> /root/.dep_env; \
     else \
     echo "DEP_PREFIX=/usr/local" > /root/.dep_env && \
-    echo "DEP_TOOLCHAIN=" >> /root/.dep_env; \
+    echo "DEP_TOOLCHAIN=''" >> /root/.dep_env; \
     fi
 
 # Create a python virtual environment at ${PREFIX} to decouple python packages from the system
