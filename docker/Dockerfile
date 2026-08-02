@@ -111,11 +111,11 @@ ARG jobs=1
 
 # Install prefix/toolchain-dir for source-built dependencies below, computed once per platform
 RUN if [ "${platform}" = "orinnx" ]; then \
-        echo "DEP_PREFIX=/l4t/targetfs${prefix}" > /root/.dep_env && \
-        echo "DEP_TOOLCHAIN=--toolchain-dir /usr/local" >> /root/.dep_env; \
+    echo "DEP_PREFIX=/l4t/targetfs${prefix}" > /root/.dep_env && \
+    echo "DEP_TOOLCHAIN=--toolchain-dir /usr/local" >> /root/.dep_env; \
     else \
-        echo "DEP_PREFIX=/usr/local" > /root/.dep_env && \
-        echo "DEP_TOOLCHAIN=" >> /root/.dep_env; \
+    echo "DEP_PREFIX=/usr/local" > /root/.dep_env && \
+    echo "DEP_TOOLCHAIN=" >> /root/.dep_env; \
     fi
 
 # Create a python virtual environment at ${PREFIX} to decouple python packages from the system
@@ -223,6 +223,7 @@ RUN git clone https://github.com/openvinotoolkit/openvino.git --branch 2024.6.0 
 # Build OpenVINO
 WORKDIR /openvino
 RUN mkdir build && cd build && \
+    ARM_COMPUTE=$([ "${platform}" = "orinnx" ] && echo "ON" || echo "OFF") && \
     cmake .. -DBUILD_TESTING:BOOL='OFF' \
     -DCMAKE_BUILD_TYPE:STRING='Release' \
     -DCMAKE_TOOLCHAIN_FILE=${prefix}/toolchain.cmake \
@@ -237,8 +238,8 @@ RUN mkdir build && cd build && \
     -DENABLE_SYSTEM_PROTOBUF:BOOL='OFF' \
     -DENABLE_SYSTEM_FLATBUFFERS:BOOL='OFF' \
     -DENABLE_INTEL_GPU:BOOL='OFF' \
-    -DENABLE_INTEL_CPU:BOOL='OFF' \
-    -DENABLE_ARM_COMPUTE_CMAKE:BOOL='ON' \
+    -DENABLE_INTEL_CPU:BOOL='ON' \
+    -DENABLE_ARM_COMPUTE_CMAKE:BOOL="${ARM_COMPUTE}" \
     -DENABLE_CPPLINT:BOOL='OFF' \
     -DCMAKE_CXX_STANDARD='17' \
     -Wno-dev \
@@ -440,6 +441,9 @@ RUN install-package \
     gcc-12 \
     g++-12
 
+# qemu lets ctest run the cross compiled test binaries, see CMAKE_CROSSCOMPILING_EMULATOR in the toolchain
+RUN if [ "${platform}" != "generic" ]; then install-package qemu-user-static; fi
+
 
 # Node tools
 RUN wget -nv https://nodejs.org/dist/v20.13.1/node-v20.13.1-linux-x64.tar.xz -O - \
@@ -465,6 +469,10 @@ RUN install-package clinfo
 
 # Copy the nvidia OpenCL vendorfile into the container so we can also use OpenCL on nvidia GPUs
 COPY --chown=root:root etc/OpenCL/vendors/nvidia.icd /etc/OpenCL/vendors/nvidia.icd
+
+# Creates symlink for librt since CUDAToolkit CMake module can't find it
+# See: https://notes.rdu.im/howtos/fix-librt-not-found-in-jammy/
+RUN ln -s /lib/x86_64-linux-gnu/librt.so.1 /usr/lib/x86_64-linux-gnu/librt.so
 
 # Re-run ldconfig to make sure the database is up to date
 RUN ldconfig
