@@ -7,7 +7,6 @@
 allow_ace: true
 # Note: until I have a way of asking the human if a command is OK to run, every command is technically ACE.
 
-
 # Section 2:
 # MCP config stuff - how it talks to your Claude session
 
@@ -24,7 +23,6 @@ path: "/mcp"
 # cross-origin request that sets an Origin header.
 allowed_origins:
   - "https://claude.ai"
-
 
 # Section 3:
 # NUClear stuff

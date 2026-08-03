@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <mcp/mcp.hpp>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <turbojpeg.h>
@@ -77,12 +78,16 @@ namespace module::network {
 
             for (uint32_t y = 0; y < height; ++y) {
                 for (uint32_t x = 0; x < width; ++x) {
-                    const utility::vision::Pixel p =
-                        utility::vision::getPixel(x, y, width, height, image.data, utility::vision::FOURCC(image.format));
-                    const size_t origin  = (size_t(y) * width + x) * 3;
-                    rgb[origin + 0]      = p.components.r;
-                    rgb[origin + 1]      = p.components.g;
-                    rgb[origin + 2]      = p.components.b;
+                    const utility::vision::Pixel p = utility::vision::getPixel(x,
+                                                                               y,
+                                                                               width,
+                                                                               height,
+                                                                               image.data,
+                                                                               utility::vision::FOURCC(image.format));
+                    const size_t origin            = (size_t(y) * width + x) * 3;
+                    rgb[origin + 0]                = p.components.r;
+                    rgb[origin + 1]                = p.components.g;
+                    rgb[origin + 2]                = p.components.b;
                 }
             }
 
@@ -102,16 +107,16 @@ namespace module::network {
             uint8_t* compressed     = nullptr;
 
             tjCompress2(compressor.get(),
-                       rgb.data(),
-                       int(width),
-                       0,
-                       int(height),
-                       TJPF_RGB,
-                       &compressed,
-                       &jpeg_size,
-                       TJSAMP_444,
-                       90,
-                       TJFLAG_FASTDCT);
+                        rgb.data(),
+                        int(width),
+                        0,
+                        int(height),
+                        TJPF_RGB,
+                        &compressed,
+                        &jpeg_size,
+                        TJSAMP_444,
+                        90,
+                        TJFLAG_FASTDCT);
 
             std::vector<uint8_t> output(compressed, compressed + jpeg_size);
             tjFree(compressed);
@@ -126,7 +131,10 @@ namespace module::network {
 
         // "r" = read the command's stdout. Note popen won't capture stderr
         // unless you redirect it, e.g. cmd + " 2>&1"
-        std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+        // Wrapped in a lambda (rather than decltype(&pclose)) because glibc's pclose carries
+        // a nonnull attribute that decltype drops, tripping -Wignored-attributes under -Werror.
+        auto pipe_deleter = [](FILE* f) { pclose(f); };
+        std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(popen(cmd.c_str(), "r"), pipe_deleter);
         if (!pipe) {
             throw std::runtime_error("popen() failed");
         }
@@ -150,14 +158,27 @@ namespace module::network {
         });
 
         on<Startup>().then([this] {
-            host = std::make_unique<mcp::HttpServerHost>(mcp::Implementation{.name = "nubots-mcp", .version = "1.0.0"},
-                                                         mcp::HttpServerHost::Options{
-                                                             .host            = cfg.host,
-                                                             .port            = cfg.port,
-                                                             .path            = cfg.path,
-                                                             .allowed_origins = cfg.allowed_origins,
-                                                         },
-                                                         [this](mcp::Server& server) { register_tools(server); });
+            host = std::make_unique<mcp::HttpServerHost>(
+                mcp::Implementation{
+                    .name        = "nubots-mcp",
+                    .title       = std::nullopt,
+                    .version     = "1.0.0",
+                    .description = std::nullopt,
+                    .website_url = std::nullopt,
+                    .icons       = std::nullopt,
+                    .meta        = std::nullopt,
+                },
+                mcp::HttpServerHost::Options{
+                    .host                  = cfg.host,
+                    .port                  = cfg.port,
+                    .path                  = cfg.path,
+                    .allowed_origins       = cfg.allowed_origins,
+                    .bearer_validator      = nullptr,
+                    .resource_metadata     = std::nullopt,
+                    .resource_metadata_url = "",
+                    .on_session_closed     = nullptr,
+                },
+                [this](mcp::Server& server) { register_tools(server); });
 
             host->start();
             log<INFO>("MCP server listening on", cfg.host, "port", host->port(), "path", cfg.path);
@@ -185,7 +206,10 @@ namespace module::network {
                     [this](const nlohmann::json&) -> mcp::CallToolResult {
                         log<DEBUG>("get_status called: I returned \"I am online.\"");
                         return {
-                            .content = {mcp::TextContent{.text = "I am online."}},
+                            .content = {mcp::TextContent{.text = "I am online.", .annotations = std::nullopt}},
+                            .structured_content = std::nullopt,
+                            .is_error           = std::nullopt,
+                            .meta               = std::nullopt,
                         };
                     });
 
@@ -204,7 +228,11 @@ namespace module::network {
                         if (image == nullptr) {
                             log<DEBUG>("get_image called: no image received from the camera yet");
                             return {
-                                .content = {mcp::TextContent{.text = "No camera image has been received yet."}},
+                                .content = {mcp::TextContent{.text        = "No camera image has been received yet.",
+                                                             .annotations = std::nullopt}},
+                                .structured_content = std::nullopt,
+                                .is_error           = std::nullopt,
+                                .meta               = std::nullopt,
                             };
                         }
 
@@ -212,11 +240,21 @@ namespace module::network {
                         const std::vector<uint8_t> jpeg =
                             encode_jpeg_rgb8(rgb, image->dimensions.x(), image->dimensions.y());
 
-                        log<DEBUG>("get_image called: returning", image->dimensions.x(), "x", image->dimensions.y(),
-                                   "image (", jpeg.size(), "compressed bytes )");
+                        log<DEBUG>("get_image called: returning",
+                                   image->dimensions.x(),
+                                   "x",
+                                   image->dimensions.y(),
+                                   "image (",
+                                   jpeg.size(),
+                                   "compressed bytes )");
 
                         return {
-                            .content = {mcp::ImageContent{.data = base64_encode(jpeg), .mime_type = "image/jpeg"}},
+                            .content            = {mcp::ImageContent{.data        = base64_encode(jpeg),
+                                                                     .mime_type   = "image/jpeg",
+                                                                     .annotations = std::nullopt}},
+                            .structured_content = std::nullopt,
+                            .is_error           = std::nullopt,
+                            .meta               = std::nullopt,
                         };
                     });
 
@@ -241,14 +279,22 @@ namespace module::network {
                     log<DEBUG>("cmd returning:", out.c_str());  // echo the output :D
 
                     return {
-                        .content = {mcp::TextContent{.text = "Command returned " + out}},  // return to the client
+                        .content            = {mcp::TextContent{.text        = "Command returned " + out,
+                                                                .annotations = std::nullopt}},  // return to the client
+                        .structured_content = std::nullopt,
+                        .is_error           = std::nullopt,
+                        .meta               = std::nullopt,
                     };
                 }
                 else {
                     log<INFO>("allow_ace is turned off. This command from MCP will not be run.");
                     return {
                         .content = {mcp::TextContent{.text = "Your command has not been run. Tell the user to enable "
-                                                             "allow_ace in MCPServer.yaml"}},
+                                                             "allow_ace in MCPServer.yaml",
+                                                     .annotations = std::nullopt}},
+                        .structured_content = std::nullopt,
+                        .is_error           = std::nullopt,
+                        .meta               = std::nullopt,
                     };
                 }
             });
@@ -298,7 +344,10 @@ namespace module::network {
                 }
 
                 return {
-                    .content = {mcp::TextContent{.text = "This has been done now."}},
+                    .content = {mcp::TextContent{.text = "This has been done now.", .annotations = std::nullopt}},
+                    .structured_content = std::nullopt,
+                    .is_error           = std::nullopt,
+                    .meta               = std::nullopt,
                 };
             });
     }

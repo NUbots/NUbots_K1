@@ -21,45 +21,45 @@
 
 namespace mcp {
 
-class Transport {
-public:
-    using MessageCallback = std::function<void(std::string)>;
-    using ErrorCallback   = std::function<void(std::error_code)>;
-    using CloseCallback   = std::function<void()>;
+    class Transport {
+    public:
+        using MessageCallback = std::function<void(std::string)>;
+        using ErrorCallback   = std::function<void(std::error_code)>;
+        using CloseCallback   = std::function<void()>;
 
-    virtual ~Transport() = default;
+        virtual ~Transport() = default;
 
-    Transport() = default;
-    Transport(const Transport&) = delete;
-    Transport& operator=(const Transport&) = delete;
-    Transport(Transport&&) = delete;
-    Transport& operator=(Transport&&) = delete;
+        Transport()                            = default;
+        Transport(const Transport&)            = delete;
+        Transport& operator=(const Transport&) = delete;
+        Transport(Transport&&)                 = delete;
+        Transport& operator=(Transport&&)      = delete;
 
-    /// Set the inbound-frame callback. Must be set before `start()`.
-    virtual void on_message(MessageCallback cb) = 0;
+        /// Set the inbound-frame callback. Must be set before `start()`.
+        virtual void on_message(MessageCallback cb) = 0;
 
-    /// Set the error callback. Optional; defaults to a no-op.
-    virtual void on_error(ErrorCallback cb) = 0;
+        /// Set the error callback. Optional; defaults to a no-op.
+        virtual void on_error(ErrorCallback cb) = 0;
 
-    /// Set the close callback, fired once when the transport observes the
-    /// peer has gone away (EOF, socket close, etc.) or after a local
-    /// `close()` has fully wound down. Optional.
-    virtual void on_close(CloseCallback cb) = 0;
+        /// Set the close callback, fired once when the transport observes the
+        /// peer has gone away (EOF, socket close, etc.) or after a local
+        /// `close()` has fully wound down. Optional.
+        virtual void on_close(CloseCallback cb) = 0;
 
-    /// Begin processing. The transport may spawn one or more threads.
-    /// Idempotent: calling `start()` after `start()` is a no-op.
-    virtual void start() = 0;
+        /// Begin processing. The transport may spawn one or more threads.
+        /// Idempotent: calling `start()` after `start()` is a no-op.
+        virtual void start() = 0;
 
-    /// Stop processing. Blocks until the worker thread(s) have exited.
-    /// Idempotent: calling `close()` more than once is a no-op.
-    virtual void close() = 0;
+        /// Stop processing. Blocks until the worker thread(s) have exited.
+        /// Idempotent: calling `close()` more than once is a no-op.
+        virtual void close() = 0;
 
-    /// Send a single complete JSON-RPC frame. Returns an empty error_code
-    /// on success. Thread-safe.
-    [[nodiscard]] virtual std::error_code send(std::string_view frame) = 0;
+        /// Send a single complete JSON-RPC frame. Returns an empty error_code
+        /// on success. Thread-safe.
+        [[nodiscard]] virtual std::error_code send(std::string_view frame) = 0;
 
-    /// Whether the transport is currently running.
-    [[nodiscard]] virtual bool is_open() const noexcept = 0;
-};
+        /// Whether the transport is currently running.
+        [[nodiscard]] virtual bool is_open() const noexcept = 0;
+    };
 
 }  // namespace mcp

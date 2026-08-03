@@ -15,36 +15,35 @@
 
 namespace mcp {
 
-enum class LogLevel : int {
-    trace = 0,
-    debug = 1,
-    info  = 2,
-    warn  = 3,
-    error = 4,
-    off   = 5,
-};
+    enum class LogLevel : int {
+        trace = 0,
+        debug = 1,
+        info  = 2,
+        warn  = 3,
+        error = 4,
+        off   = 5,
+    };
 
-[[nodiscard]] std::string_view to_string(LogLevel l) noexcept;
+    [[nodiscard]] std::string_view to_string(LogLevel l) noexcept;
 
-/// Sink signature: receives a fully-formatted line (no trailing newline).
-/// The sink is invoked synchronously from whichever thread emitted the log.
-/// The default sink writes a timestamped line to `stderr`.
-using LogSink = std::function<void(LogLevel, std::string_view)>;
+    /// Sink signature: receives a fully-formatted line (no trailing newline).
+    /// The sink is invoked synchronously from whichever thread emitted the log.
+    /// The default sink writes a timestamped line to `stderr`.
+    using LogSink = std::function<void(LogLevel, std::string_view)>;
 
-/// Replace the global log sink. Pass `nullptr` to restore the default.
-/// Thread-safe.
-void set_log_sink(LogSink sink);
+    /// Replace the global log sink. Pass `nullptr` to restore the default.
+    /// Thread-safe.
+    void set_log_sink(LogSink sink);
 
-/// Set the global minimum level. Calls below this level are dropped before
-/// any message is formatted. Thread-safe (atomic).
-void set_log_level(LogLevel level) noexcept;
+    /// Set the global minimum level. Calls below this level are dropped before
+    /// any message is formatted. Thread-safe (atomic).
+    void set_log_level(LogLevel level) noexcept;
 
-[[nodiscard]] LogLevel log_level() noexcept;
+    [[nodiscard]] LogLevel log_level() noexcept;
 
-/// Low-level entry point. Prefer the `MCP_LOG_*` macros below, which
-/// short-circuit at the call site when the level is disabled.
-void log_message(LogLevel level, std::string_view msg,
-                 std::source_location loc = std::source_location::current());
+    /// Low-level entry point. Prefer the `MCP_LOG_*` macros below, which
+    /// short-circuit at the call site when the level is disabled.
+    void log_message(LogLevel level, std::string_view msg, std::source_location loc = std::source_location::current());
 
 }  // namespace mcp
 
