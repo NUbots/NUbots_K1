@@ -46,19 +46,23 @@ def register(command):
     command.add_argument(
         "-r", "--reset", default=False, action="store_true", dest="reset", help="Reset buildx instance"
     )
+    command.add_argument(
+        "-j", "--jobs", default=defaults.jobs, help="the number of jobs to use when building the platform image"
+    )
 
 
-def run(target, username, uid, reset, **kwargs):
+def run(target, username, uid, reset, jobs, **kwargs):
     if target is None:
         target = platform.selected(defaults.image, username)
         print(f"Currently selected platform is {target}")
     else:
         # Ensure the platform image is built
-        platform.build(defaults.image, target, username, uid, reset)
+        platform.build(defaults.image, target, username, uid, reset, jobs)
 
         # platform.build() tags generic as generic_k1 (see the NUgus-conflict note there),
         # so the tag source must match or docker errors with "No such image".
-        tag_source = f"{target}_k1" if target == "generic" else target
+        if target == "generic":
+            target += "_k1"
 
         # Tag the built platform image as the selected image
         err = subprocess.call(

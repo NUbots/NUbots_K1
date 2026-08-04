@@ -72,11 +72,10 @@ namespace utility::vision {
 
             auto config = std::unique_ptr<IBuilderConfig>(builder->createBuilderConfig());
 #if NV_TENSORRT_MAJOR >= 11
-            // TensorRT 11 removed the weakly-typed kFP16 builder flag and platformHasFastFp16;
-            // precision now follows the network/model types, so there is nothing to set here.
+            // kFP16 removed in TensorRT 11; precision follows model types instead
             (void) fp16;
 #elif NV_TENSORRT_MAJOR >= 10
-            // platformHasFastFp16 was removed in TensorRT 10; fast FP16 is universal on supported GPUs
+            // platformHasFastFp16 removed in TensorRT 10; fast FP16 is now universal
             if (fp16) {
                 config->setFlag(BuilderFlag::kFP16);
             }
