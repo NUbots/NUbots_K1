@@ -32,10 +32,11 @@ nuclear_role(
   # Servos
   actuation::Kinematics
   actuation::Servos
+  actuation::K1Servos # Director-arbitrated sink for the K1 low-level channel (walk/kick/getup subsumption)
   actuation::FootController
   # Skills
   skill::K1WalkPolicy # on-robot ONNX walk inference -> LowCmd (replaces skill::K1Walk's Move RPC)
-  skill::KickWalk
+  skill::K1KickPolicy # on-robot ONNX kick inference -> LowCmd (provides skill::Kick, replaces KickWalk)
   skill::K1GetUpPolicy # on-robot ONNX get-up inference -> LowCmd (replaces skill::K1GetUp)
   skill::K1Look
   skill::Say

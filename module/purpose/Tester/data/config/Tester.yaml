@@ -6,21 +6,27 @@ log_level: INFO
 # FallRecovery 2, play 1) or the walk branch keeps the motors while fallen
 # and GetUp never runs.
 tasks:
-  # Strategies
+  # Strategies — approach-then-kick chain. Subsumption order (enforced by the Director
+  # via actuation::K1Servos ownership): fall_recovery > kick_to > walk_to_kick_ball, so
+  # the walk carries the robot to the ball and the kick policy subsumes it when close,
+  # get-up subsumes everything on a physical fall.
   align_ball_to_goal_priority: 1
   find_ball_priority: 1
-  fall_recovery_priority: 2
-  look_at_ball_priority: 0
-  walk_to_ball_priority: 1
-  walk_to_kick_ball_priority: 0
+  fall_recovery_priority: 3
+  look_at_ball_priority: 1
+  walk_to_ball_priority: 0
+  walk_to_kick_ball_priority: 1
   walk_to_field_position_priority: 0
   kick_to_goal_priority: 0
   stand_still_priority: 0
   walk_inside_bounded_box: 0
 
   # Planners
-  kick_to_priority: 0
+  kick_to_priority: 2
   look_around_priority: 0
+  # Skill: run the ONNX kick policy directly, bypassing the approach chain (isolation
+  # test only). 0 = use the real FindBall -> WalkToKickBall -> PlanKick chain above.
+  kick_policy_priority: 0
 
   # Skills
   say_priority: 0

@@ -54,6 +54,8 @@ namespace module::purpose {
             int walk_to_field_position_priority = 0;
             /// @brief Priority of KickTo task
             int kick_to_priority = 0;
+            /// @brief Priority of the ONNX kick policy (skill::Kick) run directly
+            int kick_policy_priority = 0;
             /// @brief Priority of LookAround task
             int look_around_priority = 0;
             /// @brief Priority of StandStill task
