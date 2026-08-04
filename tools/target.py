@@ -70,7 +70,7 @@ def run(target, username, uid, reset, jobs, **kwargs):
                 "docker",
                 "image",
                 "tag",
-                defaults.image_name(tag_source, username=username),
+                defaults.image_name(target, username=username),
                 defaults.image_name("selected_k1", username=username),
             ]
         )

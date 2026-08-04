@@ -204,26 +204,6 @@ def run(func, image, hostname="docker", ports=[], docker_context=None):
         for v in kwargs["volume"]:
             docker_args.extend(["--volume", v])
 
-        # The image's OpenVINO was built with ENABLE_INTEL_CPU=OFF (no CPU inference
-        # device), which breaks Yolo and the locomotion policy skills
-        # ("Device with \"CPU\" name is not registered" / "CompiledModel was not
-        # initialized"). If the official runtime has been extracted to
-        # ~/.cache/ov_overlay (preferred: survives reboots) or /tmp/ov_overlay
-        # (see NUSim docs/K1_MUJOCO_SETUP.md), mount it over the baked one and make the
-        # loader prefer it. Check for the CPU plugin itself, not just the directory —
-        # a docker-created empty mount stub at /tmp/ov_overlay must not count.
-        ov_env = []
-        for ov_overlay in (
-            os.path.expanduser("~/.cache/ov_overlay/runtime/lib/intel64"),
-            "/tmp/ov_overlay/runtime/lib/intel64",
-        ):
-            if os.path.isfile(os.path.join(ov_overlay, "libopenvino_intel_cpu_plugin.so")):
-                print(f"Auto-mounting OpenVINO CPU overlay from {ov_overlay}")
-                docker_args.extend(["--volume", f"{ov_overlay}:/usr/local/runtime/lib/intel64:ro"])
-                ov_env = ["--env", "LD_LIBRARY_PATH=/usr/local/runtime/lib/intel64"]
-                break
-        docker_args.extend(ov_env)
-
         # Pass through GPUs if requested
         if kwargs["gpus"] is not None:
             docker_args.extend(["--gpus", kwargs["gpus"]])
