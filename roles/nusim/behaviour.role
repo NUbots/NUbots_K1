@@ -1,0 +1,60 @@
+# NUSim counterpart of test/behaviour: same skills, policies and behaviour tree, but
+# reads the camera from NUSim's shared-memory writer (input::NUSimCamera, lock-free
+# seqlock) instead of the on-robot NUbridge writer (input::K1Camera). Run this against
+# NUSim; run test/behaviour on the real robot. Modify Tester.yaml to pick behaviours.
+nuclear_role(
+  # FileWatcher, ConsoleLogHandler and Signal Catcher Must Go First and without it many roles do not run
+  extension::FileWatcher # Watches configuration files for changes
+  support::SignalCatcher # Allows for graceful shutdown
+  support::logging::ConsoleLogHandler # `log()` calls show in the console filtered for log level
+  # Configuration
+  actuation::KinematicsConfiguration # Must go early in the role as other modules depend on it
+  support::configuration::SoccerConfig # Field description
+  # Network
+  network::NUClearNet
+  network::NetworkForwarder
+  network::PlotJuggler
+  output::Overview
+  output::ImageCompressor
+  # Sensors — NUSimCamera (sim seqlock reader) instead of K1Camera (NUbridge/on-robot).
+  # K1Sensors is shared: NUSim's pose writer still uses the v1 layout it reads.
+  input::NUSimCamera
+  input::K1Sensors
+  # Vision — Yolo-only, matching the robocup.role hardware pipeline
+  vision::Yolo
+  # Localisation
+  localisation::FieldLocalisationNLopt
+  localisation::BallLocalisation
+  localisation::RobotLocalisation
+  # Director
+  extension::Director
+  # Servos
+  actuation::Kinematics
+  actuation::Servos
+  actuation::K1Servos # Director-arbitrated sink for the K1 low-level channel (walk/kick/getup subsumption)
+  actuation::FootController
+  # Skills — shared with the real robot (ONNX policy inference works in both)
+  skill::K1WalkPolicy # ONNX walk inference -> LowCmd
+  skill::K1KickPolicy # ONNX kick inference -> LowCmd (provides skill::Kick)
+  skill::K1GetUpPolicy # ONNX get-up inference -> LowCmd
+  skill::K1Look
+  skill::Say
+  skill::GPT
+  # Planners
+  planning::PlanWalkPath
+  planning::PlanLook
+  planning::PlanKick
+  planning::GetUpPlanner
+  planning::FallingRelaxPlanner
+  # Strategies
+  strategy::FallRecovery
+  strategy::StandStill
+  strategy::WalkToFieldPosition
+  strategy::StrategiseLook
+  strategy::WalkToBall
+  strategy::FindObject
+  # Purposes
+  purpose::Tester
+  # Platform — Booster HardwareIO bridges to NUSim's SdkBridge over DDS in sim
+  platform::${SUBCONTROLLER}::HardwareIO
+)
