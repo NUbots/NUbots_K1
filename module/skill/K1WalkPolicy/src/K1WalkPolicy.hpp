@@ -2,12 +2,15 @@
 #define MODULE_SKILL_K1WALKPOLICY_HPP
 
 #include <array>
+#include <memory>
 #include <Eigen/Core>
 #include <nuclear>
 #include <openvino/openvino.hpp>
 #include <string>
 
 #include "extension/Behaviour.hpp"
+
+#include "utility/vision/TensorRT.hpp"
 
 namespace module::skill {
 
@@ -26,6 +29,9 @@ namespace module::skill {
     private:
         struct Config {
             std::string model_path;
+            /// Run inference with TensorRT (GPU). Falls back to OpenVINO CPU when false, or
+            /// when the engine cannot be built (no CUDA device, driver mismatch, ...).
+            bool use_tensorrt = false;
             /// @brief Hz, gait phase advance rate (training randomizes U(1.25, 1.75))
             double gait_frequency = 1.5;
             /// @brief command norm below which the phase observation pins to [pi, pi]
@@ -47,6 +53,8 @@ namespace module::skill {
         } cfg;
 
         /// OpenVINO inference plumbing (CPU device; the model is a small MLP)
+        /// TensorRT engine, nullptr when running on the OpenVINO fallback
+        std::unique_ptr<utility::vision::TensorRT> trt{};
         ov::Core core{};
         ov::CompiledModel compiled_model;
         ov::InferRequest infer_request;

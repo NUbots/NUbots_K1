@@ -2,12 +2,15 @@
 #define MODULE_SKILL_K1GETUPPOLICY_HPP
 
 #include <array>
+#include <memory>
 #include <Eigen/Core>
 #include <nuclear>
 #include <openvino/openvino.hpp>
 #include <string>
 
 #include "extension/Behaviour.hpp"
+
+#include "utility/vision/TensorRT.hpp"
 
 namespace module::skill {
 
@@ -27,6 +30,9 @@ namespace module::skill {
     private:
         struct Config {
             std::string model_path;
+            /// Run inference with TensorRT (GPU). Falls back to OpenVINO CPU when false, or
+            /// when the engine cannot be built (no CUDA device, driver mismatch, ...).
+            bool use_tensorrt = false;
             /// @brief |roll| and |pitch| below this count as upright (rad)
             double upright_angle = 0.35;
             /// @brief how long the robot must stay upright before the get-up is Done (s)
@@ -43,6 +49,8 @@ namespace module::skill {
             std::array<double, JOINT_COUNT> default_pose{};
         } cfg;
 
+        /// TensorRT engine, nullptr when running on the OpenVINO fallback
+        std::unique_ptr<utility::vision::TensorRT> trt{};
         ov::Core core{};
         ov::CompiledModel compiled_model;
         ov::InferRequest infer_request;

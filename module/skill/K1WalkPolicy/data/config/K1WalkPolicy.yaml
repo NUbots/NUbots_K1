@@ -5,6 +5,10 @@ log_level: DEBUG
 # JointIndexK1 serial order (head x2, L arm x4, R arm x4, L leg x6, R leg x6).
 model_path: "k1_walk_v1_20260723_617M.onnx"
 
+# Run inference on the GPU with TensorRT. Falls back to OpenVINO CPU automatically when
+# no CUDA device is visible (the container needs --gpus), so this is safe to leave on.
+use_tensorrt: true
+
 gait_frequency: 1.5 # Hz, phase advance rate (training randomizes U(1.25, 1.75))
 stand_threshold: 0.01 # command norm below which the phase obs pins to [pi, pi] (standing)
 action_scale: 1.0 # global multiplier on action_scale_joint (training config action_scale)

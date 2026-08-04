@@ -1,6 +1,8 @@
 #include "K1WalkPolicy.hpp"
 
 #include <cmath>
+#include <stdexcept>
+#include <vector>
 #include <Eigen/Geometry>
 
 #include "extension/Configuration.hpp"
@@ -98,6 +100,7 @@ namespace module::skill {
             log_level = config["log_level"].as<NUClear::LogLevel>();
 
             cfg.model_path      = config["model_path"].as<std::string>();
+            cfg.use_tensorrt      = config["use_tensorrt"].as<bool>();
             cfg.gait_frequency  = config["gait_frequency"].as<double>();
             cfg.stand_threshold = config["stand_threshold"].as<double>();
             cfg.linvel_alpha    = config["linvel_alpha"].as<double>();
@@ -116,15 +119,30 @@ namespace module::skill {
                 s *= action_scale;
             }
 
+            // TensorRT first, OpenVINO CPU as the fallback so a machine without a CUDA device
+            // (or with a driver/plan mismatch) still runs. fp16 is off: the net is a small MLP,
+            // so there is no speed to win and the actions drive servos directly.
             try {
-                compiled_model = core.compile_model(cfg.model_path, "CPU");
-                infer_request  = compiled_model.create_infer_request();
-                model_loaded   = true;
-                log<INFO>("Loaded walk policy", cfg.model_path);
+                if (!cfg.use_tensorrt) {
+                    throw std::runtime_error("use_tensorrt is false");
+                }
+                trt          = std::make_unique<utility::vision::TensorRT>(cfg.model_path, false);
+                model_loaded = true;
+                log<INFO>("Loaded walk policy (TensorRT)", cfg.model_path);
             }
-            catch (const std::exception& e) {
-                model_loaded = false;
-                log<ERROR>("Failed to load walk policy", cfg.model_path, e.what());
+            catch (const std::exception& trt_e) {
+                trt.reset();
+                log<INFO>("TensorRT unavailable, falling back to OpenVINO:", trt_e.what());
+                try {
+                    compiled_model = core.compile_model(cfg.model_path, "CPU");
+                    infer_request  = compiled_model.create_infer_request();
+                    model_loaded   = true;
+                    log<INFO>("Loaded walk policy (OpenVINO CPU)", cfg.model_path);
+                }
+                catch (const std::exception& e) {
+                    model_loaded = false;
+                    log<ERROR>("Failed to load walk policy", cfg.model_path, e.what());
+                }
             }
 
             emit(std::make_unique<Stability>(Stability::UNKNOWN));
@@ -268,11 +286,19 @@ namespace module::skill {
                 obs[idx++] = static_cast<float>(std::sin(ph[1]));
 
                 // --- inference ---
-                ov::Tensor input(ov::element::f32, {1, OBS_DIM});
-                std::copy(obs.begin(), obs.end(), input.data<float>());
-                infer_request.set_input_tensor(input);
-                infer_request.infer();
-                const float* action = infer_request.get_output_tensor(0).data<float>();
+                std::vector<float> trt_out{};
+                const float* action = nullptr;
+                if (trt) {
+                    trt_out = trt->infer(std::vector<float>(obs.begin(), obs.end()));
+                    action  = trt_out.data();
+                }
+                else {
+                    ov::Tensor input(ov::element::f32, {1, OBS_DIM});
+                    std::copy(obs.begin(), obs.end(), input.data<float>());
+                    infer_request.set_input_tensor(input);
+                    infer_request.infer();
+                    action = infer_request.get_output_tensor(0).data<float>();
+                }
                 std::copy(action, action + JOINT_COUNT, last_action.begin());
 
                 // Advance the gait phase once per inference regardless of the command (only the
