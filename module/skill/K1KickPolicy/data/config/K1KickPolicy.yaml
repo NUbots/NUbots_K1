@@ -6,7 +6,7 @@ log_level: INFO
 # dq(22), last_action(22). All joint arrays are in the Booster SDK JointIndexK1 serial order
 # (head x2, L arm x4, R arm x4, L leg x6, R leg x6). Actions are offsets on the default pose
 # (the walk/joystick convention), not the current pose.
-model_path: "k1_kick_v5_20260726_926M.onnx"
+model_path: "k1_kick_v7_20260728_2504M.onnx"
 
 # How long to run the policy once a Kick task starts, before reporting Done (s).
 kick_duration: 4.0
