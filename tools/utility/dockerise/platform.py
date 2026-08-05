@@ -156,6 +156,8 @@ def build(image, platform, username, uid, reset, jobs):
             f"platform={platform_arg}",
             "--build-arg",
             f"jobs={jobs}",
+            "--platform",
+            "linux/amd64",
             "--build-arg",
             f"user_uid={uid}",
             "--output=type=docker",
