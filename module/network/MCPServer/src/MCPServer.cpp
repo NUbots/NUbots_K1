@@ -1,5 +1,6 @@
 #include "MCPServer.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <mcp/mcp.hpp>
@@ -9,9 +10,11 @@
 #include <string>
 #include <turbojpeg.h>
 
+#include "extension/Behaviour.hpp"
 #include "extension/Configuration.hpp"
 
 #include "message/input/Image.hpp"
+#include "message/skill/Walk.hpp"
 
 #include "utility/vision/Vision.hpp"
 #include "utility/vision/fourcc.hpp"
@@ -19,7 +22,9 @@
 namespace module::network {
 
     using extension::Configuration;
+    using extension::behaviour::Task;
     using message::input::Image;
+    using message::skill::Walk;
 
     namespace {
         /// @brief Base64-encodes raw bytes for embedding in an MCP ImageContent block
@@ -212,6 +217,39 @@ namespace module::network {
                             .meta               = std::nullopt,
                         };
                     });
+
+        server.tool(
+            "walk",  // god is dead and i killed him
+            nlohmann::json{
+                {"type", "object"},
+                {"properties",
+                 nlohmann::json{
+                     {"speed",
+                      nlohmann::json{
+                          {"type", "number"},
+                          {"description",
+                           "Walk speed, m/s. Cap at 0.3m/s. Remember to return this to 0 when you're done!"}}},
+                     {"angle",
+                      nlohmann::json{{"type", "number"}, {"description", "Walk strafe angle in rad. +clockwise"}}}}},
+                {"required", nlohmann::json::array({"speed", "angle"})},
+            },
+            [this](const nlohmann::json& input) -> mcp::CallToolResult {
+                float speed = input.at("speed").get<float>();  // get the speed
+                float angle = input.at("angle").get<float>();  // and the angle
+                speed       = std::clamp(speed, 0.0f, 0.3f);   // enforce stated safety cap
+                log<DEBUG>("Starting to walk at ", speed, "with angle ", angle);
+
+                float vx = speed * cos(angle);
+                float vy = speed * sin(angle);
+
+                emit<Task>(std::make_unique<Walk>(Eigen::Vector3d(vx, vy, 0)), 3);
+                return {
+                    .content            = {mcp::TextContent{.text = "Started walking.", .annotations = std::nullopt}},
+                    .structured_content = std::nullopt,
+                    .is_error           = std::nullopt,
+                    .meta               = std::nullopt,
+                };
+            });
 
         server.tool("get_image",  // give MCP the latest debayered camera image
                     nlohmann::json{
