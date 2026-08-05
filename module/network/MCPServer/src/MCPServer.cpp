@@ -14,6 +14,7 @@
 #include "extension/Configuration.hpp"
 
 #include "message/input/Image.hpp"
+#include "message/skill/Look.hpp"
 #include "message/skill/Walk.hpp"
 
 #include "utility/vision/Vision.hpp"
@@ -24,6 +25,7 @@ namespace module::network {
     using extension::Configuration;
     using extension::behaviour::Task;
     using message::input::Image;
+    using message::skill::Look;
     using message::skill::Walk;
 
     namespace {
@@ -250,6 +252,47 @@ namespace module::network {
                     .meta               = std::nullopt,
                 };
             });
+
+        server.tool("look",  // insh'allah i believe in claude
+                    nlohmann::json{
+                        {"type", "object"},
+                        {"properties",
+                         nlohmann::json{
+                             {"x",
+                              nlohmann::json{
+                                  {"type", "number"},
+                                  {"description",
+                                   "X component of the vector to the point in torso space where you want to look."}}},
+                             {"y",
+                              nlohmann::json{
+                                  {"type", "number"},
+                                  {"description",
+                                   "Y component of the vector to the point in torso space where you want to look."}}},
+                             {"z",
+                              nlohmann::json{
+                                  {"type", "number"},
+                                  {"description",
+                                   "Z component of the vector to the point in torso space where you want to look."}}}}},
+                        {"required", nlohmann::json::array({"x", "y", "z"})},
+                    },
+                    [this](const nlohmann::json& input) -> mcp::CallToolResult {
+                        float x = input.at("x").get<float>();  // get x
+                        float y = input.at("y").get<float>();  // get y
+                        float z = input.at("z").get<float>();  // get z
+
+                        Eigen::Vector3d rPCt(x, y, z);
+
+                        log<DEBUG>("Let's look at ", x, y, z);
+
+                        emit<Task>(std::make_unique<Look>(rPCt, false), 2);
+
+                        return {
+                            .content = {mcp::TextContent{.text = "Started looking.", .annotations = std::nullopt}},
+                            .structured_content = std::nullopt,
+                            .is_error           = std::nullopt,
+                            .meta               = std::nullopt,
+                        };
+                    });
 
         server.tool("get_image",  // give MCP the latest debayered camera image
                     nlohmann::json{
