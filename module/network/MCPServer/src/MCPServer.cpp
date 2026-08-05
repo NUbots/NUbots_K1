@@ -232,19 +232,27 @@ namespace module::network {
                           {"description",
                            "Walk speed, m/s. Cap at 0.3m/s. Remember to return this to 0 when you're done!"}}},
                      {"angle",
-                      nlohmann::json{{"type", "number"}, {"description", "Walk strafe angle in rad. +clockwise"}}}}},
+                      nlohmann::json{{"type", "number"}, {"description", "Walk strafe angle in rad. +clockwise"}}},
+                     {"rotation",
+                      nlohmann::json{
+                          {"type", "number"},
+                          {"description",
+                           "Rotation (yaw) rate in rad/s while walking. +clockwise. Cap at 1.0rad/s. Defaults to 0 "
+                           "(no turning) if omitted."}}}}},
                 {"required", nlohmann::json::array({"speed", "angle"})},
             },
             [this](const nlohmann::json& input) -> mcp::CallToolResult {
-                float speed = input.at("speed").get<float>();  // get the speed
-                float angle = input.at("angle").get<float>();  // and the angle
-                speed       = std::clamp(speed, 0.0f, 0.3f);   // enforce stated safety cap
-                log<DEBUG>("Starting to walk at ", speed, "with angle ", angle);
+                float speed    = input.at("speed").get<float>();                     // get the speed
+                float angle    = input.at("angle").get<float>();                     // and the angle
+                float rotation = input.value("rotation", 0.0f);                      // and the rotation, if given
+                speed          = std::clamp(speed, 0.0f, 0.3f);                      // enforce stated safety cap
+                rotation       = std::clamp(rotation, -1.0f, 1.0f);                  // enforce stated safety cap
+                log<DEBUG>("Starting to walk at ", speed, "with angle ", angle, "and rotation", rotation);
 
                 float vx = speed * cos(angle);
                 float vy = speed * sin(angle);
 
-                emit<Task>(std::make_unique<Walk>(Eigen::Vector3d(vx, vy, 0)), 3);
+                emit<Task>(std::make_unique<Walk>(Eigen::Vector3d(vx, vy, rotation)), 3);
                 return {
                     .content            = {mcp::TextContent{.text = "Started walking.", .annotations = std::nullopt}},
                     .structured_content = std::nullopt,
