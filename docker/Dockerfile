@@ -223,7 +223,6 @@ RUN git clone https://github.com/openvinotoolkit/openvino.git --branch 2024.6.0 
 # Build OpenVINO
 WORKDIR /openvino
 RUN mkdir build && cd build && \
-    ARM_COMPUTE=$([ "${platform}" = "orinnx" ] && echo "ON" || echo "OFF") && \
     cmake .. -DBUILD_TESTING:BOOL='OFF' \
     -DCMAKE_BUILD_TYPE:STRING='Release' \
     -DCMAKE_TOOLCHAIN_FILE=${prefix}/toolchain.cmake \
@@ -239,7 +238,8 @@ RUN mkdir build && cd build && \
     -DENABLE_SYSTEM_FLATBUFFERS:BOOL='OFF' \
     -DENABLE_INTEL_GPU:BOOL='OFF' \
     -DENABLE_INTEL_CPU:BOOL='ON' \
-    -DENABLE_ARM_COMPUTE_CMAKE:BOOL="${ARM_COMPUTE}" \
+    -DENABLE_ARM_COMPUTE_CMAKE:BOOL='OFF' \
+    -DARM_COMPUTE_SCONS_JOBS="${jobs}" \
     -DENABLE_CPPLINT:BOOL='OFF' \
     -DCMAKE_CXX_STANDARD='17' \
     -Wno-dev \
