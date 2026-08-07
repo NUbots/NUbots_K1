@@ -38,6 +38,7 @@ namespace module::purpose {
 
     using message::input::GameState;
     using message::purpose::FieldPlayer;
+    using message::purpose::Support;
 
     TeamBehaviourTester::TeamBehaviourTester(std::unique_ptr<NUClear::Environment> environment)
         : BehaviourReactor(std::move(environment)) {
@@ -71,6 +72,12 @@ namespace module::purpose {
 
             // Keep the FieldPlayer purpose active so it re-evaluates and reports the role every tick
             emit<Task>(std::make_unique<FieldPlayer>());
+
+            // Also always run the Support calculation so NUsight shows the position this robot *would*
+            // walk to if it were supporting, even when its current role is something else (e.g. attack).
+            // Its WalkToFieldPosition task has no provider in this role, so it only emits the debug
+            // SupportPosition and never actually moves the robot.
+            emit<Task>(std::make_unique<Support>());
         });
     }
 

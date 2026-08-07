@@ -8,9 +8,9 @@ interface SupportPositionMarkerProps {
   radius?: number;
 }
 
-export const SupportPositionMarker: React.FC<SupportPositionMarkerProps> = ({ position, color, radius = 0.15 }) => (
-  <mesh position={[position.x, position.y, 0.005]}>
+export const SupportPositionMarker: React.FC<SupportPositionMarkerProps> = ({ position, color, radius = 0.1 }) => (
+  <mesh position={[position.x, position.y, 0.01]}>
     <circleGeometry args={[radius, 32]} />
-    <meshBasicMaterial color={color} opacity={0.4} transparent={true} />
+    <meshBasicMaterial color={color} />
   </mesh>
 );

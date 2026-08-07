@@ -1,5 +1,4 @@
 import { GameState_ModeEnum, GameState_PenaltyReasonEnum, GameState_PhaseEnum } from "@proto/message/input/GameState";
-import { SoccerPosition } from "@proto/message/purpose/Purpose";
 import { computed, observable } from "mobx";
 
 import { Matrix2 } from "../../../../../shared/math/matrix2";
@@ -10,6 +9,7 @@ import { Vector3 } from "../../../../../shared/math/vector3";
 import { memoize } from "../../../../base/memoize";
 import { BrowserSystemClock } from "../../../../time/browser_clock";
 import { RobotModel } from "../../../robot/model";
+import { LocalisationRobotModel } from "../../robot_model";
 
 export class DashboardRobotModel {
   // Parameters that influence the display
@@ -62,9 +62,6 @@ export class DashboardRobotModel {
   // The current walk command
   @observable walkCommand: Vector3;
 
-  // The role (soccer position) the robot has decided to take
-  @observable role: SoccerPosition;
-
   constructor(
     robot: RobotModel,
     {
@@ -91,7 +88,6 @@ export class DashboardRobotModel {
       lastSeenBall,
       lastSeenGoal,
       walkCommand,
-      role,
     }: DashboardRobotModelOpts,
   ) {
     this.robot = robot;
@@ -118,7 +114,6 @@ export class DashboardRobotModel {
     this.lastSeenBall = lastSeenBall;
     this.lastSeenGoal = lastSeenGoal;
     this.walkCommand = walkCommand;
-    this.role = role;
   }
 
   static of = memoize((robot: RobotModel): DashboardRobotModel => {
@@ -146,9 +141,15 @@ export class DashboardRobotModel {
       time: BrowserSystemClock.now(),
       voltage: -1,
       walkCommand: Vector3.of(),
-      role: "unknown",
     });
   });
+
+  // The role (soccer position) the robot has decided to take. Sourced from the same Purpose message
+  // that drives the on-field role label, so it matches what that toggle shows.
+  @computed
+  get role(): string {
+    return LocalisationRobotModel.of(this.robot).purpose || "unknown";
+  }
 
   @computed
   get connected(): boolean {
@@ -195,5 +196,4 @@ interface DashboardRobotModelOpts {
   lastSeenBall: number;
   lastSeenGoal: number;
   walkCommand: Vector3;
-  role: SoccerPosition;
 }

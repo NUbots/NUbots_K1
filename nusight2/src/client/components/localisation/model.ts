@@ -129,7 +129,7 @@ export class LocalisationModel {
   @observable walkToDebugVisible = false;
   @observable boundedBoxVisible = true;
   @observable roleLabelVisible = true;
-  @observable supportPositionVisible = true;
+  @observable supportPositionVisible = false;
 
   constructor(
     appModel: AppModel,

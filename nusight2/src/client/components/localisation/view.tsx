@@ -583,8 +583,8 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
         />
       )}
 
-      {model.supportPositionVisible && robot.purpose === "support" && robot.desiredSupportPosition && (
-        <SupportPositionMarker position={robot.desiredSupportPosition} color={robot.color} />
+      {model.supportPositionVisible && robot.desiredSupportPosition && (
+        <SupportPositionMarker position={robot.desiredSupportPosition} color="#2979ff" />
       )}
 
       {model.walkToDebugVisible && robot.Hfd && <WalkPathGoal Hfd={robot.Hfd} Hft={robot.Hft} motors={robot.motors} />}
