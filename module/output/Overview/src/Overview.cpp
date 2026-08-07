@@ -163,7 +163,7 @@ namespace module::output {
                 }
 
                 // Set the role (soccer position) the robot has decided to take
-                msg->role = purpose ? purpose->purpose : SoccerPosition::UNKNOWN;
+                msg->role = purpose ? purpose->purpose : SoccerPosition(SoccerPosition::UNKNOWN);
 
                 emit(msg);
             });
