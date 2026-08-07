@@ -55,6 +55,15 @@ namespace module::purpose {
             std::map<std::string, std::map<int, RobotSlot>> modes;
         } cfg;
 
+        /// @brief Resolve this robot's formation slot for the given mode, falling back to the
+        ///        normal_play formation when the mode is not defined. Returns nullptr when neither
+        ///        the mode nor the fallback defines a slot for this robot (e.g. Formation.yaml has
+        ///        not been loaded yet), so callers never dereference a past-the-end iterator.
+        /// @param mode_name the formation mode to look up
+        /// @param player_id the robot's player ID
+        /// @return pointer to the matching slot, or nullptr if none applies
+        const RobotSlot* find_slot(const std::string& mode_name, int player_id) const;
+
     public:
         /// @brief Called by the powerplant to build and setup the Support reactor.
         explicit Support(std::unique_ptr<NUClear::Environment> environment);

@@ -149,15 +149,11 @@ namespace module::purpose {
                         break;
                 }
 
-                // Look up this robot's slot
-                auto mode_it = cfg.modes.find(mode_name);
-                if (mode_it == cfg.modes.end())
-                    mode_it = cfg.modes.find("normal_play");
-                auto& robots = mode_it->second;
-                auto slot_it = robots.find(global_config.player_id);
-                if (slot_it == robots.end())
-                    return;  // no slot for this robot
-                const auto& slot = slot_it->second;
+                // Look up this robot's slot; bail out if the formation config cannot supply one
+                const RobotSlot* slot_ptr = find_slot(mode_name, global_config.player_id);
+                if (slot_ptr == nullptr)
+                    return;  // no slot for this robot (or config not yet loaded)
+                const auto& slot = *slot_ptr;
 
                 // Calculate target position
                 Eigen::Vector3d position{slot.offset.x(), slot.offset.y(), 0};
@@ -191,6 +187,22 @@ namespace module::purpose {
                     std::make_unique<WalkToFieldPosition>(pos_rpy_to_transform(position, Eigen::Vector3d(0, 0, M_PI)),
                                                           true));
             });
+    }
+
+    auto Support::find_slot(const std::string& mode_name, int player_id) const -> const RobotSlot* {
+        // Select the requested formation mode, falling back to normal_play when it is not defined
+        auto mode_it = cfg.modes.find(mode_name);
+        if (mode_it == cfg.modes.end())
+            mode_it = cfg.modes.find("normal_play");
+
+        // Neither the mode nor the normal_play fallback exists (e.g. Formation.yaml not loaded yet)
+        if (mode_it == cfg.modes.end())
+            return nullptr;
+
+        // Look up this robot's slot within the selected mode
+        const auto& robots = mode_it->second;
+        auto slot_it       = robots.find(player_id);
+        return slot_it == robots.end() ? nullptr : &slot_it->second;
     }
 
 }  // namespace module::purpose
