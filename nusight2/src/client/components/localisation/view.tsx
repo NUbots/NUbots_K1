@@ -28,6 +28,7 @@ import { GridView } from "./r3f_components/grid";
 import { K1 } from "./r3f_components/k1";
 import { PurposeLabel } from "./r3f_components/purpose_label";
 import { SkyboxView } from "./r3f_components/skybox/view";
+import { SupportPositionMarker } from "./r3f_components/support_position_marker";
 import { WalkPathGoal } from "./r3f_components/walk_path_goal";
 import { WalkPathVisualiser } from "./r3f_components/walk_path_visualiser";
 import { WalkTrajectory } from "./r3f_components/walk_trajectory";
@@ -138,6 +139,8 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
             toggleFieldIntersectionsVisibility={this.toggleFieldIntersectionsVisibility}
             toggleWalkToDebugVisibility={this.toggleWalkToDebugVisibility}
             toggleBoundedBoxVisibility={this.toggleBoundedBoxVisibility}
+            toggleRoleLabelVisibility={this.toggleRoleLabelVisibility}
+            toggleSupportPositionVisibility={this.toggleSupportPositionVisibility}
             toggleDashboardVisibility={this.toggleDashboardVisibility}
           ></LocalisationMenuBar>
         </div>
@@ -165,6 +168,8 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
             toggleFieldIntersectionsVisibility={this.toggleFieldIntersectionsVisibility}
             toggleWalkToDebugVisibility={this.toggleWalkToDebugVisibility}
             toggleBoundedBoxVisibility={this.toggleBoundedBoxVisibility}
+            toggleRoleLabelVisibility={this.toggleRoleLabelVisibility}
+            toggleSupportPositionVisibility={this.toggleSupportPositionVisibility}
             toggleDashboardVisibility={this.toggleDashboardVisibility}
           />
         </div>
@@ -266,6 +271,14 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
     this.props.controller.toggleBoundedBoxVisibility(this.props.model);
   };
 
+  private toggleRoleLabelVisibility = () => {
+    this.props.controller.toggleRoleLabelVisibility(this.props.model);
+  };
+
+  private toggleSupportPositionVisibility = () => {
+    this.props.controller.toggleSupportPositionVisibility(this.props.model);
+  };
+
   private toggleDashboardVisibility = () => {
     this.props.controller.toggleDashboardVisibility(this.props.model);
   };
@@ -289,6 +302,8 @@ interface LocalisationMenuBarProps {
   toggleFieldIntersectionsVisibility(): void;
   toggleWalkToDebugVisibility(): void;
   toggleBoundedBoxVisibility(): void;
+  toggleRoleLabelVisibility(): void;
+  toggleSupportPositionVisibility(): void;
   toggleDashboardVisibility(): void;
 }
 
@@ -390,6 +405,8 @@ const LocalisationMenuBar = observer((props: LocalisationMenuBarProps) => {
         toggleFieldIntersectionsVisibility={props.toggleFieldIntersectionsVisibility}
         toggleWalkToDebugVisibility={props.toggleWalkToDebugVisibility}
         toggleBoundedBoxVisibility={props.toggleBoundedBoxVisibility}
+        toggleRoleLabelVisibility={props.toggleRoleLabelVisibility}
+        toggleSupportPositionVisibility={props.toggleSupportPositionVisibility}
         toggleDashboardVisibility={props.toggleDashboardVisibility}
       />
     </Menu>
@@ -428,6 +445,12 @@ const VisibilityPanel = observer((props: Omit<LocalisationMenuBarProps, "Menu">)
         { label: "Particles", isVisible: model.particlesVisible, onClick: props.toggleParticleVisibility },
         { label: "Walk Path", isVisible: model.walkToDebugVisible, onClick: props.toggleWalkToDebugVisibility },
         { label: "Bounding Box", isVisible: model.boundedBoxVisible, onClick: props.toggleBoundedBoxVisibility },
+        { label: "Role", isVisible: model.roleLabelVisible, onClick: props.toggleRoleLabelVisibility },
+        {
+          label: "Support Position",
+          isVisible: model.supportPositionVisible,
+          onClick: props.toggleSupportPositionVisibility,
+        },
       ],
     },
   ];
@@ -549,7 +572,7 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
         />
       )}
 
-      {robot.Hft && robot.purpose && (
+      {model.roleLabelVisible && robot.Hft && robot.purpose && (
         <PurposeLabel
           Hft={robot.Hft}
           playerId={robot.playerId}
@@ -558,6 +581,10 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
           cameraPitch={model.camera.pitch}
           cameraYaw={model.camera.yaw}
         />
+      )}
+
+      {model.supportPositionVisible && robot.purpose === "support" && robot.desiredSupportPosition && (
+        <SupportPositionMarker position={robot.desiredSupportPosition} color={robot.color} />
       )}
 
       {model.walkToDebugVisible && robot.Hfd && <WalkPathGoal Hfd={robot.Hfd} Hft={robot.Hft} motors={robot.motors} />}

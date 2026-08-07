@@ -250,8 +250,10 @@ namespace module::purpose {
                 bool higher_id_attacking = false;
                 if (robots) {
                     for (const auto& robot : robots->robots) {
-                        if (robot.teammate && robot.purpose.purpose == SoccerPosition::ATTACK && robot.purpose.active
-                            && robot.purpose.player_id > global_config.player_id) {
+                        if (robot.teammate
+                            && (robot.purpose.purpose == SoccerPosition::ATTACK
+                                || robot.purpose.purpose == SoccerPosition::READY_ATTACK)
+                            && robot.purpose.active && robot.purpose.player_id > global_config.player_id) {
                             higher_id_attacking = true;
                             break;
                         }
@@ -342,7 +344,7 @@ namespace module::purpose {
                     log<DEBUG>("Ready attack!");
                     supporting = false;
                     emit(std::make_unique<Purpose>(global_config.player_id,
-                                                   SoccerPosition::ATTACK,
+                                                   SoccerPosition::READY_ATTACK,
                                                    true,
                                                    true,
                                                    game_state.team.team_colour));

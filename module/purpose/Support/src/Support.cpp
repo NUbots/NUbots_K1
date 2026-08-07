@@ -33,6 +33,7 @@
 #include "message/localisation/Ball.hpp"
 #include "message/localisation/Field.hpp"
 #include "message/purpose/Player.hpp"
+#include "message/purpose/SupportPosition.hpp"
 #include "message/strategy/WalkToFieldPosition.hpp"
 #include "message/support/FieldDescription.hpp"
 #include "message/support/GlobalConfig.hpp"
@@ -48,6 +49,7 @@ namespace module::purpose {
     using message::input::GameState;
     using message::localisation::Ball;
     using message::localisation::Field;
+    using message::purpose::SupportPosition;
     using message::strategy::WalkToFieldPosition;
     using message::support::FieldDescription;
     using message::support::GlobalConfig;
@@ -177,6 +179,12 @@ namespace module::purpose {
 
                 // Convert out of Formation.yaml's mirrored x convention and into our own field frame
                 position.x() = -position.x();
+
+                // Plainly emit the calculated position so NUsight can visualise it
+                auto support_position       = std::make_unique<SupportPosition>();
+                support_position->player_id = global_config.player_id;
+                support_position->position  = position.head<2>();
+                emit(support_position);
 
                 // Flip yaw axis to work with other teams formation rules
                 emit<Task>(

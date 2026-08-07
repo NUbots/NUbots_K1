@@ -289,7 +289,9 @@ namespace module::network {
                 }
 
                 // Purpose information, simple a bool in the new proto
-                msg->going_for_ball = (purpose && purpose->purpose.value == SoccerPosition::ATTACK);
+                msg->going_for_ball = (purpose
+                                       && (purpose->purpose.value == SoccerPosition::ATTACK
+                                           || purpose->purpose.value == SoccerPosition::READY_ATTACK));
 
                 // Single-line summary of the outgoing broadcast
                 log<DEBUG>(fmt::format(

@@ -6,6 +6,7 @@ import { Field } from "@proto/message/localisation/Field";
 import { Robots as LocalisationRobots } from "@proto/message/localisation/Robot";
 import { WalkToDebug } from "@proto/message/planning/WalkPath";
 import { Purpose, SoccerPositionFromEnum } from "@proto/message/purpose/Purpose";
+import { SupportPosition } from "@proto/message/purpose/SupportPosition";
 import { WalkInsideBoundedBox } from "@proto/message/strategy/WalkInsideBoundedBox";
 import { Overview } from "@proto/message/support/nusight/Overview";
 import { FieldIntersections } from "@proto/message/vision/FieldIntersections";
@@ -47,6 +48,7 @@ export class LocalisationNetwork {
     this.network.on(FieldIntersections, this.onFieldIntersections);
     this.network.on(WalkInsideBoundedBox, this.WalkInsideBoundedBox);
     this.network.on(Purpose, this.onPurpose);
+    this.network.on(SupportPosition, this.onSupportPosition);
     this.network.on(WalkState, this.onWalkState);
     this.network.on(Overview, this.onOverview);
   }
@@ -128,6 +130,12 @@ export class LocalisationNetwork {
     }
 
     robot.teamColour = purpose.teamColour == GameState_TeamColourEnum.RED ? "red" : "blue";
+  }
+
+  @action.bound
+  private onSupportPosition(robotModel: RobotModel, supportPosition: SupportPosition) {
+    const robot = LocalisationRobotModel.of(robotModel);
+    robot.desiredSupportPosition = Vector2.from(supportPosition.position);
   }
 
   @action.bound

@@ -396,6 +396,16 @@ export class LocalisationController {
   };
 
   @action
+  toggleRoleLabelVisibility = (model: LocalisationModel) => {
+    model.roleLabelVisible = !model.roleLabelVisible;
+  };
+
+  @action
+  toggleSupportPositionVisibility = (model: LocalisationModel) => {
+    model.supportPositionVisible = !model.supportPositionVisible;
+  };
+
+  @action
   toggleOrientation(model: LocalisationModel) {
     model.dashboardField.orientation = model.dashboardField.orientation === "left" ? "right" : "left";
   }
