@@ -31,6 +31,7 @@
 
 #include "message/input/GameState.hpp"
 #include "message/purpose/Player.hpp"
+#include "message/purpose/SupportPosition.hpp"
 
 namespace module::purpose {
 
@@ -39,6 +40,7 @@ namespace module::purpose {
     using message::input::GameState;
     using message::purpose::FieldPlayer;
     using message::purpose::Support;
+    using message::purpose::SupportPosition;
 
     TeamBehaviourTester::TeamBehaviourTester(std::unique_ptr<NUClear::Environment> environment)
         : BehaviourReactor(std::move(environment)) {
@@ -78,6 +80,13 @@ namespace module::purpose {
             // Its WalkToFieldPosition task has no provider in this role, so it only emits the debug
             // SupportPosition and never actually moves the robot.
             emit<Task>(std::make_unique<Support>());
+        });
+
+        // Diagnostic: log the computed support position whenever the Support module emits one. If this
+        // never fires, the Support calculation is not running (e.g. field not localised yet, or this
+        // robot's player_id has no slot in Formation.yaml). Set log_level to DEBUG to see it.
+        on<Trigger<SupportPosition>>().then([this](const SupportPosition& sp) {
+            log<DEBUG>("Computed support position: x =", sp.position.x(), "y =", sp.position.y());
         });
     }
 
