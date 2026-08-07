@@ -294,6 +294,9 @@ export class LocalisationNetwork {
 
     // The walk command and
     robot.walkCommand = Vector3.from(overview.walkCommand);
+
+    // The role (soccer position) the robot has decided to take
+    robot.role = SoccerPositionFromEnum[overview.role!];
   };
 }
 

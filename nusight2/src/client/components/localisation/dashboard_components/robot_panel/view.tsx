@@ -18,6 +18,7 @@ export type RobotPanelProps = {
   penalised: boolean;
   penalty: string;
   phase: string;
+  role: string;
   title: string;
   walkCommand: Vector3;
 };
@@ -72,6 +73,10 @@ export const DashboardRobotPanel = (props: RobotPanelProps) => {
           <div className="flex flex-col">
             <span className="flex-1 font-bold">Walk Command</span>
             {props.walkCommand.x.toFixed(3)}, {props.walkCommand.y.toFixed(3)}, {props.walkCommand.z.toFixed(3)}
+          </div>
+          <div className="flex flex-col">
+            <span className="flex-1 font-bold">Role</span>
+            {props.role}
           </div>
         </div>
         <div className="items-center flex justify-around fill-black dark:fill-white">

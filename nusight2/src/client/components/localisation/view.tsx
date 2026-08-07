@@ -724,6 +724,7 @@ export class DashboardPanel extends Component<DashboardPanelProps> {
                         penalised={model.penalised}
                         penalty={model.penalty}
                         phase={model.phase}
+                        role={model.role}
                         title={model.title}
                         walkCommand={model.walkCommand}
                       />
