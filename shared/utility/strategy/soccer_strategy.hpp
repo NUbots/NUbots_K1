@@ -62,7 +62,7 @@ namespace utility::strategy {
      *  @param ignore_ids a list of robot IDs to ignore when determining the closest robot
      *  @param include_opponents whether to include opponents in the search
      *
-     *  @return A vector of pairs, these contain a Possession type and distance to the ball.
+     *  @return The winning robot's ID (0 for an opponent) and its distance to the ball.
      */
     std::pair<unsigned int, double> get_closest_bot(const Eigen::Vector3d& rBWw,
                                                     const Robots& robots,
@@ -72,49 +72,45 @@ namespace utility::strategy {
                                                     unsigned int self_id,
                                                     std::vector<unsigned int> const& ignore_ids,
                                                     bool include_opponents = true) {
-        // Transform ball position to field coordinates
         Eigen::Vector3d rBFf         = Hfw * rBWw;
         Eigen::Vector3d rRFf         = (Hfw * Hrw.inverse()).translation();
         double self_distance_to_ball = (rRFf - rBFf).head<2>().norm();
 
-        // Initialise to self
-        std::pair<Who, double> closest = {Who{Who::SELF}, self_distance_to_ball};
-        unsigned int lowest_id         = self_id;
+        struct Candidate {
+            // Opponents share id 0 so they always win a tie-break against any (non-zero) teammate id
+            unsigned int id;
+            double distance_to_ball;
+        };
 
-        // Loop through each robot
+        std::vector<Candidate> candidates{{self_id, self_distance_to_ball}};
         for (const auto& robot : robots.robots) {
-            // Skip if not a teammate and not including opponents
-            if (!robot.teammate && !include_opponents) {
+            bool ignored =
+                std::find(ignore_ids.begin(), ignore_ids.end(), robot.purpose.player_id) != ignore_ids.end();
+            if (ignored || (!robot.teammate && !include_opponents)) {
                 continue;
             }
-            // Skip robots that are in the ignore list
-            if (std::find(ignore_ids.begin(), ignore_ids.end(), robot.purpose.player_id) != ignore_ids.end()) {
-                continue;
-            }
-
-            // Calculate distance to the ball
             double distance_to_ball = ((Hfw * robot.rRWw) - rBFf).head<2>().norm();
-            // Check if close to the closest robot
-            bool equidistant = std::abs(distance_to_ball - closest.second) < equidistant_threshold;
+            candidates.push_back({robot.teammate ? robot.purpose.player_id : 0u, distance_to_ball});
+        }
 
-            // Opponents that are equidistant win
-            if (equidistant && !robot.teammate) {
-                closest   = {Who{Who::OPPONENT}, distance_to_ball};
-                lowest_id = 0;
-            }
-            // Handle equidistant teammates - lower ID wins
-            else if (equidistant && robot.teammate && robot.purpose.player_id < lowest_id) {
-                closest   = {Who{Who::TEAMMATE}, distance_to_ball};
-                lowest_id = robot.purpose.player_id;
-            }
-            // Closer than equidistant wins
-            else if (!equidistant && (distance_to_ball < closest.second)) {
-                closest   = {robot.teammate ? Who{Who::TEAMMATE} : Who{Who::OPPONENT}, distance_to_ball};
-                lowest_id = robot.teammate ? robot.purpose.player_id : 0;
+        double closest_distance = std::min_element(candidates.begin(),
+                                                    candidates.end(),
+                                                    [](const Candidate& a, const Candidate& b) {
+                                                        return a.distance_to_ball < b.distance_to_ball;
+                                                    })
+                                      ->distance_to_ball;
+
+        // Equidistance is judged against the true closest distance rather than a running comparison, so it
+        // can't chain through a sequence of near-equal robots into a false tie
+        Candidate winner = candidates.front();
+        for (const auto& candidate : candidates) {
+            bool equidistant = std::abs(candidate.distance_to_ball - closest_distance) < equidistant_threshold;
+            if (equidistant && candidate.id > winner.id) {
+                winner = candidate;
             }
         }
 
-        return {lowest_id, closest.second};
+        return {winner.id, winner.distance_to_ball};
     }
 
     /**
