@@ -30,9 +30,16 @@
 #include <nuclear>
 #include <Eigen/Core>
 #include <map>
+#include <optional>
 #include <string>
 
 #include "extension/Behaviour.hpp"
+
+#include "message/input/GameState.hpp"
+#include "message/localisation/Ball.hpp"
+#include "message/localisation/Field.hpp"
+#include "message/support/FieldDescription.hpp"
+#include "message/support/GlobalConfig.hpp"
 
 namespace module::purpose {
 
@@ -63,6 +70,20 @@ namespace module::purpose {
         /// @param player_id the robot's player ID
         /// @return pointer to the matching slot, or nullptr if none applies
         const RobotSlot* find_slot(const std::string& mode_name, int player_id) const;
+
+        /// @brief Compute what this robot's support position would be right now, given the current ball,
+        ///        field, game state and formation config - regardless of whether this robot is actually
+        ///        assigned the Support purpose. Used both by the active Support behaviour (to know where to
+        ///        walk) and by an always-on reactor that lets NUsight show a live preview of this position
+        ///        even when some other robot is currently the one supporting.
+        /// @return the computed field-space position (x, y, 0), or std::nullopt if no formation slot applies
+        ///         (e.g. Formation.yaml has not been loaded yet)
+        std::optional<Eigen::Vector3d> calculate_support_position(
+            const std::shared_ptr<const message::localisation::Ball>& ball,
+            const message::localisation::Field& field,
+            const message::input::GameState& game_state,
+            const message::support::GlobalConfig& global_config,
+            const message::support::FieldDescription& fd) const;
 
     public:
         /// @brief Called by the powerplant to build and setup the Support reactor.

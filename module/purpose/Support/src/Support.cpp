@@ -131,62 +131,91 @@ namespace module::purpose {
                          const GameState& game_state,
                          const GlobalConfig& global_config,
                          const FieldDescription& fd) {
-                // Select the formation mode matching the current set play, with the kicking team
-                // (our_kick_off tracks the GameController's kicking_team) picking the us/them variant
-                const std::string suffix = game_state.our_kick_off ? "_us" : "_them";
-                std::string mode_name;
-                switch (game_state.mode.value) {
-                    case GameState::Mode::DIRECT_FREEKICK: mode_name = "direct_free_kick" + suffix; break;
-                    case GameState::Mode::INDIRECT_FREEKICK: mode_name = "indirect_free_kick" + suffix; break;
-                    case GameState::Mode::PENALTYKICK: mode_name = "penalty_kick" + suffix; break;
-                    case GameState::Mode::CORNER_KICK: mode_name = "corner_kick" + suffix; break;
-                    case GameState::Mode::GOAL_KICK: mode_name = "goal_kick" + suffix; break;
-                    case GameState::Mode::THROW_IN: mode_name = "throw_in" + suffix; break;
-                    default:
-                        // No set play: kickoff formation while positioning in ready, normal play otherwise
-                        mode_name =
-                            game_state.phase.value == GameState::Phase::READY ? "kickoff" + suffix : "normal_play";
-                        break;
-                }
-
-                // Look up this robot's slot; bail out if the formation config cannot supply one
-                const RobotSlot* slot_ptr = find_slot(mode_name, global_config.player_id);
-                if (slot_ptr == nullptr)
+                auto position = calculate_support_position(ball, field, game_state, global_config, fd);
+                if (!position)
                     return;  // no slot for this robot (or config not yet loaded)
-                const auto& slot = *slot_ptr;
-
-                // Calculate target position
-                Eigen::Vector3d position{slot.offset.x(), slot.offset.y(), 0};
-                if (ball) {
-                    Eigen::Vector3d rBFf = field.Hfw * ball->rBWw;
-                    // Formation.yaml comes from another team and uses a field x-axis convention that is
-                    // mirrored relative to ours, so express the ball's x in that same convention before
-                    // combining it with the formation coefficients (which are given in that convention)
-                    double ball_x = -rBFf.x();
-                    position.x()  = std::max(slot.min_x, slot.offset.x() + slot.attraction.x() * ball_x);
-                    position.y()  = slot.offset.y() + slot.attraction.y() * rBFf.y();
-                }
-
-                // Clamp to field
-                double half_length = fd.dimensions.field_length / 2.0;
-                double half_width  = fd.dimensions.field_width / 2.0;
-                position.x()       = std::clamp(position.x(), -half_length, half_length);
-                position.y()       = std::clamp(position.y(), -half_width, half_width);
-
-                // Convert out of Formation.yaml's mirrored x convention and into our own field frame
-                position.x() = -position.x();
-
-                // Plainly emit the calculated position so NUsight can visualise it
-                auto support_position       = std::make_unique<SupportPosition>();
-                support_position->player_id = global_config.player_id;
-                support_position->position  = position.head<2>();
-                emit(support_position);
 
                 // Flip yaw axis to work with other teams formation rules
-                emit<Task>(
-                    std::make_unique<WalkToFieldPosition>(pos_rpy_to_transform(position, Eigen::Vector3d(0, 0, M_PI)),
-                                                          true));
+                emit<Task>(std::make_unique<WalkToFieldPosition>(
+                    pos_rpy_to_transform(*position, Eigen::Vector3d(0, 0, M_PI)),
+                    true));
             });
+
+        // Continuously compute and emit what this robot's support position would be right now, even when
+        // it isn't currently assigned the Support purpose - lets NUsight show a live "what if" preview
+        // regardless of which robot is actually supporting.
+        on<Every<10, Per<std::chrono::seconds>>,
+           Optional<With<Ball>>,
+           With<Field>,
+           With<GameState>,
+           With<GlobalConfig>,
+           With<FieldDescription>>()
+            .then([this](const std::shared_ptr<const Ball>& ball,
+                         const Field& field,
+                         const GameState& game_state,
+                         const GlobalConfig& global_config,
+                         const FieldDescription& fd) {
+                auto position = calculate_support_position(ball, field, game_state, global_config, fd);
+                if (!position)
+                    return;  // no slot for this robot (or config not yet loaded)
+
+                auto support_position       = std::make_unique<SupportPosition>();
+                support_position->player_id = global_config.player_id;
+                support_position->position  = position->head<2>();
+                emit(support_position);
+            });
+    }
+
+    std::optional<Eigen::Vector3d> Support::calculate_support_position(const std::shared_ptr<const Ball>& ball,
+                                                                        const Field& field,
+                                                                        const GameState& game_state,
+                                                                        const GlobalConfig& global_config,
+                                                                        const FieldDescription& fd) const {
+        // Select the formation mode matching the current set play, with the kicking team
+        // (our_kick_off tracks the GameController's kicking_team) picking the us/them variant
+        const std::string suffix = game_state.our_kick_off ? "_us" : "_them";
+        std::string mode_name;
+        switch (game_state.mode.value) {
+            case GameState::Mode::DIRECT_FREEKICK: mode_name = "direct_free_kick" + suffix; break;
+            case GameState::Mode::INDIRECT_FREEKICK: mode_name = "indirect_free_kick" + suffix; break;
+            case GameState::Mode::PENALTYKICK: mode_name = "penalty_kick" + suffix; break;
+            case GameState::Mode::CORNER_KICK: mode_name = "corner_kick" + suffix; break;
+            case GameState::Mode::GOAL_KICK: mode_name = "goal_kick" + suffix; break;
+            case GameState::Mode::THROW_IN: mode_name = "throw_in" + suffix; break;
+            default:
+                // No set play: kickoff formation while positioning in ready, normal play otherwise
+                mode_name = game_state.phase.value == GameState::Phase::READY ? "kickoff" + suffix : "normal_play";
+                break;
+        }
+
+        // Look up this robot's slot; bail out if the formation config cannot supply one
+        const RobotSlot* slot_ptr = find_slot(mode_name, global_config.player_id);
+        if (slot_ptr == nullptr)
+            return std::nullopt;  // no slot for this robot (or config not yet loaded)
+        const auto& slot = *slot_ptr;
+
+        // Calculate target position
+        Eigen::Vector3d position{slot.offset.x(), slot.offset.y(), 0};
+        if (ball) {
+            Eigen::Vector3d rBFf = field.Hfw * ball->rBWw;
+            // Formation.yaml comes from another team and uses a field x-axis convention that is
+            // mirrored relative to ours, so express the ball's x in that same convention before
+            // combining it with the formation coefficients (which are given in that convention)
+            double ball_x = -rBFf.x();
+            position.x()  = std::max(slot.min_x, slot.offset.x() + slot.attraction.x() * ball_x);
+            position.y()  = slot.offset.y() + slot.attraction.y() * rBFf.y();
+        }
+
+        // Clamp to field
+        double half_length = fd.dimensions.field_length / 2.0;
+        double half_width  = fd.dimensions.field_width / 2.0;
+        position.x()       = std::clamp(position.x(), -half_length, half_length);
+        position.y()       = std::clamp(position.y(), -half_width, half_width);
+
+        // Convert out of Formation.yaml's mirrored x convention and into our own field frame
+        position.x() = -position.x();
+
+        return position;
     }
 
     auto Support::find_slot(const std::string& mode_name, int player_id) const -> const RobotSlot* {

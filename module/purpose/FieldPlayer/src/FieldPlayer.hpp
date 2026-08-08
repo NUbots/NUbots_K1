@@ -63,6 +63,10 @@ namespace module::purpose {
         /// @brief Whether the last purpose decision was support, so switching to support is only logged once
         bool supporting = false;
 
+        /// @brief Whether a teammate was going for the ball last tick, so the INFO log below only fires once per
+        /// rising edge instead of spamming every tick while they hold the ball
+        bool was_teammate_attacking = false;
+
         /// @brief When the robot started standing still and looking around to localise, unset when localised
         std::optional<NUClear::clock::time_point> look_around_start{};
 

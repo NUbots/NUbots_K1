@@ -26,6 +26,8 @@
  */
 #include "FieldPlayer.hpp"
 
+#include <fmt/format.h>
+
 #include "extension/Behaviour.hpp"
 #include "extension/Configuration.hpp"
 
@@ -246,20 +248,34 @@ namespace module::purpose {
                 // Only wait if the opponent hasn't kicked off yet
                 bool allowed_to_attack = !kickoff_wait;
 
-                // Don't attack if any active teammate is already attacking (going for the ball), regardless of
-                // player ID, so we don't double up on the ball. Their going_for_ball broadcast is what sets
-                // their purpose to ATTACK/READY_ATTACK here, see RobotLocalisation.cpp's Message handler.
+                // Hard rule: never enter Attack/ReadyAttack while an active teammate has broadcast that they are
+                // going for the ball, regardless of player ID or our own closest-to-ball calculation, so we don't
+                // double up on the ball. Their going_for_ball broadcast is what sets their purpose to ATTACK here,
+                // see RobotLocalisation.cpp's Message handler. This flag gates every Attack/ReadyAttack emission
+                // below (search for `teammate_attacking`) - do not add a new attack path without checking it.
                 bool teammate_attacking = false;
+                unsigned int attacking_teammate_id = 0;
                 if (robots) {
                     for (const auto& robot : robots->robots) {
                         if (robot.teammate
                             && robot.purpose.purpose == SoccerPosition::ATTACK
                             && robot.purpose.active) {
-                            teammate_attacking = true;
+                            teammate_attacking   = true;
+                            attacking_teammate_id = robot.purpose.player_id;
                             break;
                         }
                     }
                 }
+                // Log on the rising/falling edge (not every tick) at INFO so it's visible without turning on
+                // DEBUG logging, since this is the primary way to confirm the going_for_ball message is received.
+                if (teammate_attacking && !was_teammate_attacking) {
+                    log<INFO>(fmt::format("Teammate {} is going for the ball, standing down from attacking.",
+                                          attacking_teammate_id));
+                }
+                else if (!teammate_attacking && was_teammate_attacking) {
+                    log<INFO>("No teammate is going for the ball anymore, resuming normal attack logic.");
+                }
+                was_teammate_attacking = teammate_attacking;
 
                 // Furthest back calculation
                 bool furthest_back = robots ? utility::strategy::furthest_back(*robots,
