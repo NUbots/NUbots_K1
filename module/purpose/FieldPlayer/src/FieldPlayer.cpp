@@ -463,9 +463,10 @@ namespace module::purpose {
                     emit<Task>(std::make_unique<WalkToFieldPosition>(Hfr, true));
                 }
 
-                // Send purpose
+                // Send purpose. Both branches above put us in a supporting role for kickoff (either the formation
+                // slot or the dynamic ready position), so report SUPPORT rather than UNKNOWN.
                 emit(std::make_unique<Purpose>(global_config.player_id,
-                                               SoccerPosition::UNKNOWN,
+                                               SoccerPosition::SUPPORT,
                                                true,
                                                true,
                                                game_state.team.team_colour));
