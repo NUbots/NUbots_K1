@@ -80,6 +80,7 @@ namespace module::localisation {
             cfg.max_missed_count                = config["max_missed_count"].as<int>();
             cfg.max_distance_from_field         = config["max_distance_from_field"].as<double>();
             cfg.max_localisation_cost           = config["max_localisation_cost"].as<double>();
+            cfg.teammate_timeout                = config["teammate_timeout"].as<double>();
         });
 
         on<Every<UPDATE_RATE, Per<std::chrono::seconds>>,
@@ -160,7 +161,14 @@ namespace module::localisation {
                 std::chrono::duration_cast<std::chrono::duration<double>>(now - tracked_robot.last_time_update).count();
             tracked_robot.last_time_update = now;
             tracked_robot.ukf.time(dt);
-            tracked_robot.seen = false;
+
+            // Vision runs far more often than teammates broadcast (every camera frame vs 2 Hz), so resetting
+            // seen here would almost always clobber it again before the next comms message arrives while the
+            // teammate is outside camera view. Teammates are instead kept alive by comms staleness in
+            // maintenance(), so leave their seen/missed_count alone here.
+            if (!tracked_robot.teammate) {
+                tracked_robot.seen = false;
+            }
         }
     }
 
@@ -191,8 +199,9 @@ namespace module::localisation {
                 teammate_itr->ukf.measure(Eigen::Vector2d(rRWw.head<2>()),
                                           cfg.ukf.noise.measurement.position,
                                           MeasurementType::ROBOT_POSITION());
-                teammate_itr->seen    = true;
-                teammate_itr->purpose = *purpose;
+                teammate_itr->seen           = true;
+                teammate_itr->purpose        = *purpose;
+                teammate_itr->last_comms_time = NUClear::clock::now();
 
                 continue;
             }
@@ -237,20 +246,32 @@ namespace module::localisation {
         for (auto& tracked_robot : tracked_robots) {
             auto state = RobotModel<double>::StateVec(tracked_robot.ukf.get_state());
 
-            // If a tracked robot has moved outside of view, keep it as seen so we don't lose it
-            // A robot is outside of view if it is not within the green horizon
-            // TODO (tom): It may be better to use fov and image size to determine if a robot should be seen
-            if (!point_in_convex_hull(horizon.horizon, Eigen::Vector3d(state.rRWw.x(), state.rRWw.y(), 0))) {
-                tracked_robot.seen = true;
+            // Teammates are pruned on comms staleness, not the vision-driven seen/missed_count below,
+            // since they are frequently outside camera view but still broadcasting (see prediction()).
+            if (tracked_robot.teammate) {
+                double time_since_comms =
+                    std::chrono::duration<double>(NUClear::clock::now() - tracked_robot.last_comms_time).count();
+                if (time_since_comms > cfg.teammate_timeout) {
+                    log<DEBUG>(fmt::format("Removing teammate {} due to comms timeout", tracked_robot.id));
+                    continue;
+                }
             }
+            else {
+                // If a tracked robot has moved outside of view, keep it as seen so we don't lose it
+                // A robot is outside of view if it is not within the green horizon
+                // TODO (tom): It may be better to use fov and image size to determine if a robot should be seen
+                if (!point_in_convex_hull(horizon.horizon, Eigen::Vector3d(state.rRWw.x(), state.rRWw.y(), 0))) {
+                    tracked_robot.seen = true;
+                }
 
-            // If the tracked robot has not been seen, increment the consecutively missed count
-            tracked_robot.missed_count = tracked_robot.seen ? 0 : tracked_robot.missed_count + 1;
+                // If the tracked robot has not been seen, increment the consecutively missed count
+                tracked_robot.missed_count = tracked_robot.seen ? 0 : tracked_robot.missed_count + 1;
 
-            // Don't add this robot if it has been missed too many times
-            if (tracked_robot.missed_count > cfg.max_missed_count) {
-                log<DEBUG>(fmt::format("Removing robot {} due to missed count", tracked_robot.id));
-                continue;
+                // Don't add this robot if it has been missed too many times
+                if (tracked_robot.missed_count > cfg.max_missed_count) {
+                    log<DEBUG>(fmt::format("Removing robot {} due to missed count", tracked_robot.id));
+                    continue;
+                }
             }
 
             // // Check if this robot is too close to any kept robot

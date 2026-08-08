@@ -131,6 +131,7 @@ export class LocalisationModel {
   @observable purposeLabelVisible = true;
   @observable supportPositionVisible = false;
   @observable teammatesVisible = false;
+  @observable teammateBallVisible = false;
 
   constructor(
     appModel: AppModel,

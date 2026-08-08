@@ -246,15 +246,17 @@ namespace module::purpose {
                 // Only wait if the opponent hasn't kicked off yet
                 bool allowed_to_attack = !kickoff_wait;
 
-                // Only attack if teammate with a higher ID is already attacking. ie higher ID teammates have priority
-                bool higher_id_attacking = false;
+                // Don't attack if any active teammate is already attacking (going for the ball), regardless of
+                // player ID, so we don't double up on the ball. Their going_for_ball broadcast is what sets
+                // their purpose to ATTACK/READY_ATTACK here, see RobotLocalisation.cpp's Message handler.
+                bool teammate_attacking = false;
                 if (robots) {
                     for (const auto& robot : robots->robots) {
                         if (robot.teammate
                             && (robot.purpose.purpose == SoccerPosition::ATTACK
                                 || robot.purpose.purpose == SoccerPosition::READY_ATTACK)
-                            && robot.purpose.active && robot.purpose.player_id > global_config.player_id) {
-                            higher_id_attacking = true;
+                            && robot.purpose.active) {
+                            teammate_attacking = true;
                             break;
                         }
                     }
@@ -325,7 +327,7 @@ namespace module::purpose {
 
                 // Attack if we are closest BUT we have to be in a situation where we are allowed to attack, eg not in
                 // penalty set up phase.
-                if (is_closest && allowed_to_attack && !higher_id_attacking) {
+                if (is_closest && allowed_to_attack && !teammate_attacking) {
                     log<DEBUG>("Attack!");
                     supporting = false;
                     emit(std::make_unique<Purpose>(global_config.player_id,
