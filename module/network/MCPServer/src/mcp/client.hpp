@@ -17,8 +17,8 @@
 
 #include <atomic>
 #include <future>
-#include <memory>
 #include <json.hpp>
+#include <memory>
 #include <optional>
 #include <string>
 

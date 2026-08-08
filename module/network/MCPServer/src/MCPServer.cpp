@@ -242,11 +242,11 @@ namespace module::network {
                 {"required", nlohmann::json::array({"speed", "angle"})},
             },
             [this](const nlohmann::json& input) -> mcp::CallToolResult {
-                float speed    = input.at("speed").get<float>();                     // get the speed
-                float angle    = input.at("angle").get<float>();                     // and the angle
-                float rotation = input.value("rotation", 0.0f);                      // and the rotation, if given
-                speed          = std::clamp(speed, 0.0f, 0.3f);                      // enforce stated safety cap
-                rotation       = std::clamp(rotation, -1.0f, 1.0f);                  // enforce stated safety cap
+                float speed    = input.at("speed").get<float>();     // get the speed
+                float angle    = input.at("angle").get<float>();     // and the angle
+                float rotation = input.value("rotation", 0.0f);      // and the rotation, if given
+                speed          = std::clamp(speed, 0.0f, 0.3f);      // enforce stated safety cap
+                rotation       = std::clamp(rotation, -1.0f, 1.0f);  // enforce stated safety cap
                 log<DEBUG>("Starting to walk at ", speed, "with angle ", angle, "and rotation", rotation);
 
                 float vx = speed * cos(angle);
