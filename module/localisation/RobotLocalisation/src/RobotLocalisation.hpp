@@ -32,10 +32,10 @@
 
 #include "RobotModel.hpp"
 
+#include "message/input/Image.hpp"
 #include "message/localisation/Field.hpp"
 #include "message/purpose/Purpose.hpp"
 #include "message/support/FieldDescription.hpp"
-#include "message/vision/GreenHorizon.hpp"
 
 #include "utility/math/filter/UKF.hpp"
 
@@ -155,9 +155,11 @@ namespace module::localisation {
 
         /// @brief Run maintenance on the tracked robots
         /// This will remove any viewable robots that have been missed too many times or are too close to another robot
+        /// @param image The most recent camera image, used to determine if a robot is within the camera's view
         /// @param field The field localisation, used to determine location of the tracked robot on field
         /// @param field_desc Field description, used to get the length and width of the field
-        void maintenance(const message::localisation::Field& field,
+        void maintenance(const message::input::Image& image,
+                         const message::localisation::Field& field,
                          const message::support::FieldDescription& field_desc);
 
         /// @brief Print out the current state of the tracked robots

@@ -31,12 +31,14 @@
 #include "extension/Configuration.hpp"
 
 #include "message/input/GameState.hpp"
+#include "message/input/Image.hpp"
 #include "message/input/Robocup.hpp"
 #include "message/localisation/Robot.hpp"
 #include "message/vision/Robot.hpp"
 
 #include "utility/nusight/NUhelpers.hpp"
 #include "utility/support/yaml_expression.hpp"
+#include "utility/vision/projection.hpp"
 #include "utility/vision/visualmesh/VisualMesh.hpp"
 
 namespace module::localisation {
@@ -51,16 +53,16 @@ namespace module::localisation {
 
     using message::eye::DataPoint;
     using message::input::GameState;
+    using message::input::Image;
     using message::input::Message;
     using message::localisation::Field;
     using message::purpose::Purpose;
     using message::purpose::SoccerPosition;
     using message::support::FieldDescription;
-    using message::vision::GreenHorizon;
 
-    using utility::math::geometry::point_in_convex_hull;
     using utility::nusight::graph;
     using utility::support::Expression;
+    using utility::vision::project;
 
     RobotLocalisation::RobotLocalisation(std::unique_ptr<NUClear::Environment> environment)
         : Reactor(std::move(environment)) {
@@ -84,12 +86,13 @@ namespace module::localisation {
         });
 
         on<Every<UPDATE_RATE, Per<std::chrono::seconds>>,
+           With<Image>,
            With<Field>,
            With<FieldDescription>,
            Sync<RobotLocalisation>>()
-            .then([this](const Field& field, const FieldDescription& field_desc) {
+            .then([this](const Image& image, const Field& field, const FieldDescription& field_desc) {
                 // **Run maintenance step**
-                maintenance(field, field_desc);
+                maintenance(image, field, field_desc);
 
                 // **Debugging output**
                 debug_info();
@@ -232,7 +235,8 @@ namespace module::localisation {
         }
     }
 
-    void RobotLocalisation::maintenance(const Field& field,
+    void RobotLocalisation::maintenance(const Image& image,
+                                        const Field& field,
                                         const FieldDescription& field_desc) {
         std::vector<TrackedRobot> new_tracked_robots{};
 
@@ -244,41 +248,32 @@ namespace module::localisation {
         for (auto& tracked_robot : tracked_robots) {
             auto state = RobotModel<double>::StateVec(tracked_robot.ukf.get_state());
 
-            // Teammates are pruned on comms staleness, not the vision-driven seen/missed_count below,
-            // since they are frequently outside camera view but still broadcasting (see prediction()).
-            if (tracked_robot.teammate) {
-                double time_since_comms =
-                    std::chrono::duration<double>(NUClear::clock::now() - tracked_robot.last_comms_time).count();
-                if (time_since_comms > cfg.teammate_timeout) {
-                    log<DEBUG>(fmt::format("Removing teammate {} due to comms timeout", tracked_robot.id));
-                    continue;
-                }
-            }
-            else {
-                // If a tracked robot has moved outside of view, keep it as seen so we don't lose it
-                // A robot is outside of view if it is not within the green horizon
-                // TODO (tom): It may be better to use fov and image size to determine if a robot should be seen
-                // if (!point_in_convex_hull(horizon.horizon, Eigen::Vector3d(state.rRWw.x(), state.rRWw.y(), 0))) {
-                //     tracked_robot.seen = true;
-                // }
+            // If a tracked robot has moved outside of the camera's field of view, keep it as seen so we don't
+            // lose it. Project the robot's world position into the camera's pixel space and check whether it
+            // falls outside the image bounds.
+            Eigen::Vector3d rRCc = image.Hcw * Eigen::Vector3d(state.rRWw.x(), state.rRWw.y(), 0);
 
-                // // If the tracked robot has not been seen, increment the consecutively missed count
-                // tracked_robot.missed_count = tracked_robot.seen ? 0 : tracked_robot.missed_count + 1;
-
-                // // Don't add this robot if it has been missed too many times
-                // if (tracked_robot.missed_count > cfg.max_missed_count) {
-                //     log<DEBUG>(fmt::format("Removing robot {} due to missed count", tracked_robot.id));
-                //     continue;
-                // }
+            bool in_view = false;
+            if (rRCc.x() > 0.0) {  // in front of the camera
+                Eigen::Vector2d dimensions      = Eigen::Vector2d(image.dimensions.x(), image.dimensions.y());
+                Eigen::Vector2d norm_dimensions = dimensions / dimensions.x();
+                Eigen::Vector2d pixel           = project(rRCc.normalized(), image.lens, norm_dimensions);
+                in_view                         = pixel.x() >= 0.0 && pixel.x() < norm_dimensions.x()
+                                 && pixel.y() >= 0.0 && pixel.y() < norm_dimensions.y();
             }
 
-            // // Check if this robot is too close to any kept robot
-            // if (std::any_of(new_tracked_robots.begin(), new_tracked_robots.end(), [&](const auto& other_robot) {
-            //         return (tracked_robot.get_rRWw() - other_robot.get_rRWw()).norm() < cfg.association_distance;
-            //     })) {
-            //     log<DEBUG>(fmt::format("Removing robot {} due to proximity", tracked_robot.id));
-            //     continue;
-            // }
+            if (!in_view) {
+                tracked_robot.seen = true;
+            }
+
+            // If the tracked robot has not been seen, increment the consecutively missed count
+            tracked_robot.missed_count = tracked_robot.seen ? 0 : tracked_robot.missed_count + 1;
+
+            // Don't add this robot if it has been missed too many times
+            if (tracked_robot.missed_count > cfg.max_missed_count) {
+                log<DEBUG>(fmt::format("Removing robot {} due to missed count", tracked_robot.id));
+                continue;
+            }
 
             for (const auto& other_robot : new_tracked_robots) {
                 if ((tracked_robot.get_rRWw() - other_robot.get_rRWw()).norm() < cfg.association_distance) {
