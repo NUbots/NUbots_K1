@@ -154,9 +154,9 @@ def run(host, target, user=None, **kwargs):
     # Replace hostname with its IP address if the hostname is already known
     num_robots = 4
     host = {
-        "{}{}".format(prefix, num): "10.1.1.{}".format(num)
+        "{}{}".format(prefix, num): "10.1.2.{}".format(num)
         for num in range(1, num_robots + 1)
-        for prefix in ("nugus", "n", "i", "igus")
+        for prefix in ("booster")
     }.get(host, host)
 
     # Setup a shared SSH ControlMaster connection so that every rsync call
