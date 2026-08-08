@@ -138,9 +138,12 @@ export class LocalisationNetwork {
   @action.bound
   private onSupportPosition(robotModel: RobotModel, supportPosition: SupportPosition) {
     const robot = LocalisationRobotModel.of(robotModel);
-    // RobotCommunication.cpp negates x before broadcasting a robot's pose (mixed-team
-    // protocol convention); undo that here so the marker renders in the correct on-field position.
-    robot.desiredSupportPosition = Vector2.from(supportPosition.position).multiplyScalar(-1, 1);
+    // Support.cpp already converts its internally-computed position out of Formation.yaml's
+    // mirrored x convention and back into our own field frame before emitting this message (see
+    // its "Convert out of Formation.yaml's mirrored x convention" comment), and never mirrors y at
+    // all. So no flip is needed here - unlike RobotCommunication.cpp's broadcast pose, which is
+    // still in the mirrored mixed-team convention when NUsight receives it.
+    robot.desiredSupportPosition = Vector2.from(supportPosition.position);
   }
 
   @action.bound

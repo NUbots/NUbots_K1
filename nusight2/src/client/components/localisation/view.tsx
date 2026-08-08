@@ -456,11 +456,8 @@ const VisibilityPanel = observer((props: Omit<LocalisationMenuBarProps, "Menu">)
       ],
     },
     {
-      title: "Debug",
+      title: "Team",
       buttons: [
-        { label: "Particles", isVisible: model.particlesVisible, onClick: props.toggleParticleVisibility },
-        { label: "Walk Path", isVisible: model.walkToDebugVisible, onClick: props.toggleWalkToDebugVisibility },
-        { label: "Bounding Box", isVisible: model.boundedBoxVisible, onClick: props.toggleBoundedBoxVisibility },
         { label: "Purpose", isVisible: model.purposeLabelVisible, onClick: props.togglePurposeLabelVisibility },
         {
           label: "Support Position",
@@ -473,6 +470,14 @@ const VisibilityPanel = observer((props: Omit<LocalisationMenuBarProps, "Menu">)
           isVisible: model.teammateBallVisible,
           onClick: props.toggleTeammateBallVisibility,
         },
+      ],
+    },
+    {
+      title: "Debug",
+      buttons: [
+        { label: "Particles", isVisible: model.particlesVisible, onClick: props.toggleParticleVisibility },
+        { label: "Walk Path", isVisible: model.walkToDebugVisible, onClick: props.toggleWalkToDebugVisibility },
+        { label: "Bounding Box", isVisible: model.boundedBoxVisible, onClick: props.toggleBoundedBoxVisibility },
       ],
     },
   ];
