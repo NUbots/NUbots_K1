@@ -253,8 +253,7 @@ namespace module::purpose {
                 if (robots) {
                     for (const auto& robot : robots->robots) {
                         if (robot.teammate
-                            && (robot.purpose.purpose == SoccerPosition::ATTACK
-                                || robot.purpose.purpose == SoccerPosition::READY_ATTACK)
+                            && robot.purpose.purpose == SoccerPosition::ATTACK
                             && robot.purpose.active) {
                             teammate_attacking = true;
                             break;
@@ -300,7 +299,7 @@ namespace module::purpose {
 
                 // If it's our set play, the closest robot takes the kick and everyone else supports
                 if (set_play && game_state.our_kick_off) {
-                    if (is_closest) {
+                    if (is_closest && !teammate_attacking) {
                         log<DEBUG>("Our set play, taking the kick.");
                         supporting = false;
                         emit(std::make_unique<Purpose>(global_config.player_id,
@@ -342,7 +341,7 @@ namespace module::purpose {
 
                 // If we are in the best position to attack, but we can't because of the situation, eg penalty
                 // positioning or opponent kickoff, then we should stick to a good spot and be ready to attack
-                if (is_closest && !allowed_to_attack) {
+                if (is_closest && !allowed_to_attack && !teammate_attacking) {
                     log<DEBUG>("Ready attack!");
                     supporting = false;
                     emit(std::make_unique<Purpose>(global_config.player_id,
