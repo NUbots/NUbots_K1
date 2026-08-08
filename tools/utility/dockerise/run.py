@@ -174,6 +174,8 @@ def run(func, image, hostname="docker", ports=[], docker_context=None):
             "stdout",
             "--attach",
             "stderr",
+            "--platform",
+            "linux/amd64",
             "--hostname",
             docker_hostname,
             "--interactive",
