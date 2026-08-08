@@ -43,6 +43,7 @@
 #include "message/skill/Kick.hpp"
 #include "message/support/GlobalConfig.hpp"
 
+#include "utility/math/angle.hpp"
 #include "utility/math/euler.hpp"
 namespace module::network {
 
@@ -59,6 +60,7 @@ namespace module::network {
     using message::skill::Kick;
     using message::support::GlobalConfig;
 
+    using utility::math::angle::normalise_angle;
     using utility::math::euler::mat_to_rpy_intrinsic;
 
 
@@ -216,10 +218,13 @@ namespace module::network {
 
                         // Store our position from field to torso
                         msg->current_pose.position = rTFf.cast<float>();
-                        // The mixed-team protocol expects the other team's field x-axis convention, which is
-                        // mirrored relative to ours, so flip x before sending
+                        // The mixed-team protocol's field frame is our internal field frame rotated 180 degrees
+                        // about the centre (same convention as the pose we send to the GameController), so negate
+                        // x and y and rotate the yaw by pi before sending.
                         msg->current_pose.position.x() *= -1.0F;
-                        msg->current_pose.position.z() = mat_to_rpy_intrinsic(Hft.rotation()).z();
+                        msg->current_pose.position.y() *= -1.0F;
+                        const double current_yaw = mat_to_rpy_intrinsic(Hft.rotation()).z();
+                        msg->current_pose.position.z() = static_cast<float>(normalise_angle(current_yaw + M_PI));
 
                         msg->current_pose.covariance = field->covariance.cast<float>();
                     }
@@ -240,11 +245,13 @@ namespace module::network {
                     Eigen::Vector3d rDFf = Hfd.translation();
                     // Store position
                     msg->target_pose.position = rDFf.cast<float>();
-                    // The mixed-team protocol expects the other team's field x-axis convention, which is
-                    // mirrored relative to ours, so flip x before sending
+                    // Same mixed-team-protocol 180 degree rotation as current_pose above: negate x and y and
+                    // rotate the yaw by pi before sending.
                     msg->target_pose.position.x() *= -1.0F;
+                    msg->target_pose.position.y() *= -1.0F;
                     // Extract yaw from rotation matrix
-                    msg->target_pose.position.z() = mat_to_rpy_intrinsic(Hfd.rotation()).z();
+                    const double target_yaw = mat_to_rpy_intrinsic(Hfd.rotation()).z();
+                    msg->target_pose.position.z() = static_cast<float>(normalise_angle(target_yaw + M_PI));
                     // Copy team and player ID to target pose
                     msg->target_pose.team      = msg->current_pose.team;
                     msg->target_pose.player_id = config.player_id;
@@ -274,10 +281,12 @@ namespace module::network {
                         Eigen::Vector3d vBFf = Hfw.linear() * loc_ball->vBw;
                         msg->ball.velocity   = vBFf.cast<float>();
 
-                        // The mixed-team protocol expects the other team's field x-axis convention, which is
-                        // mirrored relative to ours, so flip x before sending
+                        // Same mixed-team-protocol 180 degree rotation as current_pose above: negate x and y
+                        // (the ball has no orientation, so there's no yaw to rotate).
                         msg->ball.position.x() *= -1.0F;
+                        msg->ball.position.y() *= -1.0F;
                         msg->ball.velocity.x() *= -1.0F;
+                        msg->ball.velocity.y() *= -1.0F;
                     }
                     msg->ball.covariance = loc_ball->covariance.block(0, 0, 3, 3).cast<float>();
                     // Age of the ball observation in seconds (-1 indicates invalid / do not rebroadcast teammate

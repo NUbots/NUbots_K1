@@ -174,10 +174,11 @@ export class LocalisationNetwork {
     const x = pose.position?.x ?? 0;
     const y = pose.position?.y ?? 0;
     const yaw = pose.position?.z ?? 0;
-    // Undo RobotCommunication.cpp's mixed-team-protocol x-flip (same root cause as the
-    // Support Position fix above). Only x is flipped on send, not yaw, so only x is corrected here.
-    const rotation = Matrix4.fromRotationZ(yaw);
-    const Hft = new Matrix4(rotation.x, rotation.y, rotation.z, new Vector4(-x, y, 0, 1));
+    // Undo RobotCommunication.cpp's mixed-team-protocol 180 degree rotation (negate x and y,
+    // rotate yaw by pi) applied before broadcasting, so teammates render in their true on-field
+    // position and orientation.
+    const rotation = Matrix4.fromRotationZ(yaw + Math.PI);
+    const Hft = new Matrix4(rotation.x, rotation.y, rotation.z, new Vector4(-x, -y, 0, 1));
 
     // This model's own Hfw defaults to identity, so setting Htw/Hcw to Hft's inverse makes its
     // computed Hft/Hfc equal the broadcast pose directly.
