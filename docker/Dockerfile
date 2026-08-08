@@ -373,6 +373,7 @@ RUN install-from-source https://github.com/NUbots/VisualMesh/archive/64c49fce3a1
     -DBUILD_OPENCL_ENGINE=ON
 
 # JSON for modern C++ (https://github.com/nlohmann/json)
+# PlotJuggler, GPT, and MCPServer
 RUN install-from-source https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
 
 # cpp-httplib, header-only HTTP/HTTPS library (https://github.com/yhirose/cpp-httplib)
