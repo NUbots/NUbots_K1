@@ -142,6 +142,7 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
             togglePurposeLabelVisibility={this.togglePurposeLabelVisibility}
             toggleSupportPositionVisibility={this.toggleSupportPositionVisibility}
             toggleTeammatesVisibility={this.toggleTeammatesVisibility}
+            toggleTeammateBallVisibility={this.toggleTeammateBallVisibility}
             toggleDashboardVisibility={this.toggleDashboardVisibility}
           ></LocalisationMenuBar>
         </div>
@@ -172,6 +173,7 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
             togglePurposeLabelVisibility={this.togglePurposeLabelVisibility}
             toggleSupportPositionVisibility={this.toggleSupportPositionVisibility}
             toggleTeammatesVisibility={this.toggleTeammatesVisibility}
+            toggleTeammateBallVisibility={this.toggleTeammateBallVisibility}
             toggleDashboardVisibility={this.toggleDashboardVisibility}
           />
         </div>
@@ -285,6 +287,10 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
     this.props.controller.toggleTeammatesVisibility(this.props.model);
   };
 
+  private toggleTeammateBallVisibility = () => {
+    this.props.controller.toggleTeammateBallVisibility(this.props.model);
+  };
+
   private toggleDashboardVisibility = () => {
     this.props.controller.toggleDashboardVisibility(this.props.model);
   };
@@ -311,6 +317,7 @@ interface LocalisationMenuBarProps {
   togglePurposeLabelVisibility(): void;
   toggleSupportPositionVisibility(): void;
   toggleTeammatesVisibility(): void;
+  toggleTeammateBallVisibility(): void;
   toggleDashboardVisibility(): void;
 }
 
@@ -415,6 +422,7 @@ const LocalisationMenuBar = observer((props: LocalisationMenuBarProps) => {
         togglePurposeLabelVisibility={props.togglePurposeLabelVisibility}
         toggleSupportPositionVisibility={props.toggleSupportPositionVisibility}
         toggleTeammatesVisibility={props.toggleTeammatesVisibility}
+        toggleTeammateBallVisibility={props.toggleTeammateBallVisibility}
         toggleDashboardVisibility={props.toggleDashboardVisibility}
       />
     </Menu>
@@ -460,6 +468,11 @@ const VisibilityPanel = observer((props: Omit<LocalisationMenuBarProps, "Menu">)
           onClick: props.toggleSupportPositionVisibility,
         },
         { label: "Teammates", isVisible: model.teammatesVisible, onClick: props.toggleTeammatesVisibility },
+        {
+          label: "Teammate Ball",
+          isVisible: model.teammateBallVisible,
+          onClick: props.toggleTeammateBallVisibility,
+        },
       ],
     },
   ];
@@ -596,21 +609,27 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
         <SupportPositionMarker position={robot.desiredSupportPosition} color="#2979ff" />
       )}
 
-      {model.teammatesVisible &&
+      {(model.teammatesVisible || model.teammateBallVisible) &&
         Array.from(robot.teammates.values()).map((teammate) => (
           <object3D key={teammate.id}>
-            <K1 model={teammate} />
-            {teammate.purpose && (
-              <PurposeLabel
-                Hft={teammate.Hft}
-                playerId={teammate.playerId}
-                backgroundColor={teammate.color}
-                purpose={teammate.purpose}
-                cameraPitch={model.camera.pitch}
-                cameraYaw={model.camera.yaw}
-              />
+            {model.teammatesVisible && (
+              <>
+                <K1 model={teammate} />
+                {teammate.purpose && (
+                  <PurposeLabel
+                    Hft={teammate.Hft}
+                    playerId={teammate.playerId}
+                    backgroundColor={teammate.color}
+                    purpose={teammate.purpose}
+                    cameraPitch={model.camera.pitch}
+                    cameraYaw={model.camera.yaw}
+                  />
+                )}
+              </>
             )}
-            {teammate.rBFf && <Ball position={teammate.rBFf.toArray()} scale={teammate.rBFf.z} />}
+            {model.teammateBallVisible && teammate.rBFf && (
+              <Ball position={teammate.rBFf.toArray()} scale={teammate.rBFf.z} />
+            )}
           </object3D>
         ))}
 

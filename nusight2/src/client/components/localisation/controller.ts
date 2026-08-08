@@ -411,6 +411,11 @@ export class LocalisationController {
   };
 
   @action
+  toggleTeammateBallVisibility = (model: LocalisationModel) => {
+    model.teammateBallVisible = !model.teammateBallVisible;
+  };
+
+  @action
   toggleOrientation(model: LocalisationModel) {
     model.dashboardField.orientation = model.dashboardField.orientation === "left" ? "right" : "left";
   }
