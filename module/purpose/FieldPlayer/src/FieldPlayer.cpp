@@ -193,8 +193,6 @@ namespace module::purpose {
                     return;
                 }
 
-                log<DEBUG>("Total number of robots:", robots ? robots->robots.size() : 0);
-
                 // Make an ignore list with inactive teammates
                 std::vector<unsigned int> ignore_ids{};
                 // Add inactive robots to the ignore list
@@ -266,7 +264,6 @@ namespace module::purpose {
                             && robot.purpose.active) {
                             teammate_attacking   = true;
                             attacking_teammate_id = robot.purpose.player_id;
-                            log<DEBUG>("Teammate", attacking_teammate_id, "is attacking, standing down from attacking.");
                             break;
                         }
                     }
