@@ -106,6 +106,11 @@ namespace module::tools {
         /// @param message The message to display in the popup
         void draw_popup(const std::string& message);
 
+        /// @brief Draws a popup with the given message and blocks until the user presses y/n
+        /// @param message The confirmation message to display
+        /// @return True if the user confirmed with y, false if they declined with n
+        bool confirm_prompt(const std::string& message);
+
         /// @brief Functionality for the user to edit a field in the display
         void edit_selection();
 
