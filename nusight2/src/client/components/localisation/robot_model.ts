@@ -174,7 +174,11 @@ export class LocalisationRobotModel {
   @observable goals: { points: { bottom: Vector3; top: Vector3 }[] };
   @observable robots: { id: number; rRWw: Vector3; color: string }[];
   @observable purpose: string;
-  // Desired position when performing the Support role. Already in field space (unlike most
+  // Teammates seen via the UDP team-communication broadcast (message.input.Message), keyed by
+  // player id. Each is a full LocalisationRobotModel so it can be rendered with the exact same
+  // components used for our own robot (K1, PurposeLabel) - see network.ts#onTeamCommunication.
+  @observable teammates: Map<number, LocalisationRobotModel> = new Map();
+  // Desired position when performing the Support purpose. Already in field space (unlike most
   // fields on this model, which store world-space data and expose field-space via a computed).
   @observable desiredSupportPosition?: Vector2;
   @observable associationLines?: Line[];

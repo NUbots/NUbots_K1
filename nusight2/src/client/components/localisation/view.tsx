@@ -139,8 +139,9 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
             toggleFieldIntersectionsVisibility={this.toggleFieldIntersectionsVisibility}
             toggleWalkToDebugVisibility={this.toggleWalkToDebugVisibility}
             toggleBoundedBoxVisibility={this.toggleBoundedBoxVisibility}
-            toggleRoleLabelVisibility={this.toggleRoleLabelVisibility}
+            togglePurposeLabelVisibility={this.togglePurposeLabelVisibility}
             toggleSupportPositionVisibility={this.toggleSupportPositionVisibility}
+            toggleTeammatesVisibility={this.toggleTeammatesVisibility}
             toggleDashboardVisibility={this.toggleDashboardVisibility}
           ></LocalisationMenuBar>
         </div>
@@ -168,8 +169,9 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
             toggleFieldIntersectionsVisibility={this.toggleFieldIntersectionsVisibility}
             toggleWalkToDebugVisibility={this.toggleWalkToDebugVisibility}
             toggleBoundedBoxVisibility={this.toggleBoundedBoxVisibility}
-            toggleRoleLabelVisibility={this.toggleRoleLabelVisibility}
+            togglePurposeLabelVisibility={this.togglePurposeLabelVisibility}
             toggleSupportPositionVisibility={this.toggleSupportPositionVisibility}
+            toggleTeammatesVisibility={this.toggleTeammatesVisibility}
             toggleDashboardVisibility={this.toggleDashboardVisibility}
           />
         </div>
@@ -271,12 +273,16 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
     this.props.controller.toggleBoundedBoxVisibility(this.props.model);
   };
 
-  private toggleRoleLabelVisibility = () => {
-    this.props.controller.toggleRoleLabelVisibility(this.props.model);
+  private togglePurposeLabelVisibility = () => {
+    this.props.controller.togglePurposeLabelVisibility(this.props.model);
   };
 
   private toggleSupportPositionVisibility = () => {
     this.props.controller.toggleSupportPositionVisibility(this.props.model);
+  };
+
+  private toggleTeammatesVisibility = () => {
+    this.props.controller.toggleTeammatesVisibility(this.props.model);
   };
 
   private toggleDashboardVisibility = () => {
@@ -302,8 +308,9 @@ interface LocalisationMenuBarProps {
   toggleFieldIntersectionsVisibility(): void;
   toggleWalkToDebugVisibility(): void;
   toggleBoundedBoxVisibility(): void;
-  toggleRoleLabelVisibility(): void;
+  togglePurposeLabelVisibility(): void;
   toggleSupportPositionVisibility(): void;
+  toggleTeammatesVisibility(): void;
   toggleDashboardVisibility(): void;
 }
 
@@ -405,8 +412,9 @@ const LocalisationMenuBar = observer((props: LocalisationMenuBarProps) => {
         toggleFieldIntersectionsVisibility={props.toggleFieldIntersectionsVisibility}
         toggleWalkToDebugVisibility={props.toggleWalkToDebugVisibility}
         toggleBoundedBoxVisibility={props.toggleBoundedBoxVisibility}
-        toggleRoleLabelVisibility={props.toggleRoleLabelVisibility}
+        togglePurposeLabelVisibility={props.togglePurposeLabelVisibility}
         toggleSupportPositionVisibility={props.toggleSupportPositionVisibility}
+        toggleTeammatesVisibility={props.toggleTeammatesVisibility}
         toggleDashboardVisibility={props.toggleDashboardVisibility}
       />
     </Menu>
@@ -445,12 +453,13 @@ const VisibilityPanel = observer((props: Omit<LocalisationMenuBarProps, "Menu">)
         { label: "Particles", isVisible: model.particlesVisible, onClick: props.toggleParticleVisibility },
         { label: "Walk Path", isVisible: model.walkToDebugVisible, onClick: props.toggleWalkToDebugVisibility },
         { label: "Bounding Box", isVisible: model.boundedBoxVisible, onClick: props.toggleBoundedBoxVisibility },
-        { label: "Role", isVisible: model.roleLabelVisible, onClick: props.toggleRoleLabelVisibility },
+        { label: "Purpose", isVisible: model.purposeLabelVisible, onClick: props.togglePurposeLabelVisibility },
         {
           label: "Support Position",
           isVisible: model.supportPositionVisible,
           onClick: props.toggleSupportPositionVisibility,
         },
+        { label: "Teammates", isVisible: model.teammatesVisible, onClick: props.toggleTeammatesVisibility },
       ],
     },
   ];
@@ -572,7 +581,7 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
         />
       )}
 
-      {model.roleLabelVisible && robot.Hft && robot.purpose && (
+      {model.purposeLabelVisible && robot.Hft && robot.purpose && (
         <PurposeLabel
           Hft={robot.Hft}
           playerId={robot.playerId}
@@ -586,6 +595,23 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
       {model.supportPositionVisible && robot.desiredSupportPosition && (
         <SupportPositionMarker position={robot.desiredSupportPosition} color="#2979ff" />
       )}
+
+      {model.teammatesVisible &&
+        Array.from(robot.teammates.values()).map((teammate) => (
+          <object3D key={teammate.id}>
+            <K1 model={teammate} />
+            {teammate.purpose && (
+              <PurposeLabel
+                Hft={teammate.Hft}
+                playerId={teammate.playerId}
+                backgroundColor={teammate.color}
+                purpose={teammate.purpose}
+                cameraPitch={model.camera.pitch}
+                cameraYaw={model.camera.yaw}
+              />
+            )}
+          </object3D>
+        ))}
 
       {model.walkToDebugVisible && robot.Hfd && <WalkPathGoal Hfd={robot.Hfd} Hft={robot.Hft} motors={robot.motors} />}
 
@@ -724,7 +750,7 @@ export class DashboardPanel extends Component<DashboardPanelProps> {
                         penalised={model.penalised}
                         penalty={model.penalty}
                         phase={model.phase}
-                        role={model.role}
+                        purpose={model.purpose}
                         title={model.title}
                         walkCommand={model.walkCommand}
                       />

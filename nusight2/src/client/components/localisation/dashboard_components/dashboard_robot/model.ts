@@ -144,10 +144,10 @@ export class DashboardRobotModel {
     });
   });
 
-  // The role (soccer position) the robot has decided to take. Sourced from the same Purpose message
-  // that drives the on-field role label, so it matches what that toggle shows.
+  // The purpose (soccer position) the robot has decided to take. Sourced from the same Purpose
+  // message that drives the on-field purpose label, so it matches what that toggle shows.
   @computed
-  get role(): string {
+  get purpose(): string {
     return LocalisationRobotModel.of(this.robot).purpose || "unknown";
   }
 

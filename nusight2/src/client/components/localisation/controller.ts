@@ -396,13 +396,18 @@ export class LocalisationController {
   };
 
   @action
-  toggleRoleLabelVisibility = (model: LocalisationModel) => {
-    model.roleLabelVisible = !model.roleLabelVisible;
+  togglePurposeLabelVisibility = (model: LocalisationModel) => {
+    model.purposeLabelVisible = !model.purposeLabelVisible;
   };
 
   @action
   toggleSupportPositionVisibility = (model: LocalisationModel) => {
     model.supportPositionVisible = !model.supportPositionVisible;
+  };
+
+  @action
+  toggleTeammatesVisibility = (model: LocalisationModel) => {
+    model.teammatesVisible = !model.teammatesVisible;
   };
 
   @action
