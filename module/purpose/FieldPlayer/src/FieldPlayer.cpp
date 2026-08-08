@@ -247,6 +247,7 @@ namespace module::purpose {
 
                 // Only wait if the opponent hasn't kicked off yet
                 bool allowed_to_attack = !kickoff_wait;
+                log<DEBUG>("Allowed to attack:", allowed_to_attack, "is closest:", is_closest);
 
                 // Hard rule: never enter Attack/ReadyAttack while an active teammate has broadcast that they are
                 // going for the ball, regardless of player ID or our own closest-to-ball calculation, so we don't
@@ -262,6 +263,7 @@ namespace module::purpose {
                             && robot.purpose.active) {
                             teammate_attacking   = true;
                             attacking_teammate_id = robot.purpose.player_id;
+                            log<DEBUG>("Teammate", attacking_teammate_id, "is attacking, standing down from attacking.");
                             break;
                         }
                     }
