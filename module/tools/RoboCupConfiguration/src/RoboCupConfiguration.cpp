@@ -150,6 +150,13 @@ namespace module::tools {
                 case 'X':  // shutdown powerplant
                     powerplant.shutdown();
                     break;
+                case 'B':  // restarts the booster daemon
+                    if (confirm_prompt("Warning: robot will briefly go limp! Restart booster-daemon? (y/n)")) {
+                        draw_popup("Restarting...");
+                        system("systemctl restart booster-daemon.service");
+                        display.log_message = "booster-daemon.service has been restarted.";
+                    }
+                    break;
             }
 
             // Update whatever visual changes we made
@@ -530,7 +537,7 @@ namespace module::tools {
         attroff(A_BOLD);
 
         // Each Command
-        const char* COMMANDS[] = {"ENTER", "SPACE", "F", "R", "C", "N", "S", "D", "E", "W", "X"};
+        const char* COMMANDS[] = {"ENTER", "SPACE", "F", "R", "C", "N", "S", "D", "E", "W", "X", "B"};
 
         // Each Meaning
         const char* MEANINGS[] = {"Edit",
@@ -543,7 +550,8 @@ namespace module::tools {
                                   "Stop RoboCup",
                                   "Enable Wifi",
                                   "Disable Wifi",
-                                  "Shutdown"};
+                                  "Shutdown",
+                                  "Restart Booster"};
 
         // Prints commands and their meanings to the screen
         // Print the first row
@@ -597,6 +605,18 @@ namespace module::tools {
         wattroff(popup, A_BOLD);
         wrefresh(popup);
         delwin(popup);
+    }
+
+    bool RoboCupConfiguration::confirm_prompt(const std::string& message) {
+        draw_popup(message);
+        while (true) {
+            switch (getch()) {
+                case 'y':
+                case 'Y': return true;
+                case 'n':
+                case 'N': return false;
+            }
+        }
     }
 
 }  // namespace module::tools
