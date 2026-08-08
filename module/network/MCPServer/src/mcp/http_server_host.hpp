@@ -40,7 +40,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <nlohmann/json.hpp>
+#include <json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>

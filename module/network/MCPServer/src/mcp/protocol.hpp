@@ -15,7 +15,7 @@
 #pragma once
 
 #include <cstdint>
-#include <nlohmann/json.hpp>
+#include <json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>

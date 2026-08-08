@@ -33,7 +33,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
-#include <nlohmann/json.hpp>
+#include <json.hpp>
 #include <string>
 #include <string_view>
 #include <thread>

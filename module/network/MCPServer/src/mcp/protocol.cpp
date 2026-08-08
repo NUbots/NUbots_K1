@@ -3,7 +3,7 @@
 
 #include <cstdint>
 #include <limits>
-#include <nlohmann/json.hpp>
+#include <json.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>

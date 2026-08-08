@@ -18,7 +18,7 @@
 #include <atomic>
 #include <future>
 #include <memory>
-#include <nlohmann/json.hpp>
+#include <json.hpp>
 #include <optional>
 #include <string>
 

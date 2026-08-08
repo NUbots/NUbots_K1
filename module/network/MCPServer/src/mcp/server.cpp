@@ -11,7 +11,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
-#include <nlohmann/json.hpp>
+#include <json.hpp>
 #include <random>
 #include <sstream>
 #include <string>

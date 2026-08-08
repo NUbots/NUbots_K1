@@ -2,7 +2,7 @@
 #pragma once
 
 #include <exception>
-#include <nlohmann/json.hpp>
+#include <json.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
