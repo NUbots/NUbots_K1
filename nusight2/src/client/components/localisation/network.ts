@@ -186,6 +186,17 @@ export class LocalisationNetwork {
     teammate.Hcw = Hft.invert();
     teammate.playerId = pose.playerId;
     teammate.purpose = message.goingForBall ? "GOING FOR BALL" : "";
+
+    // The ball position this teammate is reporting, if it has actually seen one (age is -1 when
+    // the ball hasn't been seen). Reuses the same rBFf computed getter and <Ball> component as our
+    // own ball by storing the already field-space (and x/y-unflipped) position as "world space" on
+    // this synthetic model, whose Hfw is identity - same trick used for Htw/Hcw above.
+    const ball = message.ball;
+    if (ball?.position && ball.age >= 0) {
+      teammate.ball = { rBWw: new Vector3(-ball.position.x, -ball.position.y, ball.position.z) };
+    } else {
+      teammate.ball = undefined;
+    }
   }
 
   @action.bound

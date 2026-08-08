@@ -265,6 +265,10 @@ namespace module::network {
                 }
 
                 // Ball information
+                // Default to -1 (not valid / not seen) per the Ball.age field's documented convention;
+                // only overwritten below when we actually have a recent, confident ball observation.
+                msg->ball.age = -1.0F;
+
                 // Check if the ball has been seen recently, if it hasn't the message fields will 0
                 // and the confidence will be 0
                 if (loc_ball && (NUClear::clock::now() - loc_ball->time_of_measurement < cfg.ball_timeout)) {

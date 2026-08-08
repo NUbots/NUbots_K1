@@ -610,6 +610,7 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
                 cameraYaw={model.camera.yaw}
               />
             )}
+            {teammate.rBFf && <Ball position={teammate.rBFf.toArray()} scale={teammate.rBFf.z} />}
           </object3D>
         ))}
 
