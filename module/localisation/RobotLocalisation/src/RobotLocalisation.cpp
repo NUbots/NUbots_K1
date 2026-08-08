@@ -84,13 +84,12 @@ namespace module::localisation {
         });
 
         on<Every<UPDATE_RATE, Per<std::chrono::seconds>>,
-           With<GreenHorizon>,
            With<Field>,
            With<FieldDescription>,
            Sync<RobotLocalisation>>()
-            .then([this](const GreenHorizon& horizon, const Field& field, const FieldDescription& field_desc) {
+            .then([this](const Field& field, const FieldDescription& field_desc) {
                 // **Run maintenance step**
-                maintenance(horizon, field, field_desc);
+                maintenance(field, field_desc);
 
                 // **Debugging output**
                 debug_info();
@@ -233,8 +232,7 @@ namespace module::localisation {
         }
     }
 
-    void RobotLocalisation::maintenance(const GreenHorizon& horizon,
-                                        const Field& field,
+    void RobotLocalisation::maintenance(const Field& field,
                                         const FieldDescription& field_desc) {
         std::vector<TrackedRobot> new_tracked_robots{};
 
@@ -260,18 +258,18 @@ namespace module::localisation {
                 // If a tracked robot has moved outside of view, keep it as seen so we don't lose it
                 // A robot is outside of view if it is not within the green horizon
                 // TODO (tom): It may be better to use fov and image size to determine if a robot should be seen
-                if (!point_in_convex_hull(horizon.horizon, Eigen::Vector3d(state.rRWw.x(), state.rRWw.y(), 0))) {
-                    tracked_robot.seen = true;
-                }
+                // if (!point_in_convex_hull(horizon.horizon, Eigen::Vector3d(state.rRWw.x(), state.rRWw.y(), 0))) {
+                //     tracked_robot.seen = true;
+                // }
 
-                // If the tracked robot has not been seen, increment the consecutively missed count
-                tracked_robot.missed_count = tracked_robot.seen ? 0 : tracked_robot.missed_count + 1;
+                // // If the tracked robot has not been seen, increment the consecutively missed count
+                // tracked_robot.missed_count = tracked_robot.seen ? 0 : tracked_robot.missed_count + 1;
 
-                // Don't add this robot if it has been missed too many times
-                if (tracked_robot.missed_count > cfg.max_missed_count) {
-                    log<DEBUG>(fmt::format("Removing robot {} due to missed count", tracked_robot.id));
-                    continue;
-                }
+                // // Don't add this robot if it has been missed too many times
+                // if (tracked_robot.missed_count > cfg.max_missed_count) {
+                //     log<DEBUG>(fmt::format("Removing robot {} due to missed count", tracked_robot.id));
+                //     continue;
+                // }
             }
 
             // // Check if this robot is too close to any kept robot
