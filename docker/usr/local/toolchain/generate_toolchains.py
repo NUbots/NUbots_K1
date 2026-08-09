@@ -51,6 +51,11 @@ def generate_cmake_toolchain(target, prefix):
         else "\n"
     )
 
+    emulator = target.get("emulator", [])
+    emulator_block = (
+        'set(CMAKE_CROSSCOMPILING_EMULATOR "{}")\n'.format(";".join(emulator)) if emulator else "\n"
+    )
+
     linker_flags = target.get("linker_flags", [])
     linker_flags_block = (
         'set(CMAKE_EXE_LINKER_FLAGS_INIT "{} " CACHE STRING "Flags used by the linker during all built types.")\n'.format(
@@ -73,6 +78,7 @@ def generate_cmake_toolchain(target, prefix):
         set(CMAKE_C_COMPILER {c_compiler})
         set(CMAKE_CXX_COMPILER {cxx_compiler})
 
+        {emulator_block}
         {sysroot_block}
         set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
         set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
@@ -118,6 +124,7 @@ def generate_cmake_toolchain(target, prefix):
         arch=target["arch"],
         c_compiler=target.get("c_compiler", "/usr/bin/gcc"),
         cxx_compiler=target.get("cxx_compiler", "/usr/bin/g++"),
+        emulator_block=emulator_block,
         sysroot_block=sysroot_block,
         sysroot=sysroot,
         linker_flags_block=linker_flags_block,

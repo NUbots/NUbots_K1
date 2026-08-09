@@ -107,6 +107,16 @@ RUN --mount=type=bind,source=usr/local/toolchain,target=/usr/local/toolchain \
 #   |_|\___/ \___/|_|\___|_| |_|\__,_|_|_| |_| #
 ################################################
 ARG prefix=/usr/local
+ARG jobs=1
+
+# Install prefix/toolchain-dir for source-built dependencies below, computed once per platform
+RUN if [ "${platform}" = "orinnx" ]; then \
+    echo "DEP_PREFIX=/l4t/targetfs${prefix}" > /root/.dep_env && \
+    echo "DEP_TOOLCHAIN='--toolchain-dir /usr/local'" >> /root/.dep_env; \
+    else \
+    echo "DEP_PREFIX=/usr/local" > /root/.dep_env && \
+    echo "DEP_TOOLCHAIN=''" >> /root/.dep_env; \
+    fi
 
 # Create a python virtual environment at ${PREFIX} to decouple python packages from the system
 RUN python3 -m venv ${prefix}
@@ -133,16 +143,20 @@ RUN install-package -p ${platform} libncurses-dev libncurses6 libtinfo6 libc6-de
 RUN pip3 install pyyaml mako
 
 # Install OpenCL C Headers
-RUN install-from-source https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2022.05.18.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2022.05.18.tar.gz \
+    --jobs ${jobs} \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN}
 
 
 # OpenCL loader library
 RUN install-package ruby autotools-dev automake libtool
-RUN install-from-source https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v2.3.1.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v2.3.1.tar.gz \
+    --jobs ${jobs} \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN}
 
 RUN if [ "${platform}" != "generic" ]; then \
     ln -sf libm.so.6      /l4t/targetfs/usr/lib/aarch64-linux-gnu/libm.so && \
@@ -152,7 +166,8 @@ RUN if [ "${platform}" != "generic" ]; then \
     fi
 
 # OpenCV
-RUN install-from-source https://github.com/opencv/opencv/archive/refs/tags/4.9.0.tar.gz
+RUN install-from-source https://github.com/opencv/opencv/archive/refs/tags/4.9.0.tar.gz \
+    --jobs ${jobs}
 
 RUN wget -nv https://github.com/protocolbuffers/protobuf/releases/download/v21.4/protoc-21.4-linux-x86_64.zip -O protoc-21.4-linux-x86_64.zip && \
     unzip protoc-21.4-linux-x86_64.zip -d /usr/ && \
@@ -160,6 +175,7 @@ RUN wget -nv https://github.com/protocolbuffers/protobuf/releases/download/v21.4
 
 # Protobuf
 RUN install-from-source https://github.com/protocolbuffers/protobuf/releases/download/v21.4/protobuf-cpp-3.21.4.tar.gz \
+    --jobs ${jobs} \
     -Dprotobuf_PROTOC_EXECUTABLE="/usr/bin/protoc" \
     -Dprotobuf_BUILD_TESTS=OFF \
     -Dprotobuf_BUILD_LIBPROTOC=ON \
@@ -171,6 +187,7 @@ RUN if [ "${platform}" != "generic" ]; then \
     unzip protoc-21.4-linux-aarch_64.zip -d /l4t/targetfs/usr/ && \
     rm protoc-21.4-linux-aarch_64.zip && \
     install-from-source https://github.com/protocolbuffers/protobuf/releases/download/v21.4/protobuf-cpp-3.21.4.tar.gz \
+    --jobs ${jobs} \
     --toolchain-dir /usr \
     -Dprotobuf_PROTOC_EXECUTABLE="/usr/bin/protoc" \
     -Dprotobuf_BUILD_TESTS=OFF \
@@ -192,6 +209,7 @@ RUN install-package opencl-c-headers \
 
 
 RUN install-from-source https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2021.13.0.tar.gz \
+    --jobs ${jobs} \
     --build-system cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DTBB_TEST:BOOL='OFF' \
@@ -219,13 +237,14 @@ RUN mkdir build && cd build && \
     -DENABLE_SYSTEM_PROTOBUF:BOOL='OFF' \
     -DENABLE_SYSTEM_FLATBUFFERS:BOOL='OFF' \
     -DENABLE_INTEL_GPU:BOOL='OFF' \
-    -DENABLE_INTEL_CPU:BOOL='OFF' \
-    -DENABLE_ARM_COMPUTE_CMAKE:BOOL='ON' \
+    -DENABLE_INTEL_CPU:BOOL='ON' \
+    -DENABLE_ARM_COMPUTE_CMAKE:BOOL='OFF' \
+    -DARM_COMPUTE_SCONS_JOBS="${jobs}" \
     -DENABLE_CPPLINT:BOOL='OFF' \
     -DCMAKE_CXX_STANDARD='17' \
     -Wno-dev \
     -GNinja && \
-    ninja -j$(nproc) && ninja -j$(nproc) install
+    ninja -j${jobs} && ninja -j${jobs} install
 
 # Move OpenVino libraries to our library path
 RUN ARCH=$([ "${platform}" = "orinnx" ] && echo "aarch64" || echo "intel64") && \
@@ -260,19 +279,23 @@ RUN install-package -p ${platform} \
     libnvinfer-vc-plugin-dev
 
 # Eigen3
-RUN install-from-source https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+RUN install-from-source https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz \
+    --jobs ${jobs}
 
 # tcmalloc
-RUN install-from-source https://github.com/gperftools/gperftools/releases/download/gperftools-2.10/gperftools-2.10.tar.gz \
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/gperftools/gperftools/releases/download/gperftools-2.10/gperftools-2.10.tar.gz \
+    --jobs ${jobs} \
     --build-system autotools \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN} \
     --with-tcmalloc-pagesize=64 \
     --enable-minimal
 
 # Libjpeg
 RUN install-package yasm
 RUN install-from-source https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.0.7-esr.tar.gz \
+    --jobs ${jobs} \
     -DWITH_SIMD=ON \
     -DFORCE_INLINE=ON \
     -DINLINE_WORKS=1 \
@@ -286,16 +309,19 @@ RUN install-from-source https://github.com/libjpeg-turbo/libjpeg-turbo/archive/r
 
 # yaml-cpp
 RUN install-from-source https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.tar.gz \
+    --jobs ${jobs} \
     -DYAML_CPP_BUILD_TESTS=OFF \
     -DBUILD_SHARED_LIBS=OFF
 
 # fmt formatting library
 RUN install-from-source https://github.com/fmtlib/fmt/archive/refs/tags/9.0.0.tar.gz \
+    --jobs ${jobs} \
     -DFMT_DOC=OFF \
     -DFMT_TEST=OFF
 
 # Catch unit testing library
 RUN install-from-source https://github.com/catchorg/Catch2/archive/refs/tags/v3.8.0.tar.gz \
+    --jobs ${jobs} \
     -DCATCH_CONFIG_CONSOLE_WIDTH=120 \
     -DCATCH_CONFIG_CPP11_TO_STRING=ON \
     -DCATCH_CONFIG_CPP17_UNCAUGHT_EXCEPTIONS=ON \
@@ -306,69 +332,83 @@ RUN install-from-source https://github.com/catchorg/Catch2/archive/refs/tags/v3.
 
 # LibUV
 RUN install-from-source https://github.com/libuv/libuv/archive/refs/tags/v1.44.2.tar.gz \
+    --jobs ${jobs} \
     -Dlibuv_buildtests=OFF \
     -DBUILD_TESTING=OFF
 
 # NUClear!
 RUN install-from-source https://github.com/Fastcode/NUClear/archive/925dca0f31484a7df64fd335de5a6c9335483c7f.tar.gz \
+    --jobs ${jobs} \
     -DBUILD_TESTS=OFF
 
 # Backtrace
-RUN install-from-source https://github.com/ianlancetaylor/libbacktrace/archive/8602fda64e78f1f46563220f2ee9f7e70819c51d.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local \
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/ianlancetaylor/libbacktrace/archive/8602fda64e78f1f46563220f2ee9f7e70819c51d.tar.gz \
+    --jobs ${jobs} \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN} \
     --without-system-libunwind \
     --enable-shared \
     --enable-static
 
 # Alsa and espeak
-RUN install-from-source https://github.com/alsa-project/alsa-lib/archive/refs/tags/v1.2.7.2.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local \
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/alsa-project/alsa-lib/archive/refs/tags/v1.2.7.2.tar.gz \
+    --jobs ${jobs} \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN} \
     --without-debug
 RUN install-package -p ${platform} alsa-utils
 
 # mio memory mapping library
 RUN install-from-source https://github.com/mandreyel/mio/archive/3f86a95c0784d73ce6815237ec33ed25f233b643.tar.gz \
+    --jobs ${jobs} \
     --patch https://patch-diff.githubusercontent.com/raw/mandreyel/mio/pull/93.patch
 
 # zstr header to have file streams that do zlib compression
-RUN INCLUDE_PREFIX=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/usr/local" || echo "/usr/local") && \
+RUN . /root/.dep_env && \
     install-from-source https://raw.githubusercontent.com/mateidavid/zstr/v1.0.6/src/zstr.hpp \
-    --prefix ${INCLUDE_PREFIX} --no-toolchain \
+    --prefix ${DEP_PREFIX} --no-toolchain \
     --header-path include/zstr && \
     install-from-source https://raw.githubusercontent.com/mateidavid/zstr/v1.0.6/src/strict_fstream.hpp \
-    --prefix ${INCLUDE_PREFIX} --no-toolchain \
+    --prefix ${DEP_PREFIX} --no-toolchain \
     --header-path include/zstr
 
 # Visual Mesh
 RUN install-from-source https://github.com/NUbots/VisualMesh/archive/64c49fce3a17bbee73339eaee556f47a80b93c40.tar.gz \
+    --jobs ${jobs} \
     -DBUILD_TENSORFLOW_OP=OFF \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_OPENCL_ENGINE=ON
 
 # JSON for modern C++ (https://github.com/nlohmann/json)
-RUN INCLUDE_PREFIX=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/usr/local" || echo "/usr/local") && \
+RUN . /root/.dep_env && \
     install-from-source https://github.com/nlohmann/json/releases/download/v3.10.5/json.hpp \
-    --prefix ${INCLUDE_PREFIX} --no-toolchain
+    --prefix ${DEP_PREFIX} --no-toolchain
 
 # TinyXML
-RUN install-from-source https://github.com/leethomason/tinyxml2/archive/refs/tags/9.0.0.tar.gz
+RUN install-from-source https://github.com/leethomason/tinyxml2/archive/refs/tags/9.0.0.tar.gz \
+    --jobs ${jobs}
 
 # NLopt
-RUN install-from-source https://github.com/stevengj/nlopt/archive/refs/tags/v2.7.1.tar.gz
+RUN install-from-source https://github.com/stevengj/nlopt/archive/refs/tags/v2.7.1.tar.gz \
+    --jobs ${jobs}
 
 # tinyrobotics
 RUN install-from-source https://github.com/Tom0Brien/tinyrobotics/archive/refs/tags/0.0.1.tar.gz \
+    --jobs ${jobs} \
     -DBUILD_TESTS=OFF
 
 # lame
-RUN install-from-source https://downloads.sourceforge.net/lame/lame-3.100.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local
+RUN . /root/.dep_env && \
+    install-from-source https://downloads.sourceforge.net/lame/lame-3.100.tar.gz \
+    --jobs ${jobs} \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN}
 
 # Nanopb for generating messages for NUSense
-RUN install-from-source https://github.com/nanopb/nanopb/archive/refs/tags/0.4.9.1.tar.gz
+RUN install-from-source https://github.com/nanopb/nanopb/archive/refs/tags/0.4.9.1.tar.gz \
+    --jobs ${jobs}
 
 # Install Booster Robotics SDK
 
@@ -401,6 +441,9 @@ RUN install-package \
     gcc-12 \
     g++-12
 
+# qemu lets ctest run the cross compiled test binaries, see CMAKE_CROSSCOMPILING_EMULATOR in the toolchain
+RUN if [ "${platform}" != "generic" ]; then install-package qemu-user-static; fi
+
 
 # Node tools
 RUN wget -nv https://nodejs.org/dist/v20.13.1/node-v20.13.1-linux-x64.tar.xz -O - \
@@ -426,6 +469,10 @@ RUN install-package clinfo
 
 # Copy the nvidia OpenCL vendorfile into the container so we can also use OpenCL on nvidia GPUs
 COPY --chown=root:root etc/OpenCL/vendors/nvidia.icd /etc/OpenCL/vendors/nvidia.icd
+
+# Creates symlink for librt since CUDAToolkit CMake module can't find it
+# See: https://notes.rdu.im/howtos/fix-librt-not-found-in-jammy/
+RUN ln -s /lib/x86_64-linux-gnu/librt.so.1 /usr/lib/x86_64-linux-gnu/librt.so
 
 # Re-run ldconfig to make sure the database is up to date
 RUN ldconfig
