@@ -1,6 +1,7 @@
 #include "K1GetUpPolicy.hpp"
 
 #include <cmath>
+#include <vector>
 
 #include "extension/Configuration.hpp"
 
@@ -64,10 +65,20 @@ namespace module::skill {
             }
 
             try {
-                compiled_model = core.compile_model(cfg.model_path, "CPU");
-                infer_request  = compiled_model.create_infer_request();
+                try {
+                    trt          = std::make_unique<utility::vision::TensorRT>(cfg.model_path);
+                    use_tensorrt = true;
+                    log<INFO>("Loaded get-up policy with TensorRT", cfg.model_path);
+                }
+                catch (const std::exception& trt_error) {
+                    trt.reset();
+                    use_tensorrt = false;
+                    log<WARN>("TensorRT unavailable for get-up policy, falling back to OpenVINO", trt_error.what());
+                    compiled_model = core.compile_model(cfg.model_path, "CPU");
+                    infer_request  = compiled_model.create_infer_request();
+                    log<INFO>("Loaded get-up policy with OpenVINO", cfg.model_path);
+                }
                 model_loaded   = true;
-                log<INFO>("Loaded get-up policy", cfg.model_path);
             }
             catch (const std::exception& e) {
                 model_loaded = false;
@@ -140,12 +151,22 @@ namespace module::skill {
                 }
 
                 // --- inference ---
-                ov::Tensor input(ov::element::f32, {1, OBS_DIM});
-                std::copy(obs.begin(), obs.end(), input.data<float>());
-                infer_request.set_input_tensor(input);
-                infer_request.infer();
-                const float* action = infer_request.get_output_tensor(0).data<float>();
-                std::copy(action, action + JOINT_COUNT, last_action.begin());
+                if (use_tensorrt && trt != nullptr) {
+                    const std::vector<float> input(obs.begin(), obs.end());
+                    const std::vector<float> action = trt->infer(input);
+                    if (action.size() != JOINT_COUNT) {
+                        throw std::runtime_error("Get-up policy TensorRT output size mismatch");
+                    }
+                    std::copy(action.begin(), action.end(), last_action.begin());
+                }
+                else {
+                    ov::Tensor input(ov::element::f32, {1, OBS_DIM});
+                    std::copy(obs.begin(), obs.end(), input.data<float>());
+                    infer_request.set_input_tensor(input);
+                    infer_request.infer();
+                    const float* action = infer_request.get_output_tensor(0).data<float>();
+                    std::copy(action, action + JOINT_COUNT, last_action.begin());
+                }
 
                 // --- action -> low-level joint command: offsets on the CURRENT pose ---
                 auto low      = std::make_unique<BoosterLowCmd>();

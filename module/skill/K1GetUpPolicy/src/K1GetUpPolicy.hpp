@@ -8,6 +8,7 @@
 #include <string>
 
 #include "extension/Behaviour.hpp"
+#include "utility/vision/TensorRT.hpp"
 
 namespace module::skill {
 
@@ -43,6 +44,11 @@ namespace module::skill {
             std::array<double, JOINT_COUNT> default_pose{};
         } cfg;
 
+        /// TensorRT inference backend (preferred on robot, falls back to OpenVINO)
+        std::unique_ptr<utility::vision::TensorRT> trt{};
+        bool use_tensorrt = false;
+
+        /// OpenVINO inference backend (fallback path)
         ov::Core core{};
         ov::CompiledModel compiled_model;
         ov::InferRequest infer_request;

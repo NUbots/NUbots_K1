@@ -96,12 +96,7 @@ namespace module::vision {
 
                 // Try TensorRT first, building the engine from the ONNX model on this device.
                 // The built engine is cached on disk, so this is only slow the first time.
-                // Only attempted when a GPU is requested: CUDA initialisation on a machine
-                // with no visible GPU can crash inside the driver (not a catchable throw).
                 try {
-                    if (device != "GPU") {
-                        throw std::runtime_error("device is not GPU, skipping TensorRT");
-                    }
                     log<INFO>("Building TensorRT engine from: ", model_path);
                     trt = std::make_unique<utility::vision::TensorRT>(model_path);
                     log<INFO>("TensorRT engine ready");
@@ -131,16 +126,22 @@ namespace module::vision {
                 }
 
                 log<INFO>("Model loaded successfully");
+                model_loaded = true;
             }
             catch (const std::exception& e) {
+                model_loaded = false;
                 log<ERROR>("Failed to load YOLO model: ", e.what());
-                throw;
+                log<ERROR>("YOLO inference disabled until a valid model is configured");
             }
         });
 
         on<Trigger<Image>, Optional<With<GreenHorizon>>, Single>().then(
             "Yolo Main Loop",
             [this](const Image& img, const std::shared_ptr<const GreenHorizon>& horizon) {
+                if (!model_loaded) {
+                    return;
+                }
+
                 // Start timer for benchmarking
                 auto start = std::chrono::high_resolution_clock::now();
 
