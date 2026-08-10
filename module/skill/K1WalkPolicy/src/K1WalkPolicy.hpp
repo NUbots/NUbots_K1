@@ -14,15 +14,20 @@
 
 namespace module::skill {
 
-    /// Runs the mujoco_playground K1 joystick walk policy (82-obs / 22-action ONNX, see
+    /// Runs the mujoco_playground K1 joystick walk policy (79-obs / 22-action ONNX, see
     /// NUSim docs/OBS_ACTION_CONTRACT.md) on the robot side and streams the resulting
     /// joint targets to the platform as BoosterLowCmd (rt/joint_ctrl, CUSTOM mode). This
     /// replaces skill::K1Walk's Move() RPC path: locomotion inference lives here, and the
     /// robot/simulator only has to track servo joint commands.
+    ///
+    /// The observation carries no base linear velocity. It used to (82 obs), sourced from a
+    /// finite-difference of rt/odometer_state, but there is no measured linear velocity on
+    /// the real K1 in CUSTOM mode -- so the policy is now trained with linvel as a
+    /// critic-only privileged quantity and the deployment side has nothing to estimate.
     class K1WalkPolicy : public ::extension::behaviour::BehaviourReactor {
     public:
         static constexpr std::size_t JOINT_COUNT = 22;  // SDK JointIndexK1 serial order
-        static constexpr std::size_t OBS_DIM     = 82;
+        static constexpr std::size_t OBS_DIM     = 79;
 
         explicit K1WalkPolicy(std::unique_ptr<NUClear::Environment> environment);
 
@@ -36,8 +41,6 @@ namespace module::skill {
             double gait_frequency = 1.5;
             /// @brief command norm below which the phase observation pins to [pi, pi]
             double stand_threshold = 0.01;
-            /// @brief low-pass factor for the odometry-differentiated linear velocity estimate
-            double linvel_alpha = 0.3;
             /// @brief PD gains for the two head joints (the policy does not own the head)
             double head_kp = 10.0;
             double head_kd = 0.5;
@@ -50,6 +53,12 @@ namespace module::skill {
             std::array<double, JOINT_COUNT> kd{};
             std::array<double, JOINT_COUNT> action_scale_joint{};
             std::array<double, JOINT_COUNT> default_pose{};
+            /// @brief Hard joint ranges of the trained MuJoCo model, JointIndexK1 order. The
+            /// commanded position is clamped to these: MuJoCo's joint constraint silently
+            /// absorbs an out-of-range target, but on the robot it is a leg torquing into a
+            /// mechanical stop.
+            std::array<double, JOINT_COUNT> joint_lower{};
+            std::array<double, JOINT_COUNT> joint_upper{};
         } cfg;
 
         /// OpenVINO inference plumbing (CPU device; the model is a small MLP)
@@ -65,11 +74,18 @@ namespace module::skill {
         /// Per-foot gait phase, initialized anti-phase [0, pi]
         std::array<double, 2> phase{0.0, 3.141592653589793};
 
-        /// Odometry-differentiated body-frame linear velocity estimate
-        bool have_last_odom = false;
-        Eigen::Vector3d last_odom = Eigen::Vector3d::Zero();  // x, y, theta (world)
-        NUClear::clock::time_point last_odom_time{};
-        Eigen::Vector2d linvel_body = Eigen::Vector2d::Zero();
+        /// Wall-clock of the previous policy tick, so the gait phase advances on the period
+        /// that actually elapsed rather than on a hardcoded 0.02 s. Every<50, Per<seconds>>
+        /// is best-effort on an Orin also running YOLO: at a true 40 Hz a nominal 1.5 Hz
+        /// gait actually runs at 1.20 Hz, below the U(1.25, 1.75) training range.
+        bool have_last_tick = false;
+        NUClear::clock::time_point last_tick_time{};
+
+        /// Monotonic tick counter and the robot's last reported motion mode, both logged with
+        /// every observation: statistics over a log that mixes CUSTOM-mode walking with
+        /// frozen non-CUSTOM ticks describe a policy shouting at a robot that isn't listening.
+        std::uint64_t tick = 0;
+        int last_mode = -1;
 
         /// Latest clamped head target (yaw, pitch) from BoosterHeadRot
         Eigen::Vector2d head_target = Eigen::Vector2d::Zero();
@@ -81,7 +97,6 @@ namespace module::skill {
         int last_walk_state = -1;
 
         void reset_policy_state();
-        void update_linvel(const Eigen::Vector3d& odom_now);
     };
 
 }  // namespace module::skill

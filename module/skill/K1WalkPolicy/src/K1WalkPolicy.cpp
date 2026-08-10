@@ -1,6 +1,7 @@
 #include "K1WalkPolicy.hpp"
 
 #include <cmath>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 #include <Eigen/Geometry>
@@ -13,7 +14,7 @@
 #include "message/booster/BoosterHeadRot.hpp"
 #include "message/booster/BoosterLowCmd.hpp"
 #include "message/booster/BoosterMode.hpp"
-#include "message/booster/BoosterOdometry.hpp"
+#include "message/booster/BoosterModeState.hpp"
 #include "message/platform/RawSensors.hpp"
 #include "message/skill/Walk.hpp"
 
@@ -31,7 +32,7 @@ namespace module::skill {
     using message::booster::BoosterHeadRot;
     using message::booster::BoosterLowCmd;
     using message::booster::BoosterMode;
-    using message::booster::BoosterOdometry;
+    using message::booster::BoosterModeState;
     using message::booster::K1Mode;
     using message::platform::RawSensors;
     using WalkTask = message::skill::Walk;
@@ -73,24 +74,7 @@ namespace module::skill {
     void K1WalkPolicy::reset_policy_state() {
         last_action.fill(0.0f);
         phase          = {0.0, PI};
-        have_last_odom = false;
-        linvel_body.setZero();
-    }
-
-    void K1WalkPolicy::update_linvel(const Eigen::Vector3d& odom_now) {
-        const auto now = NUClear::clock::now();
-        if (have_last_odom) {
-            const double dt = std::chrono::duration<double>(now - last_odom_time).count();
-            // Skip degenerate/stale intervals (startup, provider stalls); keep the old estimate
-            if (dt > 1e-4 && dt < 0.5) {
-                const Eigen::Vector2d v_world = (odom_now.head<2>() - last_odom.head<2>()) / dt;
-                const Eigen::Vector2d v_body  = Eigen::Rotation2Dd(-odom_now.z()) * v_world;
-                linvel_body = cfg.linvel_alpha * v_body + (1.0 - cfg.linvel_alpha) * linvel_body;
-            }
-        }
-        last_odom      = odom_now;
-        last_odom_time = now;
-        have_last_odom = true;
+        have_last_tick = false;
     }
 
     K1WalkPolicy::K1WalkPolicy(std::unique_ptr<NUClear::Environment> environment)
@@ -103,7 +87,6 @@ namespace module::skill {
             cfg.use_tensorrt      = config["use_tensorrt"].as<bool>();
             cfg.gait_frequency  = config["gait_frequency"].as<double>();
             cfg.stand_threshold = config["stand_threshold"].as<double>();
-            cfg.linvel_alpha    = config["linvel_alpha"].as<double>();
             cfg.head_kp         = config["head"]["kp"].as<double>();
             cfg.head_kd         = config["head"]["kd"].as<double>();
             cfg.kick_velocity   = Eigen::Vector3d(config["kick"]["velocity"].as<Expression>());
@@ -114,6 +97,8 @@ namespace module::skill {
             cfg.kd                 = load_joint_array<JOINT_COUNT>(config, "kd");
             cfg.action_scale_joint = load_joint_array<JOINT_COUNT>(config, "action_scale_joint");
             cfg.default_pose       = load_joint_array<JOINT_COUNT>(config, "default_pose");
+            cfg.joint_lower        = load_joint_array<JOINT_COUNT>(config, "joint_lower");
+            cfg.joint_upper        = load_joint_array<JOINT_COUNT>(config, "joint_upper");
             const double action_scale = config["action_scale"].as<double>();
             for (double& s : cfg.action_scale_joint) {
                 s *= action_scale;
@@ -148,6 +133,12 @@ namespace module::skill {
             emit(std::make_unique<Stability>(Stability::UNKNOWN));
         });
 
+        // Cached rather than a With<>: BoosterModeState only exists on the real HardwareIO
+        // path, and a With<> would silently stop the whole walk provider in NUSim.
+        on<Trigger<BoosterModeState>>().then([this](const BoosterModeState& state) {  //
+            last_mode = int(state.mode);
+        });
+
         on<Trigger<BoosterHeadRot>>().then([this](const BoosterHeadRot& head) {
             head_target.x() = utility::math::clamp(-HEAD_YAW_LIMIT, head.rot.x(), HEAD_YAW_LIMIT);
             head_target.y() = utility::math::clamp(HEAD_PITCH_MIN, head.rot.y(), HEAD_PITCH_MAX);
@@ -176,10 +167,9 @@ namespace module::skill {
 
         // 50 Hz inference loop, matching the training control rate (ctrl_dt = 0.02 s). The
         // simulator/robot PD-tracks the latest LowCmd between ticks.
-        on<Provide<WalkTask>, Every<50, Per<std::chrono::seconds>>, With<RawSensors>, With<BoosterOdometry>,
-           With<Stability>, Single>()
+        on<Provide<WalkTask>, Every<50, Per<std::chrono::seconds>>, With<RawSensors>, With<Stability>, Single>()
             .then([this](const WalkTask& walk, const RunReason& run_reason, const RawSensors& raw,
-                         const BoosterOdometry& odo, const Stability& stability) {
+                         const Stability& stability) {
                 if (!model_loaded) {
                     return;
                 }
@@ -207,27 +197,35 @@ namespace module::skill {
                     emit<Task>(std::make_unique<Continue>());
                 }
 
-                update_linvel(Eigen::Vector3d(odo.x, odo.y, odo.theta));
+                // Measured control period. The gait phase is advanced on this rather than on a
+                // hardcoded 0.02 s, so a loop running slow degrades the tracked velocity instead
+                // of silently dropping the gait frequency out of the trained range.
+                const auto now = NUClear::clock::now();
+                double tick_dt = 0.02;
+                if (have_last_tick) {
+                    tick_dt = std::chrono::duration<double>(now - last_tick_time).count();
+                    // Clamp: a resumed provider or a clock step must not fling the phase forward
+                    tick_dt = utility::math::clamp(0.005, tick_dt, 0.100);
+                }
+                last_tick_time = now;
+                have_last_tick = true;
+                ++tick;
+
                 if (log_level <= NUClear::LogLevel::DEBUG) {
-                    emit(graph("Policy linvel estimate", linvel_body.x(), linvel_body.y()));
                     emit(graph("Policy command", cmd.x(), cmd.y(), cmd.z()));
+                    emit(graph("Policy loop period (s)", tick_dt));
                 }
 
-                // --- observation (NUSim docs/OBS_ACTION_CONTRACT.md, 82 floats) ---
+                // --- observation (NUSim docs/OBS_ACTION_CONTRACT.md, 79 floats) ---
                 std::array<float, OBS_DIM> obs{};
                 std::size_t idx = 0;
 
-                // [0:3] base linear velocity, body frame (odometry-differentiated; z unobservable)
-                obs[idx++] = static_cast<float>(linvel_body.x());
-                obs[idx++] = static_cast<float>(linvel_body.y());
-                obs[idx++] = 0.0f;
-
-                // [3:6] gyro, body frame
+                // [0:3] gyro, body frame
                 obs[idx++] = raw.gyroscope.x();
                 obs[idx++] = raw.gyroscope.y();
                 obs[idx++] = raw.gyroscope.z();
 
-                // [6:9] projected gravity: world (0,0,-1) in the body frame, from the firmware
+                // [3:6] projected gravity: world (0,0,-1) in the body frame, from the firmware
                 // attitude estimate
                 const Eigen::Matrix3d Rwt =
                     rpy_intrinsic_to_mat(Eigen::Vector3d(raw.imu_rpy.x(), raw.imu_rpy.y(), raw.imu_rpy.z()));
@@ -236,7 +234,7 @@ namespace module::skill {
                 obs[idx++] = static_cast<float>(grav.y());
                 obs[idx++] = static_cast<float>(grav.z());
 
-                // [9:12] command [vx, vy, vyaw]
+                // [6:9] command [vx, vy, vyaw]
                 obs[idx++] = static_cast<float>(cmd.x());
                 obs[idx++] = static_cast<float>(cmd.y());
                 obs[idx++] = static_cast<float>(cmd.z());
@@ -257,7 +255,7 @@ namespace module::skill {
                     &raw.servo.r_ankle_pitch,    &raw.servo.r_ankle_roll,
                 };
 
-                // [12:34] q - default_pose, [34:56] dq. Head entries are masked to the default
+                // [9:31] q - default_pose, [31:53] dq. Head entries are masked to the default
                 // pose / zero velocity: the policy was trained with the head near default, and
                 // real head deflections push the observation out of distribution.
                 for (std::size_t j = 0; j < JOINT_COUNT; ++j) {
@@ -270,12 +268,12 @@ namespace module::skill {
                     obs[idx++]      = head ? 0.0f : servos[j]->present_velocity;
                 }
 
-                // [56:78] previous raw network output
+                // [53:75] previous raw network output
                 for (std::size_t k = 0; k < JOINT_COUNT; ++k) {
                     obs[idx++] = last_action[k];
                 }
 
-                // [78:82] gait phase [cos p0, cos p1, sin p0, sin p1], pinned to [pi, pi] while
+                // [75:79] gait phase [cos p0, cos p1, sin p0, sin p1], pinned to [pi, pi] while
                 // the commanded speed is below the stand threshold
                 const double speed = cmd.norm();
                 const std::array<double, 2> ph =
@@ -284,6 +282,20 @@ namespace module::skill {
                 obs[idx++] = static_cast<float>(std::cos(ph[1]));
                 obs[idx++] = static_cast<float>(std::sin(ph[0]));
                 obs[idx++] = static_cast<float>(std::sin(ph[1]));
+
+                // Full observation trace. Statistics over a log that mixes CUSTOM-mode walking
+                // with frozen non-CUSTOM ticks are meaningless, so every record carries the tick
+                // counter, the robot's reported mode and a timestamp; tools/analysis/
+                // segment_walk_log.py splits a capture on those before reporting anything.
+                if (log_level <= NUClear::LogLevel::TRACE) {
+                    std::ostringstream line;
+                    line << "WALKOBS " << tick << " mode=" << last_mode << " t="
+                         << std::chrono::duration<double>(now.time_since_epoch()).count() << " dt=" << tick_dt;
+                    for (const float v : obs) {
+                        line << ' ' << v;
+                    }
+                    log<TRACE>(line.str());
+                }
 
                 // --- inference ---
                 std::vector<float> trt_out{};
@@ -302,25 +314,37 @@ namespace module::skill {
                 std::copy(action, action + JOINT_COUNT, last_action.begin());
 
                 // Advance the gait phase once per inference regardless of the command (only the
-                // *observed* phase is pinned while standing), wrapped to [-pi, pi)
+                // *observed* phase is pinned while standing), on the measured period, wrapped
+                // to [-pi, pi)
                 for (double& p : phase) {
-                    p = std::fmod(p + TWO_PI * 0.02 * cfg.gait_frequency + PI, TWO_PI) - PI;
+                    p = std::fmod(p + TWO_PI * tick_dt * cfg.gait_frequency + PI, TWO_PI) - PI;
                 }
 
                 // --- action -> low-level joint command ---
                 auto low      = std::make_unique<BoosterLowCmd>();
                 low->cmd_type = BoosterLowCmd::CmdType::SERIAL;
                 low->motor_cmd.resize(JOINT_COUNT);
+                std::size_t clamped = 0;
                 for (std::size_t j = 0; j < JOINT_COUNT; ++j) {
                     auto& motor = low->motor_cmd[j];
                     motor.mode  = 1;
-                    motor.q     = static_cast<float>(cfg.default_pose[j]
-                                                 + cfg.action_scale_joint[j] * last_action[j]);
-                    motor.dq    = 0.0f;
-                    motor.tau   = 0.0f;
-                    motor.kp    = static_cast<float>(cfg.kp[j]);
-                    motor.kd    = static_cast<float>(cfg.kd[j]);
+                    // Clamp to the trained model's joint ranges. In MuJoCo an out-of-range
+                    // position target is silently absorbed by the joint constraint, so training
+                    // never charged the policy for one; on the robot it is a leg driving into a
+                    // mechanical stop, so count them rather than pass them through.
+                    const double q_raw =
+                        cfg.default_pose[j] + cfg.action_scale_joint[j] * last_action[j];
+                    const double q_cmd = utility::math::clamp(cfg.joint_lower[j], q_raw, cfg.joint_upper[j]);
+                    clamped += std::size_t(q_cmd != q_raw);
+                    motor.q      = static_cast<float>(q_cmd);
+                    motor.dq     = 0.0f;
+                    motor.tau    = 0.0f;
+                    motor.kp     = static_cast<float>(cfg.kp[j]);
+                    motor.kd     = static_cast<float>(cfg.kd[j]);
                     motor.weight = 0.0f;
+                }
+                if (clamped > 0) {
+                    log<WARN>("K1WalkPolicy clamped", clamped, "commanded joint positions to the model range");
                 }
                 // The policy does not own the head: track the latest BoosterHeadRot instead
                 low->motor_cmd[HEAD_YAW].q    = static_cast<float>(head_target.x());
