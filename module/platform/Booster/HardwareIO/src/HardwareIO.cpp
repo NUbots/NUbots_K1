@@ -19,6 +19,7 @@ namespace module::platform::Booster {
     using message::booster::BoosterFallDownState;
     using message::booster::BoosterGetUp;
     using message::booster::BoosterHeadRot;
+    using message::booster::BoosterKick;
     using message::booster::BoosterMode;
     using message::booster::BoosterModeState;
     using message::booster::BoosterOdometry;
@@ -84,6 +85,9 @@ namespace module::platform::Booster {
             odometer_channel = ChannelFactory::Instance()->CreateRecvChannel<booster_interface::msg::Odometer>(
                 "rt/odometer_state",
                 [this](const void* msg) { odometer_handler(msg); });
+
+            kick_channel = ChannelFactory::Instance()->CreateSendChannel<brain::msg::Kick>(
+                booster::robot::b1::kTopicKickReference);
         });
 
         on<Shutdown>().then([this]() { booster_client.ChangeMode(RobotMode::kPrepare); });
@@ -151,6 +155,22 @@ namespace module::platform::Booster {
             int32_t res = booster_client.VisualKick(kick.start, version);
             if (res != 0) {
                 log<ERROR>("Failed to visual kick: " + res_code_to_string(res));
+            }
+        });
+
+        on<Trigger<BoosterKick>>().then([this](const BoosterKick& kick) {
+            brain::msg::Kick msg;
+            msg.x(kick.x);
+            msg.y(kick.y);
+            msg.dir(kick.dir);
+            msg.goal_x(kick.goal_x);
+            msg.goal_y(kick.goal_y);
+            msg.robot_theta_to_field(kick.robot_theta_to_field);
+            msg.power(kick.power);
+            log<DEBUG>("Sending kick reference: x=" + std::to_string(kick.x) + ", y=" + std::to_string(kick.y)
+                       + ", dir=" + std::to_string(kick.dir) + ", power=" + std::to_string(kick.power));
+            if (kick_channel == nullptr || !kick_channel->Write(&msg)) {
+                log<ERROR>("Failed to publish kick reference");
             }
         });
 

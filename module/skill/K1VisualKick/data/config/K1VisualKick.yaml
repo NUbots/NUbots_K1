@@ -5,3 +5,5 @@ version: 2
 # How long to let the kick run before reporting the task as done. The SDK gives no
 # completion feedback.
 kick_duration: 3.0
+# Scales the Kick task's direction-vector magnitude into the SDK's kick power/range field
+power_scale: 1.0
