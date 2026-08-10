@@ -414,14 +414,14 @@ RUN install-from-source https://github.com/nanopb/nanopb/archive/refs/tags/0.4.9
 
 RUN install-package curl lsb-release
 
-RUN curl -L https://github.com/BoosterRobotics/booster_robotics_sdk/archive/324946e7c885de6cd6d37220eca64ed4e0f8d418.tar.gz \
+RUN curl -L https://github.com/BoosterRobotics/booster_robotics_sdk/archive/d5d8f7ae76d3e9f8cc224e682216f4681003ca46.tar.gz \
     -o /tmp/booster_robotics_sdk.tar.gz && \
     cd /tmp && tar -xzf booster_robotics_sdk.tar.gz && \
-    mv booster_robotics_sdk-324946e7c885de6cd6d37220eca64ed4e0f8d418 booster_robotics_sdk && \
+    mv booster_robotics_sdk-d5d8f7ae76d3e9f8cc224e682216f4681003ca46 booster_robotics_sdk && \
     rm /tmp/booster_robotics_sdk.tar.gz
 
 WORKDIR /tmp/booster_robotics_sdk
-RUN curl -L https://gist.githubusercontent.com/ZeoNyph/69e4ec80b66cc083191522de7eb4f43b/raw/ef9393748b5a8797fb8ef08d9eaa56ade76d7547/install_script.patch \
+RUN curl -L https://gist.githubusercontent.com/ZeoNyph/69e4ec80b66cc083191522de7eb4f43b/raw/e0cf865742fcdcbc9d09592b42c9ab5af6f450ef/install_script.patch \
     -o install_script.patch && \
     patch -p1 < install_script.patch
 
