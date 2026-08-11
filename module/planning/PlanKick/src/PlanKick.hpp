@@ -27,6 +27,7 @@
 #ifndef MODULE_PLANNING_PLANKICK_HPP
 #define MODULE_PLANNING_PLANKICK_HPP
 
+#include <Eigen/Core>
 #include <extension/Behaviour.hpp>
 #include <nuclear>
 #include <string>
@@ -44,7 +45,12 @@ namespace module::planning {
             double ball_angle_threshold    = 0.0;
             double target_angle_threshold  = 0.0;
             utility::input::LimbID kick_leg{};
+            /// @brief The offset on goal target, shared with WalkToBall's config
+            double goal_target_offset = 0.0;
         } cfg;
+
+        /// @brief The position of the goal in field space, the Kick task's target
+        Eigen::Vector3d rGFf = Eigen::Vector3d::Zero();
 
     public:
         /// @brief Called by the powerplant to build and setup the PlanKick reactor.

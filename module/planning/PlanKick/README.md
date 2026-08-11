@@ -25,10 +25,13 @@ Emit a KickTo Task with the position to kick to. The contents of the message (po
 
 - `message::planning::KickTo` a signal to kick the ball when conditions are met, with the location to kick the ball to in the message.
 - `message::localisation::Ball` for information on where the ball is.
+- `message::input::Sensors` for the robot's pose, used to compute robot-relative ball position and kick direction.
+- `message::localisation::Field` for the robot's field-space pose, used to compute the kick direction.
+- `message::support::FieldDescription` (at startup) to compute the field-space goal target position (offset shared with WalkToBall's config).
 
 ## Emits
 
-- `message::skill::Kick` a signal to execute a kick movement, containing information on what leg to kick with.
+- `message::skill::Kick` a signal to execute a kick movement: `leg` to kick with, `target` (the field-space point behind the goal line) and `direction` (a robot-relative unit vector from the ball toward that target).
 
 ## Dependencies
 

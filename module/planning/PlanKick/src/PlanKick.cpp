@@ -34,9 +34,11 @@
 
 #include "message/input/Sensors.hpp"
 #include "message/localisation/Ball.hpp"
+#include "message/localisation/Field.hpp"
 #include "message/planning/KickTo.hpp"
 #include "message/skill/Kick.hpp"
 #include "message/skill/Walk.hpp"
+#include "message/support/FieldDescription.hpp"
 
 #include "utility/input/LimbID.hpp"
 #include "utility/support/yaml_expression.hpp"
@@ -46,9 +48,11 @@ namespace module::planning {
     using extension::Configuration;
     using message::input::Sensors;
     using message::localisation::Ball;
+    using message::localisation::Field;
     using message::planning::KickTo;
     using message::skill::Kick;
     using message::skill::Walk;
+    using message::support::FieldDescription;
     using utility::input::LimbID;
     using utility::support::Expression;
 
@@ -64,8 +68,22 @@ namespace module::planning {
             cfg.kick_leg                = config["kick_leg"].as<std::string>();
         });
 
-        on<Provide<KickTo>, Uses<Kick>, Trigger<Ball>, With<Sensors>>().then(
-            [this](const KickTo& kick_to, const Uses<Kick>& kick, const Ball& ball, const Sensors& sensors) {
+        // Shared with WalkToBall so both modules target the same point behind the goal line
+        on<Configuration>("WalkToBall.yaml").then([this](const Configuration& config) {
+            cfg.goal_target_offset = config["goal_target_offset"].as<double>();
+        });
+
+        on<Startup, Trigger<FieldDescription>>().then("Update Goal Position", [this](const FieldDescription& fd) {
+            // Update the goal position
+            rGFf = Eigen::Vector3d(-fd.dimensions.field_length / 2 - cfg.goal_target_offset, 0, 0);
+        });
+
+        on<Provide<KickTo>, Uses<Kick>, Trigger<Ball>, With<Sensors>, With<Field>>().then(
+            [this](const KickTo& kick_to,
+                   const Uses<Kick>& kick,
+                   const Ball& ball,
+                   const Sensors& sensors,
+                   const Field& field) {
                 // If the kick is running, don't interrupt or the robot may fall
                 if (kick.run_state == RunState::RUNNING && !kick.done) {
                     emit<Task>(std::make_unique<Continue>());
@@ -111,15 +129,22 @@ namespace module::planning {
                     return;
                 }
 
+                // COMPUTE KICK TARGET (field space) AND DIRECTION (robot-relative unit vector toward it)
+                // Field space -> robot space
+                const Eigen::Isometry3d Hrf = sensors.Hrw * field.Hfw.inverse();
+                // Transform the goal into robot space, then difference against the already robot-relative
+                // ball position so the translation cancels correctly (both points are in the same frame)
+                const Eigen::Vector3d direction = (Hrf * rGFf - rBRr).normalized();
+
                 // If the kick leg is forced left, kick left. If the kick leg is auto,
                 // kick with left leg if ball is more to the left
                 if (cfg.kick_leg == LimbID::LEFT_LEG || (cfg.kick_leg == LimbID::UNKNOWN && rBRr.y() > 0.0)) {
                     log<INFO>("LEFT KICK!");
-                    emit<Task>(std::make_unique<Kick>(LimbID::LEFT_LEG));
+                    emit<Task>(std::make_unique<Kick>(LimbID::LEFT_LEG, rGFf, direction));
                 }
                 else {  // kick leg is forced right or ball is more to the right and kick leg is auto
                     log<INFO>("RIGHT KICK!");
-                    emit<Task>(std::make_unique<Kick>(LimbID::RIGHT_LEG));
+                    emit<Task>(std::make_unique<Kick>(LimbID::RIGHT_LEG, rGFf, direction));
                 }
             });
     }

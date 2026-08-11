@@ -36,7 +36,6 @@
 #include "message/booster/BoosterVisualKick.hpp"
 #include "message/input/Sensors.hpp"
 #include "message/localisation/Field.hpp"
-#include "message/support/FieldDescription.hpp"
 #include "message/skill/Kick.hpp"
 
 namespace module::skill {
@@ -48,7 +47,6 @@ namespace module::skill {
     using message::input::Sensors;
     using message::localisation::Field;
     using message::skill::Kick;
-    using message::support::FieldDescription;
     using VisualKick = message::booster::BoosterVisualKick;
     using KickVer    = message::booster::VisualKickVer;
 
@@ -61,16 +59,6 @@ namespace module::skill {
             cfg.kick_duration = std::chrono::duration_cast<NUClear::clock::duration>(
                 std::chrono::duration<double>(config["kick_duration"].as<double>()));
             cfg.power_scale = config["power_scale"].as<double>();
-        });
-
-        // Shared with WalkToBall so both modules target the same point behind the goal line
-        on<Configuration>("WalkToBall.yaml").then([this](const Configuration& config) {
-            cfg.goal_target_offset = config["goal_target_offset"].as<double>();
-        });
-
-        on<Startup, Trigger<FieldDescription>>().then("Update Goal Position", [this](const FieldDescription& fd) {
-            // Update the goal position
-            rGFf = Eigen::Vector3d(-fd.dimensions.field_length / 2 - cfg.goal_target_offset, 0, 0);
         });
 
         // Every lets the task re-run to check whether kick_duration has elapsed

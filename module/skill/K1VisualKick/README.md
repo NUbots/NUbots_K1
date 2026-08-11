@@ -13,10 +13,9 @@ Emit a Kick message when wanting to kick.
 
 ## Consumes
 
-- `message::skill::Kick` a request to kick. The kick's `direction` sets the kick direction and power; `leg` is unused as the SDK chooses its own leg
+- `message::skill::Kick` a request to kick. `direction` sets the kick direction (robot-relative) and power (magnitude); `target` sets the field-space point to aim at; `leg` is unused as the SDK chooses its own leg
 - `message::input::Sensors` used with `Field` to compute the robot's field-space pose for the kick reference
 - `message::localisation::Field` used with `Sensors` to compute the robot's field-space pose for the kick reference
-- `message::support::FieldDescription` used to compute the goal target position in field space (offset shared with WalkToBall's config)
 
 ## Emits
 

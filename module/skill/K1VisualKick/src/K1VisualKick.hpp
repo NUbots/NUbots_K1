@@ -46,15 +46,10 @@ namespace module::skill {
             NUClear::clock::duration kick_duration{};
             /// @brief Scales the Kick task's direction magnitude into the SDK's kick power/range field
             double power_scale = 1.0;
-            /// @brief The offset on goal target, shared with WalkToBall's config
-            double goal_target_offset = 0.0;
         } cfg;
 
         /// @brief The time the current visual kick was started
         NUClear::clock::time_point kick_start_time{};
-
-        /// @brief The position of the goal in field space.
-        Eigen::Vector3d rGFf = Eigen::Vector3d::Zero();
 
     public:
         /// @brief Called by the powerplant to build and setup the K1VisualKick reactor.
