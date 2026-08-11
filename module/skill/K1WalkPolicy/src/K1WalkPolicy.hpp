@@ -9,7 +9,6 @@
 #include <string>
 
 #include "extension/Behaviour.hpp"
-
 #include "utility/vision/TensorRT.hpp"
 
 namespace module::skill {
@@ -61,9 +60,11 @@ namespace module::skill {
             std::array<double, JOINT_COUNT> joint_upper{};
         } cfg;
 
-        /// OpenVINO inference plumbing (CPU device; the model is a small MLP)
-        /// TensorRT engine, nullptr when running on the OpenVINO fallback
+        /// TensorRT inference backend (preferred on robot, falls back to OpenVINO)
         std::unique_ptr<utility::vision::TensorRT> trt{};
+        bool use_tensorrt = false;
+
+        /// OpenVINO inference plumbing (fallback path)
         ov::Core core{};
         ov::CompiledModel compiled_model;
         ov::InferRequest infer_request;

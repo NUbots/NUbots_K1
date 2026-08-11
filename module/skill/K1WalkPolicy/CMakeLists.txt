@@ -36,4 +36,4 @@ find_package(OpenVINO REQUIRED)
 find_package(TBB REQUIRED)
 
 # Build our NUClear module
-nuclear_module(LIBRARIES TBB::tbb openvino::runtime)
+nuclear_module(SOURCES src/K1WalkPolicy.cpp LIBRARIES TBB::tbb openvino::runtime)

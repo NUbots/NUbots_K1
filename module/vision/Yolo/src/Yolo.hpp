@@ -55,6 +55,9 @@ namespace module::vision {
         /// @brief Inference request, used to run the model (inference)
         ov::InferRequest infer_request{};
 
+        /// @brief Whether the model backend initialised successfully
+        bool model_loaded = false;
+
         /// @brief Object struct for storing name and colour
         struct Object {
             /// @brief Class name

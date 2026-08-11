@@ -1,8 +1,8 @@
 #include "K1WalkPolicy.hpp"
 
 #include <cmath>
+#include <iomanip>
 #include <sstream>
-#include <stdexcept>
 #include <vector>
 #include <Eigen/Geometry>
 
@@ -104,30 +104,25 @@ namespace module::skill {
                 s *= action_scale;
             }
 
-            // TensorRT first, OpenVINO CPU as the fallback so a machine without a CUDA device
-            // (or with a driver/plan mismatch) still runs. fp16 is off: the net is a small MLP,
-            // so there is no speed to win and the actions drive servos directly.
             try {
-                if (!cfg.use_tensorrt) {
-                    throw std::runtime_error("use_tensorrt is false");
-                }
-                trt          = std::make_unique<utility::vision::TensorRT>(cfg.model_path, false);
-                model_loaded = true;
-                log<INFO>("Loaded walk policy (TensorRT)", cfg.model_path);
-            }
-            catch (const std::exception& trt_e) {
-                trt.reset();
-                log<INFO>("TensorRT unavailable, falling back to OpenVINO:", trt_e.what());
                 try {
+                    trt          = std::make_unique<utility::vision::TensorRT>(cfg.model_path);
+                    use_tensorrt = true;
+                    log<INFO>("Loaded walk policy with TensorRT", cfg.model_path);
+                }
+                catch (const std::exception& trt_error) {
+                    trt.reset();
+                    use_tensorrt = false;
+                    log<WARN>("TensorRT unavailable for walk policy, falling back to OpenVINO", trt_error.what());
                     compiled_model = core.compile_model(cfg.model_path, "CPU");
                     infer_request  = compiled_model.create_infer_request();
-                    model_loaded   = true;
-                    log<INFO>("Loaded walk policy (OpenVINO CPU)", cfg.model_path);
+                    log<INFO>("Loaded walk policy with OpenVINO", cfg.model_path);
                 }
-                catch (const std::exception& e) {
-                    model_loaded = false;
-                    log<ERROR>("Failed to load walk policy", cfg.model_path, e.what());
-                }
+                model_loaded   = true;
+            }
+            catch (const std::exception& e) {
+                model_loaded = false;
+                log<ERROR>("Failed to load walk policy", cfg.model_path, e.what());
             }
 
             emit(std::make_unique<Stability>(Stability::UNKNOWN));
@@ -260,8 +255,8 @@ namespace module::skill {
                 // real head deflections push the observation out of distribution.
                 for (std::size_t j = 0; j < JOINT_COUNT; ++j) {
                     const bool head = (j == HEAD_YAW || j == HEAD_PITCH);
-                    obs[idx++] =
-                        head ? 0.0f : static_cast<float>(servos[j]->present_position - cfg.default_pose[j]);
+                    const double rel_pos = servos[j]->present_position - cfg.default_pose[j];
+                    obs[idx++]        = head ? 0.0f : static_cast<float>(rel_pos);
                 }
                 for (std::size_t j = 0; j < JOINT_COUNT; ++j) {
                     const bool head = (j == HEAD_YAW || j == HEAD_PITCH);
@@ -298,20 +293,22 @@ namespace module::skill {
                 }
 
                 // --- inference ---
-                std::vector<float> trt_out{};
-                const float* action = nullptr;
-                if (trt) {
-                    trt_out = trt->infer(std::vector<float>(obs.begin(), obs.end()));
-                    action  = trt_out.data();
+                if (use_tensorrt && trt != nullptr) {
+                    const std::vector<float> input(obs.begin(), obs.end());
+                    const std::vector<float> action = trt->infer(input);
+                    if (action.size() != JOINT_COUNT) {
+                        throw std::runtime_error("Walk policy TensorRT output size mismatch");
+                    }
+                    std::copy(action.begin(), action.end(), last_action.begin());
                 }
                 else {
                     ov::Tensor input(ov::element::f32, {1, OBS_DIM});
                     std::copy(obs.begin(), obs.end(), input.data<float>());
                     infer_request.set_input_tensor(input);
                     infer_request.infer();
-                    action = infer_request.get_output_tensor(0).data<float>();
+                    const float* action = infer_request.get_output_tensor(0).data<float>();
+                    std::copy(action, action + JOINT_COUNT, last_action.begin());
                 }
-                std::copy(action, action + JOINT_COUNT, last_action.begin());
 
                 // Advance the gait phase once per inference regardless of the command (only the
                 // *observed* phase is pinned while standing), on the measured period, wrapped
@@ -324,7 +321,7 @@ namespace module::skill {
                 auto low      = std::make_unique<BoosterLowCmd>();
                 low->cmd_type = BoosterLowCmd::CmdType::SERIAL;
                 low->motor_cmd.resize(JOINT_COUNT);
-                std::size_t clamped = 0;
+                std::array<float, JOINT_COUNT> cmd_q{};
                 for (std::size_t j = 0; j < JOINT_COUNT; ++j) {
                     auto& motor = low->motor_cmd[j];
                     motor.mode  = 1;
@@ -342,9 +339,7 @@ namespace module::skill {
                     motor.kp     = static_cast<float>(cfg.kp[j]);
                     motor.kd     = static_cast<float>(cfg.kd[j]);
                     motor.weight = 0.0f;
-                }
-                if (clamped > 0) {
-                    log<WARN>("K1WalkPolicy clamped", clamped, "commanded joint positions to the model range");
+                    cmd_q[j]     = motor.q;
                 }
                 // The policy does not own the head: track the latest BoosterHeadRot instead
                 low->motor_cmd[HEAD_YAW].q    = static_cast<float>(head_target.x());
@@ -362,6 +357,38 @@ namespace module::skill {
                 emit<Task>(std::move(k1_servos));
 
                 const auto state = cmd.isZero() ? WalkState::State::STOPPED : WalkState::State::WALKING;
+                if (state == WalkState::State::WALKING && log_level <= NUClear::LogLevel::DEBUG) {
+                    std::ostringstream out;
+                    out << std::fixed << std::setprecision(4);
+                    out << "K1WalkPolicy sim2real"
+                        << " odom=[" << odo.x << ',' << odo.y << ',' << odo.theta << ']'
+                        << " linvel_body=[" << linvel_body.x() << ',' << linvel_body.y() << ']';
+                    std::ostringstream action_stream;
+                    std::ostringstream joint_pos_stream;
+                    std::ostringstream joint_pos_rel_stream;
+                    std::ostringstream joint_vel_stream;
+                    std::ostringstream cmd_q_stream;
+                    for (std::size_t j = 0; j < JOINT_COUNT; ++j) {
+                        if (j != 0) {
+                            action_stream << ',';
+                            joint_pos_stream << ',';
+                            joint_pos_rel_stream << ',';
+                            joint_vel_stream << ',';
+                            cmd_q_stream << ',';
+                        }
+                        action_stream << last_action[j];
+                        joint_pos_stream << servos[j]->present_position;
+                        joint_pos_rel_stream << (servos[j]->present_position - cfg.default_pose[j]);
+                        joint_vel_stream << servos[j]->present_velocity;
+                        cmd_q_stream << cmd_q[j];
+                    }
+                    out << " action=[" << action_stream.str() << ']'
+                        << " joint_pos=[" << joint_pos_stream.str() << ']'
+                        << " joint_pos_rel=[" << joint_pos_rel_stream.str() << ']'
+                        << " joint_vel=[" << joint_vel_stream.str() << ']'
+                        << " cmd_q=[" << cmd_q_stream.str() << ']';
+                    log<DEBUG>(out.str());
+                }
                 if (int(state) != last_walk_state) {
                     emit(std::make_unique<WalkState>(state, cmd));
                     last_walk_state = int(state);
