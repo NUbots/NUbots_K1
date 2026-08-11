@@ -8,7 +8,7 @@ log_level: DEBUG
 # carried: there is no measured linear velocity on the real K1 in CUSTOM mode, so it is
 # now a critic-only privileged quantity. The older 82-obs checkpoints
 # (k1_walk_v1_20260723_617M.onnx, k1_walk.onnx) are NOT loadable against this module.
-model_path: "k1_walk_v2_79obs.onnx"
+model_path: "k1_walk_v2_20260811_4012M.onnx"
 
 # Run inference on the GPU with TensorRT. Falls back to OpenVINO CPU automatically when
 # no CUDA device is visible (the container needs --gpus), so this is safe to leave on.
