@@ -34,6 +34,7 @@ cache_registry = "nubots"
 image = "nubots"
 image_user = "nubots"
 directory = "NUbots"
+jobs = os.cpu_count() or 1
 
 # This can fail if the local user id doesn't exist (e.g. you're in docker and set a uid)
 # In those cases, we really don't care so we just use the local userid instead
@@ -53,7 +54,7 @@ def internalise_image(tag, username=local_user):
     is_internal = (
         len(split) == 2
         and split[0] in [image, f"{username}/{image}"]
-        and (split[1] in platform.list() or split[1] == "selected")
+        and (split[1] in platform.list() or split[1] == "selected_k1")
     )
 
     if is_internal:

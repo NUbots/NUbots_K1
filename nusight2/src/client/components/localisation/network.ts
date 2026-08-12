@@ -198,6 +198,9 @@ export class LocalisationNetwork {
     const { rotation: Rwt } = decompose(new THREE.Matrix4().copy(fromProtoMat44(sensors.Htw!)).invert());
     robot.Htw = Matrix4.from(sensors.Htw);
     robot.Hrw = Matrix4.from(sensors.Hrw);
+    if (sensors.Hcw) {
+      robot.Hcw = Matrix4.from(sensors.Hcw);
+    }
     robot.Rwt = new Quaternion(Rwt.x, Rwt.y, Rwt.z, Rwt.w);
 
     robot.motors.rightShoulderPitch.angle = sensors.servo[0].presentPosition!;
@@ -220,6 +223,8 @@ export class LocalisationNetwork {
     robot.motors.leftAnkleRoll.angle = sensors.servo[17].presentPosition!;
     robot.motors.headPan.angle = sensors.servo[18].presentPosition!;
     robot.motors.headTilt.angle = sensors.servo[19].presentPosition!;
+    robot.motors.rightElbowYaw.angle = sensors.servo[20].presentPosition!;
+    robot.motors.leftElbowYaw.angle = sensors.servo[21].presentPosition!;
   };
 
   @action.bound

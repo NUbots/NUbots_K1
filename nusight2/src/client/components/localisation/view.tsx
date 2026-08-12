@@ -25,7 +25,7 @@ import { FieldObjects } from "./r3f_components/field_objects";
 import { FieldPoints } from "./r3f_components/field_points";
 import { GoalLabels } from "./r3f_components/goal_labels";
 import { GridView } from "./r3f_components/grid";
-import { Nugus } from "./r3f_components/nugus";
+import { K1 } from "./r3f_components/k1";
 import { PurposeLabel } from "./r3f_components/purpose_label";
 import { SkyboxView } from "./r3f_components/skybox/view";
 import { WalkPathGoal } from "./r3f_components/walk_path_goal";
@@ -43,7 +43,8 @@ type LocalisationViewProps = {
 
 const FieldDimensionOptions = [
   { label: "Lab", value: "lab" },
-  { label: "Robocup", value: "robocup" },
+  { label: "Robocup (Small)", value: "robocup_small" },
+  { label: "Robocup (Large)", value: "robocup_large" },
 ];
 
 // Apply the interfaces to the component's props
@@ -297,10 +298,9 @@ const MenuItem = (props: { label: string; onClick(): void; isVisible: boolean })
       className={`
         w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm font-medium
         transition-all duration-150 ease-out
-        ${
-          props.isVisible
-            ? "bg-auto-primary/20 text-auto-primary border border-auto-primary/30"
-            : "bg-auto-surface-2 text-auto-on-surface border border-auto-outline hover:bg-auto-surface-3"
+        ${props.isVisible
+          ? "bg-auto-primary/20 text-auto-primary border border-auto-primary/30"
+          : "bg-auto-surface-2 text-auto-on-surface border border-auto-outline hover:bg-auto-surface-3"
         }
         focus:outline-none focus:ring-1 focus:ring-auto-primary
         active:scale-[0.98]
@@ -502,7 +502,7 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
 
   return (
     <object3D key={robot.id}>
-      <Nugus model={robot} />
+      <K1 model={robot} />
 
       {model.fieldLinePointsVisible && <FieldPoints points={robot.rPFf} color={"blue"} size={0.02} />}
       {model.particlesVisible && <FieldPoints points={robot.particles} color={"blue"} size={0.02} />}
