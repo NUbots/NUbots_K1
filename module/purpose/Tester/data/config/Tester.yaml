@@ -22,7 +22,7 @@ tasks:
   walk_inside_bounded_box: 0
 
   # Planners
-  kick_to_priority: 2
+  kick_to_priority: 0
   look_around_priority: 0
   # Skill: run the ONNX kick policy directly, bypassing the approach chain (isolation
   # test only). 0 = use the real FindBall -> WalkToKickBall -> PlanKick chain above.

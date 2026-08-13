@@ -322,6 +322,10 @@ namespace module::skill {
                 low->cmd_type = BoosterLowCmd::CmdType::SERIAL;
                 low->motor_cmd.resize(JOINT_COUNT);
                 std::array<float, JOINT_COUNT> cmd_q{};
+                // How many of this tick's targets the joint-range clamp below had to move.
+                // Non-zero means the policy is asking for a pose the trained ranges do not
+                // contain, which on the robot is a leg driving into a mechanical stop.
+                std::size_t clamped = 0;
                 for (std::size_t j = 0; j < JOINT_COUNT; ++j) {
                     auto& motor = low->motor_cmd[j];
                     motor.mode  = 1;
@@ -360,9 +364,15 @@ namespace module::skill {
                 if (state == WalkState::State::WALKING && log_level <= NUClear::LogLevel::DEBUG) {
                     std::ostringstream out;
                     out << std::fixed << std::setprecision(4);
+                    // Odometry and the body linear velocity used to be logged here. Both left
+                    // with the 82 -> 79 observation change: the policy no longer reads a base
+                    // linear velocity, so there is nothing to differentiate and nothing to log.
                     out << "K1WalkPolicy sim2real"
-                        << " odom=[" << odo.x << ',' << odo.y << ',' << odo.theta << ']'
-                        << " linvel_body=[" << linvel_body.x() << ',' << linvel_body.y() << ']';
+                        // The command the planner actually asked for. Training samples
+                        // vx [-1.5, 1.5], vy [-0.8, 0.8], wz [-1.0, 1.0]; PlanWalkPath's
+                        // ball-adjust mode can ask for wz 1.5, which is outside that.
+                        << " cmd=[" << cmd.x() << ',' << cmd.y() << ',' << cmd.z() << ']'
+                        << " clamped=" << clamped;
                     std::ostringstream action_stream;
                     std::ostringstream joint_pos_stream;
                     std::ostringstream joint_pos_rel_stream;
