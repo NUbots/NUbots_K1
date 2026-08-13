@@ -198,9 +198,8 @@ namespace module::purpose {
         Eigen::Vector3d position{slot.offset.x(), slot.offset.y(), 0};
         if (ball) {
             Eigen::Vector3d rBFf = field.Hfw * ball->rBWw;
-            // Formation.yaml comes from another team and uses a field x-axis convention that is
-            // mirrored relative to ours, so express the ball's x in that same convention before
-            // combining it with the formation coefficients (which are given in that convention)
+            // Formation.yaml uses a mirrored x-axis, so flip the ball's x to match before combining it
+            // with the formation coefficients
             double ball_x = -rBFf.x();
             position.x()  = std::max(slot.min_x, slot.offset.x() + slot.attraction.x() * ball_x);
             position.y()  = slot.offset.y() + slot.attraction.y() * rBFf.y();
