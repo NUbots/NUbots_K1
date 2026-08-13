@@ -71,9 +71,19 @@ namespace utility::vision {
             }
 
             auto config = std::unique_ptr<IBuilderConfig>(builder->createBuilderConfig());
+#if NV_TENSORRT_MAJOR >= 11
+            // kFP16 removed in TensorRT 11; precision follows model types instead
+            (void) fp16;
+#elif NV_TENSORRT_MAJOR >= 10
+            // platformHasFastFp16 removed in TensorRT 10; fast FP16 is now universal
+            if (fp16) {
+                config->setFlag(BuilderFlag::kFP16);
+            }
+#else
             if (fp16 && builder->platformHasFastFp16()) {
                 config->setFlag(BuilderFlag::kFP16);
             }
+#endif
 
             auto plan = std::unique_ptr<IHostMemory>(builder->buildSerializedNetwork(*network, *config));
             if (plan == nullptr) {

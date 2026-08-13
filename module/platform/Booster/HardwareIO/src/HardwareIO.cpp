@@ -11,6 +11,7 @@
 namespace module::platform::Booster {
 
     using booster::robot::ChannelFactory;
+    using booster::robot::RobotMode;
     using booster::robot::b1::GetModeResponse;
     using booster::robot::b1::JointIndexK1;
     using extension::Configuration;
