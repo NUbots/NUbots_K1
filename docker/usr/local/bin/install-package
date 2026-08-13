@@ -41,21 +41,21 @@ if [ "$platform" = "orinnx" ]; then
     chmod 777 /tmp/debs
     cd /tmp/debs
 
-    # Get recursive dependencies for arm64 and download them
+    # Collect the requested packages themselves (so -dev artifacts like libudev.so
+    # end up in the sysroot, not just runtime deps) plus their recursive arm64 deps,
+    # then download the whole set in parallel instead of one deb at a time.
+    all_pkgs=""
     for pkg in $packages; do
-        # Download the requested package itself so -dev artifacts (e.g. libudev.so)
-        # are present in the sysroot, not just its runtime dependencies.
-        apt-get download "$pkg:arm64" || { echo "Error: Failed to download $pkg:arm64" >&2; exit 1; }
-
         deps=$(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances "$pkg:arm64" 2>/dev/null | grep "^\w" | sort -u)
         if [ -z "$deps" ]; then
             echo "Error: No arm64 package found for $pkg" >&2
             exit 1
         fi
-        for dep in $deps; do
-            apt-get download "$dep" || { echo "Error: Failed to download $dep:arm64" >&2; exit 1; }
-        done
+        all_pkgs="$all_pkgs $pkg:arm64 $deps"
     done
+
+    printf '%s\n' $all_pkgs | sort -u | xargs -P 8 -n 1 apt-get download \
+        || { echo "Error: Failed to download one or more arm64 packages" >&2; exit 1; }
 
     # Extract all downloaded debs to sysroot
     for deb in /tmp/debs/*.deb; do

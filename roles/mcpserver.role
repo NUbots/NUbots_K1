@@ -11,8 +11,8 @@ nuclear_role(
   network::PlotJuggler
   network::MCPServer
   # Sensors
-  input::SensorFilter
-  input::Camera
+  input::K1Sensors
+  input::K1Camera
   # Director
   extension::Director
   # Servos
@@ -20,10 +20,10 @@ nuclear_role(
   actuation::Kinematics
   actuation::FootController
   # Skills
-  skill::Walk
+  skill::K1Walk
   skill::KickWalk
-  skill::GetUp
-  skill::Look
+  skill::K1GetUp
+  skill::K1Look
   # Planners
   planning::GetUpPlanner
   planning::FallingRelaxPlanner
@@ -39,5 +39,6 @@ nuclear_role(
   strategy::StandStill
   # Purpose
   purpose::KeyboardWalk
-  # Platform platform::${SUBCONTROLLER}::HardwareIO
+  # Platform
+  platform::${SUBCONTROLLER}::HardwareIO
 )

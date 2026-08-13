@@ -330,6 +330,9 @@ RUN install-from-source https://github.com/catchorg/Catch2/archive/refs/tags/v3.
     -DCATCH_CONFIG_CPP17_OPTIONAL=ON \
     -DCATCH_CONFIG_CPP17_BYTE=ON
 
+# Aravis - GenICam camera library used by module::input::Camera
+RUN install-package -p ${platform} libaravis-dev
+
 # LibUV
 RUN install-from-source https://github.com/libuv/libuv/archive/refs/tags/v1.44.2.tar.gz \
     --jobs ${jobs} \

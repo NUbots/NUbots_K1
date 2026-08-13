@@ -25,5 +25,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ]]
 
+# Aravis - GenICam camera library
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(Aravis REQUIRED IMPORTED_TARGET aravis-0.8)
+
 # Build our NUClear module
-nuclear_module()
+nuclear_module(LIBRARIES PkgConfig::Aravis)
