@@ -47,14 +47,6 @@ namespace module::purpose {
             double equidistant_threshold = 0.0;
             /// @brief The distance from the ball to consider it moved from the center position and in play for kickoff
             double ball_off_center_threshold = 0.0;
-            /// @brief Assumed walking speed (m/s), used to rank who should attack - see fastest_to_ball_on_team
-            double estimated_walk_speed = 0.0;
-            /// @brief Assumed turning speed (rad/s), used alongside estimated_walk_speed
-            double estimated_turn_speed = 0.0;
-            /// @brief How far behind the ball (m) the attack approach point sits, for a straight kick run-up
-            double approach_distance_behind_ball = 0.0;
-            /// @brief Time difference (s) below which two robots are considered equally fast to attack
-            double attack_equidistant_time_threshold = 0.0;
             /// @brief The offset to the center circle for the ready position.
             /// Avoids being in the center circle during another team's kickoff
             double center_circle_offset = 0.0;
@@ -70,6 +62,10 @@ namespace module::purpose {
 
         /// @brief Whether the last purpose decision was support, so switching to support is only logged once
         bool supporting = false;
+
+        /// @brief Whether a teammate was going for the ball last tick, so the INFO log below only fires once per
+        /// rising edge instead of spamming every tick while they hold the ball
+        bool was_teammate_attacking = false;
 
         /// @brief When the robot started standing still and looking around to localise, unset when localised
         std::optional<NUClear::clock::time_point> look_around_start{};

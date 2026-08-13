@@ -138,7 +138,11 @@ export class LocalisationNetwork {
   @action.bound
   private onSupportPosition(robotModel: RobotModel, supportPosition: SupportPosition) {
     const robot = LocalisationRobotModel.of(robotModel);
-
+    // Support.cpp already converts its internally-computed position out of Formation.yaml's
+    // mirrored x convention and back into our own field frame before emitting this message (see
+    // its "Convert out of Formation.yaml's mirrored x convention" comment), and never mirrors y at
+    // all. So no flip is needed here - unlike RobotCommunication.cpp's broadcast pose, which is
+    // still in the mirrored mixed-team convention when NUsight receives it.
     robot.desiredSupportPosition = Vector2.from(supportPosition.position);
   }
 

@@ -26,6 +26,8 @@
  */
 #include "FieldPlayer.hpp"
 
+#include <fmt/format.h>
+
 #include "extension/Behaviour.hpp"
 #include "extension/Configuration.hpp"
 
@@ -81,18 +83,14 @@ namespace module::purpose {
 
         on<Configuration>("FieldPlayer.yaml").then([this](const Configuration& config) {
             // Use configuration here from file FieldPlayer.yaml
-            this->log_level                       = config["log_level"].as<NUClear::LogLevel>();
-            cfg.ball_threshold                    = config["ball_threshold"].as<double>();
-            cfg.equidistant_threshold             = config["equidistant_threshold"].as<double>();
-            cfg.ball_off_center_threshold         = config["ball_off_center_threshold"].as<double>();
-            cfg.estimated_walk_speed              = config["estimated_walk_speed"].as<double>();
-            cfg.estimated_turn_speed              = config["estimated_turn_speed"].as<double>();
-            cfg.approach_distance_behind_ball     = config["approach_distance_behind_ball"].as<double>();
-            cfg.attack_equidistant_time_threshold = config["attack_equidistant_time_threshold"].as<double>();
-            cfg.center_circle_offset              = config["center_circle_offset"].as<double>();
-            cfg.max_localisation_cost             = config["max_localisation_cost"].as<double>();
-            cfg.search_when_lost                  = config["search_when_lost"].as<bool>();
-            cfg.localise_timeout                  = std::chrono::seconds(config["localise_timeout"].as<int>());
+            this->log_level               = config["log_level"].as<NUClear::LogLevel>();
+            cfg.ball_threshold            = config["ball_threshold"].as<double>();
+            cfg.equidistant_threshold     = config["equidistant_threshold"].as<double>();
+            cfg.ball_off_center_threshold = config["ball_off_center_threshold"].as<double>();
+            cfg.center_circle_offset      = config["center_circle_offset"].as<double>();
+            cfg.max_localisation_cost     = config["max_localisation_cost"].as<double>();
+            cfg.search_when_lost          = config["search_when_lost"].as<bool>();
+            cfg.localise_timeout          = std::chrono::seconds(config["localise_timeout"].as<int>());
         });
 
         on<Configuration>("Formation.yaml").then([this](const Configuration& config) {
@@ -231,24 +229,16 @@ namespace module::purpose {
                         }
                     }
                 }
-                // Who on the team could get kick-ready (behind the ball, facing goal) soonest - covers the
-                // "teammate already going for the ball" case too, since their head start shows up as a
-                // shorter estimated time.
-                Eigen::Vector2d goal_rFf(-fd.dimensions.field_length / 2.0, 0.0);
-                const unsigned int fastest_to_ball =
-                    robots ? utility::strategy::fastest_to_ball_on_team(ball->rBWw,
-                                                                        goal_rFf,
-                                                                        cfg.approach_distance_behind_ball,
+                const unsigned int closest_to_ball =
+                    robots ? utility::strategy::closest_to_ball_on_team(ball->rBWw,
                                                                         *robots,
                                                                         field->Hfw,
                                                                         sensors.Hrw,
-                                                                        cfg.estimated_walk_speed,
-                                                                        cfg.estimated_turn_speed,
-                                                                        cfg.attack_equidistant_time_threshold,
+                                                                        cfg.equidistant_threshold,
                                                                         global_config.player_id,
                                                                         ignore_ids)
                            : global_config.player_id;
-                bool is_fastest_to_ball = fastest_to_ball == global_config.player_id;
+                bool is_closest = closest_to_ball == global_config.player_id;
 
                 // Determine if we need to wait for the other team to kick off
                 // If the ball moves, it is in play
@@ -258,7 +248,36 @@ namespace module::purpose {
 
                 // Only wait if the opponent hasn't kicked off yet
                 bool allowed_to_attack = !kickoff_wait;
-                log<DEBUG>("Allowed to attack:", allowed_to_attack, "is fastest to ball:", is_fastest_to_ball);
+                log<DEBUG>("Allowed to attack:", allowed_to_attack, "is closest:", is_closest);
+
+                // Hard rule: never enter Attack/ReadyAttack while an active teammate has broadcast that they are
+                // going for the ball, regardless of player ID or our own closest-to-ball calculation, so we don't
+                // double up on the ball. Their going_for_ball broadcast is what sets their purpose to ATTACK here,
+                // see RobotLocalisation.cpp's Message handler. This flag gates every Attack/ReadyAttack emission
+                // below (search for `teammate_attacking`) - do not add a new attack path without checking it.
+                bool teammate_attacking = false;
+                unsigned int attacking_teammate_id = 0;
+                if (robots) {
+                    for (const auto& robot : robots->robots) {
+                        if (robot.teammate
+                            && robot.purpose.purpose == SoccerPosition::ATTACK
+                            && robot.purpose.active) {
+                            teammate_attacking   = true;
+                            attacking_teammate_id = robot.purpose.player_id;
+                            break;
+                        }
+                    }
+                }
+                // Log on the rising/falling edge (not every tick) at INFO so it's visible without turning on
+                // DEBUG logging, since this is the primary way to confirm the going_for_ball message is received.
+                if (teammate_attacking && !was_teammate_attacking) {
+                    log<INFO>(fmt::format("Teammate {} is going for the ball, standing down from attacking.",
+                                          attacking_teammate_id));
+                }
+                else if (!teammate_attacking && was_teammate_attacking) {
+                    log<INFO>("No teammate is going for the ball anymore, resuming normal attack logic.");
+                }
+                was_teammate_attacking = teammate_attacking;
 
                 // Furthest back calculation
                 bool furthest_back = robots ? utility::strategy::furthest_back(*robots,
@@ -296,9 +315,9 @@ namespace module::purpose {
                     return;
                 }
 
-                // If it's our set play, whoever is fastest to the ball takes the kick and everyone else supports
+                // If it's our set play, the closest robot takes the kick and everyone else supports
                 if (set_play && game_state.our_kick_off) {
-                    if (is_fastest_to_ball) {
+                    if (is_closest && !teammate_attacking) {
                         log<DEBUG>("Our set play, taking the kick.");
                         supporting = false;
                         emit(std::make_unique<Purpose>(global_config.player_id,
@@ -323,9 +342,9 @@ namespace module::purpose {
                     return;
                 }
 
-                // Attack if we are fastest to the ball BUT we have to be in a situation where we are allowed
-                // to attack, eg not in penalty set up phase.
-                if (is_fastest_to_ball && allowed_to_attack) {
+                // Attack if we are closest BUT we have to be in a situation where we are allowed to attack, eg not in
+                // penalty set up phase.
+                if (is_closest && allowed_to_attack && !teammate_attacking) {
                     log<DEBUG>("Attack!");
                     supporting = false;
                     emit(std::make_unique<Purpose>(global_config.player_id,
@@ -340,7 +359,7 @@ namespace module::purpose {
 
                 // If we are in the best position to attack, but we can't because of the situation, eg penalty
                 // positioning or opponent kickoff, then we should stick to a good spot and be ready to attack
-                if (is_fastest_to_ball && !allowed_to_attack) {
+                if (is_closest && !allowed_to_attack && !teammate_attacking) {
                     log<DEBUG>("Ready attack!");
                     supporting = false;
                     emit(std::make_unique<Purpose>(global_config.player_id,
@@ -356,8 +375,8 @@ namespace module::purpose {
                 // If we are closest to our goals (ignoring the attacking player), then stand back to defend.
                 // If there's no robots, assume we are alone and are the furthest back
                 // Shouldn't happen, as that should make us the attacker
-                // Ignore the attacker so it isn't considered for furthest back
-                ignore_ids.push_back(fastest_to_ball);
+                // Add closest_to_ball to the ignore list so we don't consider the attacker as the furthest back
+                ignore_ids.push_back(closest_to_ball);
                 // Add goalies to the ignore list so we don't consider them as the furthest back
                 if (robots) {
                     for (const auto& robot : robots->robots) {
