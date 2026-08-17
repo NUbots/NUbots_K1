@@ -188,6 +188,7 @@ export class LocalisationController {
           centerCircleDiameter: 1.5,
           borderStripMinWidth: 1.0,
         });
+        break;
       case "robocup_large":
         model.field.dimensions = new FieldDimensions({
           lineWidth: 0.06,
@@ -205,6 +206,26 @@ export class LocalisationController {
           goalNetHeight: 1.2,
           penaltyMarkDistance: 1.47,
           centerCircleDiameter: 1.5,
+          borderStripMinWidth: 1.0,
+        });
+        break;
+      case "robocup_5v5":
+        model.field.dimensions = new FieldDimensions({
+          lineWidth: 0.06,
+          markWidth: 0.1,
+          fieldLength: 22.0,
+          fieldWidth: 14.0,
+          goalDepth: 0.6,
+          goalWidth: 2.6,
+          goalAreaLength: 2.0,
+          goalAreaWidth: 5.0,
+          penaltyAreaLength: 5.0,
+          penaltyAreaWidth: 8.0,
+          goalCrossbarHeight: 1.25,
+          goalPostDiameter: 0.1,
+          goalNetHeight: 1.2,
+          penaltyMarkDistance: 3.5,
+          centerCircleDiameter: 4,
           borderStripMinWidth: 1.0,
         });
         break;
