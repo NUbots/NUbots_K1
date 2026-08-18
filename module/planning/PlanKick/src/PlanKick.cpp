@@ -40,7 +40,6 @@
 #include "message/skill/Walk.hpp"
 #include "message/support/FieldDescription.hpp"
 
-#include "utility/input/LimbID.hpp"
 #include "utility/support/yaml_expression.hpp"
 
 namespace module::planning {
@@ -53,7 +52,6 @@ namespace module::planning {
     using message::skill::Kick;
     using message::skill::Walk;
     using message::support::FieldDescription;
-    using utility::input::LimbID;
     using utility::support::Expression;
 
     PlanKick::PlanKick(std::unique_ptr<NUClear::Environment> environment) : BehaviourReactor(std::move(environment)) {
@@ -65,7 +63,6 @@ namespace module::planning {
             cfg.ball_distance_threshold = config["ball_distance_threshold"].as<double>();
             cfg.ball_angle_threshold    = config["ball_angle_threshold"].as<double>();
             cfg.target_angle_threshold  = config["target_angle_threshold"].as<Expression>();
-            cfg.kick_leg                = config["kick_leg"].as<std::string>();
         });
 
         // Shared with WalkToBall so both modules target the same point behind the goal line
@@ -136,16 +133,11 @@ namespace module::planning {
                 // ball position so the translation cancels correctly (both points are in the same frame)
                 const Eigen::Vector3d direction = (Hrf * rGFf - rBRr).normalized();
 
-                // If the kick leg is forced left, kick left. If the kick leg is auto,
-                // kick with left leg if ball is more to the left
-                if (cfg.kick_leg == LimbID::LEFT_LEG || (cfg.kick_leg == LimbID::UNKNOWN && rBRr.y() > 0.0)) {
-                    log<INFO>("LEFT KICK!");
-                    emit<Task>(std::make_unique<Kick>(LimbID::LEFT_LEG, rGFf, direction));
-                }
-                else {  // kick leg is forced right or ball is more to the right and kick leg is auto
-                    log<INFO>("RIGHT KICK!");
-                    emit<Task>(std::make_unique<Kick>(LimbID::RIGHT_LEG, rGFf, direction));
-                }
+                log<INFO>("KICK!");
+                auto kick_task        = std::make_unique<Kick>();
+                kick_task->target     = rGFf;
+                kick_task->direction  = direction;
+                emit<Task>(std::move(kick_task));
             });
     }
 

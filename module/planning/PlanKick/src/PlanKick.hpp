@@ -32,8 +32,6 @@
 #include <nuclear>
 #include <string>
 
-#include "utility/input/LimbID.hpp"
-
 namespace module::planning {
 
     class PlanKick : public ::extension::behaviour::BehaviourReactor {
@@ -44,7 +42,6 @@ namespace module::planning {
             double ball_distance_threshold = 0.0;
             double ball_angle_threshold    = 0.0;
             double target_angle_threshold  = 0.0;
-            utility::input::LimbID kick_leg{};
             /// @brief The offset on goal target, shared with WalkToBall's config
             double goal_target_offset = 0.0;
         } cfg;

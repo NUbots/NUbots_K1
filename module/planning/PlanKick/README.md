@@ -10,12 +10,11 @@ It checks
 2. If the robot is facing the ball.
 3. If the robot is facing the target to kick to.
 
-If these checks pass, it will emit a Kick Task, specifying the leg to kick with based on which foot the ball is closer to.
+If these checks pass, it will emit a Kick Task.
 
 There are configuration values that allow some flexibility with this method.
 
 1. The third check can be skipped with the `align` configuration value.
-2. A particular kick leg can be forced instead of checking the position using the `kick_leg` configuration value.
 
 ## Usage
 
@@ -31,7 +30,7 @@ Emit a KickTo Task with the position to kick to. The contents of the message (po
 
 ## Emits
 
-- `message::skill::Kick` a signal to execute a kick movement: `leg` to kick with, `target` (the field-space point behind the goal line) and `direction` (a robot-relative unit vector from the ball toward that target).
+- `message::skill::Kick` a signal to execute a kick movement: `target` (the field-space point behind the goal line) and `direction` (a robot-relative unit vector from the ball toward that target).
 
 ## Dependencies
 
