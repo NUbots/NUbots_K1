@@ -91,9 +91,10 @@ RUN cd /usr/local && ln -sf lib lib64
 COPY usr/local/bin/install-from-source.py /usr/local/bin/install-from-source.py
 RUN ln -s /usr/local/bin/install-from-source.py /usr/local/bin/install-from-source
 
+COPY usr/local/toolchain /usr/local/toolchain
+
 # Generate toolchain files for generic
-RUN --mount=type=bind,source=usr/local/toolchain,target=/usr/local/toolchain \
-    python3 /usr/local/toolchain/generate_generic_toolchain.py --prefix /usr
+RUN python3 /usr/local/toolchain/generate_generic_toolchain.py --prefix /usr
 
 ##############################################
 ### ADD NEW SYSTEM PROGRAMS/LIBRARIES HERE ###
@@ -129,8 +130,7 @@ RUN pip3 install \
     tqdm==4.62.3
 
 # Generate toolchain files for the current platform
-RUN --mount=type=bind,source=usr/local/toolchain,target=/usr/local/toolchain \
-    python3 /usr/local/toolchain/generate_${platform}_toolchain.py --prefix ${prefix}
+RUN python3 /usr/local/toolchain/generate_${platform}_toolchain.py --prefix ${prefix}
 
 
 # We install ncurses rather than building it as it's used by many of the build tools and they don't like it when it changes
