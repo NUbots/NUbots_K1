@@ -80,7 +80,7 @@ def list():
     ]
 
 
-def build(image, platform, username, uid, reset, jobs):
+def build(image, platform, username, uid, reset):
     pty = WrapPty()
 
     # If we are building the selected platform we need to work out what that refers to
@@ -154,8 +154,6 @@ def build(image, platform, username, uid, reset, jobs):
             "--pull",
             "--build-arg",
             f"platform={platform_arg}",
-            "--build-arg",
-            f"jobs={jobs}",
             "--platform",
             "linux/amd64",
             "--build-arg",
