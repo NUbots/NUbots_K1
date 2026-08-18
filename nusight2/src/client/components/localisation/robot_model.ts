@@ -5,6 +5,7 @@ import { action } from "mobx";
 
 import { Matrix4 } from "../../../shared/math/matrix4";
 import { Quaternion } from "../../../shared/math/quaternion";
+import { Vector2 } from "../../../shared/math/vector2";
 import { Vector3 } from "../../../shared/math/vector3";
 import { memoize } from "../../base/memoize";
 import { RobotModel } from "../robot/model";
@@ -173,6 +174,13 @@ export class LocalisationRobotModel {
   @observable goals: { points: { bottom: Vector3; top: Vector3 }[] };
   @observable robots: { id: number; rRWw: Vector3; color: string }[];
   @observable purpose: string;
+  // Teammates seen via the UDP team-communication broadcast (message.input.Message), keyed by
+  // player id. Each is a full LocalisationRobotModel so it can be rendered with the exact same
+  // components used for our own robot (K1, PurposeLabel) - see network.ts#onTeamCommunication.
+  @observable teammates: Map<number, LocalisationRobotModel> = new Map();
+  // Desired position when performing the Support purpose. Already in field space (unlike most
+  // fields on this model, which store world-space data and expose field-space via a computed).
+  @observable desiredSupportPosition?: Vector2;
   @observable associationLines?: Line[];
   @observable maxAlignRadius: number;
   @observable minAlignRadius: number;
@@ -215,6 +223,7 @@ export class LocalisationRobotModel {
     goals,
     robots,
     purpose,
+    desiredSupportPosition,
     associationLines,
     maxAlignRadius,
     minAlignRadius,
@@ -250,6 +259,7 @@ export class LocalisationRobotModel {
     goals: { points: { bottom: Vector3; top: Vector3 }[] };
     robots: { id: number; rRWw: Vector3; color: string }[];
     purpose: string;
+    desiredSupportPosition?: Vector2;
     associationLines?: Line[];
     maxAlignRadius: number;
     minAlignRadius: number;
@@ -291,6 +301,7 @@ export class LocalisationRobotModel {
     this.goals = goals;
     this.robots = robots;
     this.purpose = purpose;
+    this.desiredSupportPosition = desiredSupportPosition;
     this.teamColour = teamColour || "blue";
     this.associationLines = associationLines;
     this.maxAlignRadius = maxAlignRadius;

@@ -1,11 +1,13 @@
 import { WalkState } from "@proto/message/behaviour/state/WalkState";
 import { GameState_TeamColourEnum } from "@proto/message/input/GameState";
+import { Message as RobocupMessage } from "@proto/message/input/Robocup";
 import { Sensors } from "@proto/message/input/Sensors";
 import { Ball as LocalisationBall } from "@proto/message/localisation/Ball";
 import { Field } from "@proto/message/localisation/Field";
 import { Robots as LocalisationRobots } from "@proto/message/localisation/Robot";
 import { WalkToDebug } from "@proto/message/planning/WalkPath";
 import { Purpose, SoccerPositionFromEnum } from "@proto/message/purpose/Purpose";
+import { SupportPosition } from "@proto/message/purpose/SupportPosition";
 import { WalkInsideBoundedBox } from "@proto/message/strategy/WalkInsideBoundedBox";
 import { Overview } from "@proto/message/support/nusight/Overview";
 import { FieldIntersections } from "@proto/message/vision/FieldIntersections";
@@ -21,6 +23,7 @@ import { Matrix4 } from "../../../shared/math/matrix4";
 import { Quaternion } from "../../../shared/math/quaternion";
 import { Vector2 } from "../../../shared/math/vector2";
 import { Vector3 } from "../../../shared/math/vector3";
+import { Vector4 } from "../../../shared/math/vector4";
 import { Timestamp } from "../../../shared/time/timestamp";
 import { Network } from "../../network/network";
 import { NUsightNetwork } from "../../network/nusight_network";
@@ -47,6 +50,8 @@ export class LocalisationNetwork {
     this.network.on(FieldIntersections, this.onFieldIntersections);
     this.network.on(WalkInsideBoundedBox, this.WalkInsideBoundedBox);
     this.network.on(Purpose, this.onPurpose);
+    this.network.on(SupportPosition, this.onSupportPosition);
+    this.network.on(RobocupMessage, this.onTeamCommunication);
     this.network.on(WalkState, this.onWalkState);
     this.network.on(Overview, this.onOverview);
   }
@@ -128,6 +133,69 @@ export class LocalisationNetwork {
     }
 
     robot.teamColour = purpose.teamColour == GameState_TeamColourEnum.RED ? "red" : "blue";
+  }
+
+  @action.bound
+  private onSupportPosition(robotModel: RobotModel, supportPosition: SupportPosition) {
+    const robot = LocalisationRobotModel.of(robotModel);
+
+    robot.desiredSupportPosition = Vector2.from(supportPosition.position);
+  }
+
+  @action.bound
+  private onTeamCommunication(robotModel: RobotModel, message: RobocupMessage) {
+    const robot = LocalisationRobotModel.of(robotModel);
+    const pose = message.currentPose;
+    if (!pose || pose.playerId === 0) {
+      // player_id 0 means "unknown" - don't render it.
+      return;
+    }
+
+    // Reuse a stable synthetic RobotModel per player id so LocalisationRobotModel.of(...) below
+    // keeps returning the same instance (it's memoized by object identity), letting us render
+    // teammates with the exact same <K1>/<PurposeLabel> components used for our own robot.
+    let teammate = robot.teammates.get(pose.playerId);
+    if (!teammate) {
+      teammate = LocalisationRobotModel.of(
+        RobotModel.of({
+          id: `teammate-${pose.playerId}`,
+          connected: true,
+          type: robotModel.type,
+          enabled: true,
+          name: `Teammate ${pose.playerId}`,
+          address: "",
+          port: 0,
+        }),
+      );
+      robot.teammates.set(pose.playerId, teammate);
+    }
+
+    const x = pose.position?.x ?? 0;
+    const y = pose.position?.y ?? 0;
+    const yaw = pose.position?.z ?? 0;
+    // Undo RobotCommunication.cpp's mixed-team-protocol 180 degree rotation (negate x and y,
+    // rotate yaw by pi) applied before broadcasting, so teammates render in their true on-field
+    // position and orientation.
+    const rotation = Matrix4.fromRotationZ(yaw + Math.PI);
+    const Hft = new Matrix4(rotation.x, rotation.y, rotation.z, new Vector4(-x, -y, 0, 1));
+
+    // This model's own Hfw defaults to identity, so setting Htw/Hcw to Hft's inverse makes its
+    // computed Hft/Hfc equal the broadcast pose directly.
+    teammate.Htw = Hft.invert();
+    teammate.Hcw = Hft.invert();
+    teammate.playerId = pose.playerId;
+    teammate.purpose = message.goingForBall ? "GOING FOR BALL" : "";
+
+    // The ball position this teammate is reporting, if it has actually seen one (age is -1 when
+    // the ball hasn't been seen). Reuses the same rBFf computed getter and <Ball> component as our
+    // own ball by storing the already field-space (and x/y-unflipped) position as "world space" on
+    // this synthetic model, whose Hfw is identity - same trick used for Htw/Hcw above.
+    const ball = message.ball;
+    if (ball?.position && ball.age >= 0) {
+      teammate.ball = { rBWw: new Vector3(-ball.position.x, -ball.position.y, ball.position.z) };
+    } else {
+      teammate.ball = undefined;
+    }
   }
 
   @action.bound

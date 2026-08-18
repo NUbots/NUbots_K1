@@ -64,6 +64,10 @@ namespace module::localisation {
             double association_distance = 0.0;
             /// @brief The maximum number of times a robot can be missed consecutively before it is removed
             int max_missed_count = 0;
+            /// @brief How long (seconds) without a comms message before a teammate is removed. Teammates are
+            /// pruned on comms staleness rather than the vision-driven missed_count, since they are frequently
+            /// outside camera view but still broadcasting - see prediction() and maintenance().
+            double teammate_timeout = 0.0;
             /// @brief The maximum distance a robot can be outside the field before it is ignored
             double max_distance_from_field = 0.0;
             /// @brief The maximum cost for a localisation to be considered valid
@@ -87,6 +91,9 @@ namespace module::localisation {
             /// If it is not a teammate, this will be 0
             bool teammate                     = false;
             message::purpose::Purpose purpose = message::purpose::Purpose();
+            /// @brief The last time a comms message was received for this teammate. Only meaningful when
+            /// teammate is true.
+            NUClear::clock::time_point last_comms_time = NUClear::clock::now();
 
             /// @brief Constructor that sets the state for the UKF
             /// @param initial_rRWw The initial position of the robot in world coordinates

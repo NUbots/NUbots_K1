@@ -128,6 +128,10 @@ export class LocalisationModel {
   @observable fieldIntersectionsVisible = true;
   @observable walkToDebugVisible = false;
   @observable boundedBoxVisible = true;
+  @observable purposeLabelVisible = true;
+  @observable supportPositionVisible = false;
+  @observable teammatesVisible = false;
+  @observable teammateBallVisible = false;
 
   constructor(
     appModel: AppModel,
