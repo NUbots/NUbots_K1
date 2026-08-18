@@ -14,6 +14,8 @@
 #include "extension/Configuration.hpp"
 
 #include "message/input/Image.hpp"
+#include "message/input/Sensors.hpp"
+#include "message/localisation/Field.hpp"
 #include "message/skill/Look.hpp"
 #include "message/skill/Walk.hpp"
 #include "message/strategy/WalkToFieldPosition.hpp"
@@ -26,6 +28,8 @@ namespace module::network {
     using extension::Configuration;
     using extension::behaviour::Task;
     using message::input::Image;
+    using message::input::Sensors;
+    using message::localisation::Field;
     using message::skill::Look;
     using message::skill::Walk;
     using message::strategy::WalkToFieldPosition;
@@ -204,6 +208,16 @@ namespace module::network {
             std::lock_guard<std::mutex> lock(image_mutex);
             last_image = image;
         });
+
+        on<Trigger<Sensors>>().then("Cache Latest Sensors", [this](const std::shared_ptr<const Sensors>& sensors) {
+            std::lock_guard<std::mutex> lock(sensors_mutex);
+            last_sensors = sensors;
+        });
+
+        on<Trigger<Field>>().then("Cache Latest Field", [this](const std::shared_ptr<const Field>& field) {
+            std::lock_guard<std::mutex> lock(field_mutex);
+            last_field = field;
+        });
     }
 
     void MCPServer::register_tools(mcp::Server& server) {
@@ -221,6 +235,90 @@ namespace module::network {
                             .meta               = std::nullopt,
                         };
                     });
+
+        server.tool(
+            "get_localisation",
+            nlohmann::json{
+                {"type", "object"},
+                {"properties", nlohmann::json::object()},
+                {"description",
+                 "Returns the robot's pose in field space (Hft: field {f} to torso {t}), combining the field "
+                 "localisation estimate (Hfw, from FieldLocalisationNLopt) with the torso pose from Sensors. "
+                 "The field frame is centred on the pitch with x toward the opponent's goal, so this is what "
+                 "you want to compare against the pitch markings you see in get_image — unlike a raw odometry "
+                 "frame, it's anchored to the field itself. Also reports cost: the field localisation "
+                 "optimiser's fit cost for the current estimate, low is good, and whether the optimiser has "
+                 "produced an estimate at all yet."}},
+            [this](const nlohmann::json&) -> mcp::CallToolResult {
+                std::shared_ptr<const Sensors> sensors;
+                /* Mutex Scope */ {
+                    std::lock_guard<std::mutex> lock(sensors_mutex);
+                    sensors = last_sensors;
+                }
+
+                if (sensors == nullptr) {
+                    log<DEBUG>("get_localisation called: no message received from Sensors yet");
+                    return {
+                        .content            = {mcp::TextContent{.text        = "No info has been received yet.",
+                                                                .annotations = std::nullopt}},
+                        .structured_content = std::nullopt,
+                        .is_error           = std::nullopt,
+                        .meta               = std::nullopt,
+                    };
+                }
+
+                std::shared_ptr<const Field> field;
+                /* Mutex Scope */ {
+                    std::lock_guard<std::mutex> lock(field_mutex);
+                    field = last_field;
+                }
+
+                if (field == nullptr) {
+                    log<DEBUG>("get_localisation called: no message received from FieldLocalisationNLopt yet");
+                    return {
+                        .content =
+                            {mcp::TextContent{.text        = "No field localisation estimate has been received "
+                                                              "yet — is localisation::FieldLocalisationNLopt "
+                                                              "(and its FieldDescription dependency) running?",
+                                              .annotations = std::nullopt}},
+                        .structured_content = std::nullopt,
+                        .is_error           = std::nullopt,
+                        .meta               = std::nullopt,
+                    };
+                }
+
+                // Hfw is world {w} to field {f}, Htw is world {w} to torso {t}.
+                // Hft = Hfw * Hwt gives the torso's pose expressed in field space.
+                const Eigen::Isometry3d Hfw = Eigen::Isometry3d(field->Hfw);
+                const Eigen::Isometry3d Hwt = Eigen::Isometry3d(sensors->Htw).inverse();
+                const Eigen::Isometry3d Hft = Hfw * Hwt;
+                const Eigen::Vector3d rTFf  = Hft.translation();
+                const double yaw            = Hft.rotation().eulerAngles(0, 1, 2).z();
+
+                log<DEBUG>("get_localisation called: returning position",
+                           rTFf.x(),
+                           rTFf.y(),
+                           rTFf.z(),
+                           "yaw",
+                           yaw,
+                           "cost",
+                           field->cost);
+
+                const nlohmann::json result{
+                    {"x", rTFf.x()},
+                    {"y", rTFf.y()},
+                    {"z", rTFf.z()},
+                    {"yaw", yaw},
+                    {"cost", field->cost},
+                };
+
+                return {
+                    .content            = {mcp::TextContent{.text = result.dump(), .annotations = std::nullopt}},
+                    .structured_content = std::nullopt,
+                    .is_error           = std::nullopt,
+                    .meta               = std::nullopt,
+                };
+            });
 
         server.tool(
             "walk",  // god is dead and i killed him
