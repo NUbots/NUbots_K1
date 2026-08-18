@@ -16,6 +16,7 @@
 #include "message/input/Image.hpp"
 #include "message/skill/Look.hpp"
 #include "message/skill/Walk.hpp"
+#include "message/strategy/WalkToFieldPosition.hpp"
 
 #include "utility/vision/Vision.hpp"
 #include "utility/vision/fourcc.hpp"
@@ -27,6 +28,7 @@ namespace module::network {
     using message::input::Image;
     using message::skill::Look;
     using message::skill::Walk;
+    using message::strategy::WalkToFieldPosition;
 
     namespace {
         /// @brief Base64-encodes raw bytes for embedding in an MCP ImageContent block
@@ -434,6 +436,54 @@ namespace module::network {
 
                 return {
                     .content = {mcp::TextContent{.text = "This has been done now.", .annotations = std::nullopt}},
+                    .structured_content = std::nullopt,
+                    .is_error           = std::nullopt,
+                    .meta               = std::nullopt,
+                };
+            });
+
+        server.tool(
+            "walk_to_field_position",  // closed-loop walk to a target position on the field
+            nlohmann::json{
+                {"type", "object"},
+                {"properties",
+                 nlohmann::json{
+                     {"x",
+                      nlohmann::json{{"type", "number"},
+                                     {"description", "Target X position in field space (meters)"}}},
+                     {"y",
+                      nlohmann::json{{"type", "number"},
+                                     {"description", "Target Y position in field space (meters)"}}},
+                     {"theta",
+                      nlohmann::json{{"type", "number"},
+                                     {"description", "Target heading/angle in field space (radians)"}}},
+                     {"stop_at_target",
+                      nlohmann::json{{"type", "boolean"},
+                                     {"description", "Whether to stop the robot once at target position"},
+                                     {"default", true}}},
+                 }},
+                {"required", nlohmann::json::array({"x", "y", "theta"})},
+            },
+            [this](const nlohmann::json& input) -> mcp::CallToolResult {
+                double x             = input.at("x").get<double>();
+                double y             = input.at("y").get<double>();
+                double theta         = input.at("theta").get<double>();
+                bool stop_at_target  = input.value("stop_at_target", true);
+
+                // Create iso3 transform (6D pose in field space)
+                Eigen::Isometry3d Hfd = Eigen::Isometry3d::Identity();
+                Hfd.translation()     = Eigen::Vector3d(x, y, 0);
+                Hfd.linear()          = Eigen::AngleAxisd(theta, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+
+                log<DEBUG>("walk_to_field_position called: target (", x, ", ", y, ") with heading", theta);
+
+                emit<Task>(std::make_unique<WalkToFieldPosition>(Hfd, stop_at_target), 3);
+
+                return {
+                    .content = {mcp::TextContent{
+                        .text = "Walking to field position (" + std::to_string(x) + ", " + std::to_string(y)
+                                + ") with heading " + std::to_string(theta),
+                        .annotations = std::nullopt}},
                     .structured_content = std::nullopt,
                     .is_error           = std::nullopt,
                     .meta               = std::nullopt,
