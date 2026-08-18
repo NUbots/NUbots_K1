@@ -386,10 +386,14 @@ RUN install-from-source https://github.com/NUbots/VisualMesh/archive/64c49fce3a1
 
 # JSON for modern C++ (https://github.com/nlohmann/json)
 # PlotJuggler, GPT, and MCPServer
-RUN install-from-source https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp \
+    --prefix ${DEP_PREFIX} --no-toolchain
 
 # cpp-httplib, header-only HTTP/HTTPS library (https://github.com/yhirose/cpp-httplib)
-RUN install-from-source https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.18.5/httplib.h
+RUN . /root/.dep_env && \
+    install-from-source https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.18.5/httplib.h \
+    --prefix ${DEP_PREFIX} --no-toolchain
 
 # TinyXML
 RUN install-from-source https://github.com/leethomason/tinyxml2/archive/refs/tags/9.0.0.tar.gz \
