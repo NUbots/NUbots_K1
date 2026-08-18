@@ -422,11 +422,6 @@ export class LocalisationController {
   };
 
   @action
-  toggleTimeToBallVisibility = (model: LocalisationModel) => {
-    model.timeToBallVisible = !model.timeToBallVisible;
-  };
-
-  @action
   toggleSupportPositionVisibility = (model: LocalisationModel) => {
     model.supportPositionVisible = !model.supportPositionVisible;
   };
