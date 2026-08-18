@@ -82,6 +82,7 @@ namespace module::localisation {
             cfg.max_missed_count                = config["max_missed_count"].as<int>();
             cfg.max_distance_from_field         = config["max_distance_from_field"].as<double>();
             cfg.max_localisation_cost           = config["max_localisation_cost"].as<double>();
+            cfg.teammate_timeout                = config["teammate_timeout"].as<double>();
         });
 
         on<Every<UPDATE_RATE, Per<std::chrono::seconds>>,
@@ -162,7 +163,14 @@ namespace module::localisation {
                 std::chrono::duration_cast<std::chrono::duration<double>>(now - tracked_robot.last_time_update).count();
             tracked_robot.last_time_update = now;
             tracked_robot.ukf.time(dt);
-            tracked_robot.seen = false;
+
+            // Vision runs far more often than teammates broadcast (every camera frame vs 2 Hz), so resetting
+            // seen here would almost always clobber it again before the next comms message arrives while the
+            // teammate is outside camera view. Teammates are instead kept alive by comms staleness in
+            // maintenance(), so leave their seen/missed_count alone here.
+            if (!tracked_robot.teammate) {
+                tracked_robot.seen = false;
+            }
         }
     }
 
@@ -193,8 +201,9 @@ namespace module::localisation {
                 teammate_itr->ukf.measure(Eigen::Vector2d(rRWw.head<2>()),
                                           cfg.ukf.noise.measurement.position,
                                           MeasurementType::ROBOT_POSITION());
-                teammate_itr->seen    = true;
-                teammate_itr->purpose = *purpose;
+                teammate_itr->seen           = true;
+                teammate_itr->purpose        = *purpose;
+                teammate_itr->last_comms_time = NUClear::clock::now();
 
                 continue;
             }

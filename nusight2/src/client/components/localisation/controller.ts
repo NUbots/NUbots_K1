@@ -417,6 +417,26 @@ export class LocalisationController {
   };
 
   @action
+  togglePurposeLabelVisibility = (model: LocalisationModel) => {
+    model.purposeLabelVisible = !model.purposeLabelVisible;
+  };
+
+  @action
+  toggleSupportPositionVisibility = (model: LocalisationModel) => {
+    model.supportPositionVisible = !model.supportPositionVisible;
+  };
+
+  @action
+  toggleTeammatesVisibility = (model: LocalisationModel) => {
+    model.teammatesVisible = !model.teammatesVisible;
+  };
+
+  @action
+  toggleTeammateBallVisibility = (model: LocalisationModel) => {
+    model.teammateBallVisible = !model.teammateBallVisible;
+  };
+
+  @action
   toggleOrientation(model: LocalisationModel) {
     model.dashboardField.orientation = model.dashboardField.orientation === "left" ? "right" : "left";
   }
