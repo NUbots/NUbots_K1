@@ -62,7 +62,7 @@ namespace module::skill {
         });
 
         // Every lets the task re-run to check whether kick_duration has elapsed
-        on<Provide<Kick>, Every<10, Per<std::chrono::seconds>>, With<Sensors>, With<Field>>().then(
+        on<Provide<Kick>, Every<10, Per<std::chrono::seconds>>, Trigger<Sensors>, With<Field>>().then(
             [this](const Kick& kick, const RunReason& run_reason, const Sensors& sensors, const Field& field) {
                 if (run_reason == RunReason::NEW_TASK) {
                     log<INFO>("Starting visual kick");
