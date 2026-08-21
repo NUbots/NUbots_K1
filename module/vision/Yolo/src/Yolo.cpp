@@ -81,11 +81,9 @@ namespace module::vision {
             objects[1].confidence_threshold = config["goalpost_confidence_threshold"].as<double>();
             objects[2].confidence_threshold = config["robot_confidence_threshold"].as<double>();
             objects[3].confidence_threshold = config["l_intersection_confidence_threshold"].as<double>();
-            objects[4].confidence_threshold = config["t_intersection_confidence_threshold"].as<double>();
-            objects[5].confidence_threshold = config["x_intersection_confidence_threshold"].as<double>();
-            objects[6].confidence_threshold = config["penalty_point_confidence_threshold"].as<double>();
-            objects[7].confidence_threshold = config["opponent_confidence_threshold"].as<double>();
-            objects[8].confidence_threshold = config["marker_confidence_threshold"].as<double>();
+            objects[4].confidence_threshold = config["penalty_point_confidence_threshold"].as<double>();
+            objects[5].confidence_threshold = config["t_intersection_confidence_threshold"].as<double>();
+            objects[6].confidence_threshold = config["x_intersection_confidence_threshold"].as<double>();
             cfg.nms_threshold               = config["nms_threshold"].as<double>();
             cfg.nms_score_threshold         = config["nms_score_threshold"].as<double>();
 
@@ -367,8 +365,7 @@ namespace module::vision {
                         bounding_boxes->bounding_boxes.push_back(*bbox);
                     }
 
-                    // Both "Person" and "Opponent" classes are treated as robot detections
-                    if (objects[class_id].name == "Person" || objects[class_id].name == "Opponent") {
+                    if (objects[class_id].name == "K1") {
                         // Get the vector in world space to check if it is in the field
                         Eigen::Vector3d rRWw = img.Hcw.inverse() * ray_to_camera_space(bottom_centre_ray);
                         // Only consider vision measurements within the green horizon, if it exists
@@ -409,9 +406,9 @@ namespace module::vision {
                         bounding_boxes->bounding_boxes.push_back(*bbox);
                     }
 
-                    // "PenaltyPoint" and "BRMarker" classes have no dedicated message type yet, so they are only
-                    // emitted as a bounding box, with no green-horizon filtering applied.
-                    if (objects[class_id].name == "PenaltyPoint" || objects[class_id].name == "BRMarker") {
+                    // "PenaltyPoint" has no dedicated message type yet, so it is only emitted as a bounding box,
+                    // with no green-horizon filtering applied.
+                    if (objects[class_id].name == "PenaltyPoint") {
                         bounding_boxes->bounding_boxes.push_back(*bbox);
                     }
                 }

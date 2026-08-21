@@ -66,16 +66,13 @@ namespace module::vision {
         };
 
         /// @brief The objects that the Yolo model can detect, in the exact order of the model's output classes.
-        /// Names match the `classnames` list in robocup_demo's src/vision/config/vision.yaml.
         std::vector<Object> objects = {{"Ball", Eigen::Vector4d(1, 1, 1, 1), 0.0},
                                        {"Goalpost", Eigen::Vector4d(1, 0, 1, 1), 0.0},
-                                       {"Person", Eigen::Vector4d(1, 0.5, 0, 1), 0.0},
+                                       {"K1", Eigen::Vector4d(1, 0.5, 0, 1), 0.0},
                                        {"LCross", Eigen::Vector4d(1, 0, 0, 1), 0.0},
-                                       {"TCross", Eigen::Vector4d(0, 1, 0, 1), 0.0},
-                                       {"XCross", Eigen::Vector4d(0, 0, 1, 1), 0.0},
                                        {"PenaltyPoint", Eigen::Vector4d(0, 1, 1, 1), 0.0},
-                                       {"Opponent", Eigen::Vector4d(1, 0.5, 0, 1), 0.0},
-                                       {"BRMarker", Eigen::Vector4d(1, 1, 0, 1), 0.0}};
+                                       {"TCross", Eigen::Vector4d(0, 1, 0, 1), 0.0},
+                                       {"XCross", Eigen::Vector4d(0, 0, 1, 1), 0.0}};
 
 
     public:

@@ -25,12 +25,6 @@ x_intersection_confidence_threshold: 0.2
 # Minimum confidence required for a penalty point detection to be accepted
 penalty_point_confidence_threshold: 0.2
 
-# Minimum confidence required for an opponent robot detection to be accepted
-opponent_confidence_threshold: 0.5
-
-# Minimum confidence required for a field marker (BRMarker) detection to be accepted
-marker_confidence_threshold: 0.3
-
 # NMS threshold for filtering out overlapping bounding boxes
 nms_threshold: 0.5
 
