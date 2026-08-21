@@ -258,9 +258,7 @@ namespace module::purpose {
                 if (!times_to_ball.empty()) {
                     auto time_to_ball_msg = std::make_unique<TimeToBall>();
                     for (const auto& [id, time] : times_to_ball) {
-                        auto* estimate = time_to_ball_msg->add_estimates();
-                        estimate->set_player_id(id);
-                        estimate->set_time_to_ball(static_cast<float>(time));
+                        time_to_ball_msg->estimates.emplace_back(id, static_cast<float>(time));
                     }
                     emit(std::move(time_to_ball_msg));
                 }
