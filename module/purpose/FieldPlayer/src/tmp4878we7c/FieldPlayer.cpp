@@ -1,0 +1,481 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2026 NUbots
+ *
+ * This file is part of the NUbots codebase.
+ * See https://github.com/NUbots/NUbots for further info.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+#include "FieldPlayer.hpp"
+
+#include "extension/Behaviour.hpp"
+#include "extension/Configuration.hpp"
+
+#include "message/input/GameState.hpp"
+#include "message/input/Sensors.hpp"
+#include "message/localisation/Ball.hpp"
+#include "message/localisation/Field.hpp"
+#include "message/localisation/Robot.hpp"
+#include "message/planning/LookAround.hpp"
+#include "message/purpose/Player.hpp"
+#include "message/purpose/Purpose.hpp"
+#include "message/strategy/FindBall.hpp"
+#include "message/strategy/LookAtFeature.hpp"
+#include "message/strategy/StandStill.hpp"
+#include "message/strategy/TimeToBall.hpp"
+#include "message/strategy/WalkToFieldPosition.hpp"
+#include "message/strategy/Who.hpp"
+#include "message/support/FieldDescription.hpp"
+#include "message/support/GlobalConfig.hpp"
+
+#include "utility/strategy/positioning.hpp"
+#include "utility/strategy/soccer_strategy.hpp"
+
+namespace module::purpose {
+
+    using extension::Configuration;
+
+    using FieldPlayerMsg = message::purpose::FieldPlayer;
+    using Phase          = message::input::GameState::Phase;
+
+    using message::input::GameState;
+    using message::input::Sensors;
+    using message::localisation::Ball;
+    using message::localisation::Field;
+    using message::localisation::Robots;
+    using message::planning::LookAround;
+    using message::purpose::Attack;
+    using message::purpose::Defend;
+    using message::purpose::Purpose;
+    using message::purpose::ReadyAttack;
+    using message::purpose::SoccerPosition;
+    using message::purpose::Support;
+    using message::strategy::FindBall;
+    using message::strategy::LookAtBall;
+    using message::strategy::LookForStaleFeatures;
+    using message::strategy::StandStill;
+    using message::strategy::TimeToBall;
+    using message::strategy::WalkToFieldPosition;
+    using message::strategy::Who;
+    using message::support::FieldDescription;
+    using message::support::GlobalConfig;
+
+    FieldPlayer::FieldPlayer(std::unique_ptr<NUClear::Environment> environment)
+        : BehaviourReactor(std::move(environment)) {
+
+        on<Configuration>("FieldPlayer.yaml").then([this](const Configuration& config) {
+            // Use configuration here from file FieldPlayer.yaml
+            this->log_level                       = config["log_level"].as<NUClear::LogLevel>();
+            cfg.ball_threshold                    = config["ball_threshold"].as<double>();
+            cfg.equidistant_threshold             = config["equidistant_threshold"].as<double>();
+            cfg.ball_off_center_threshold         = config["ball_off_center_threshold"].as<double>();
+            cfg.estimated_walk_speed              = config["estimated_walk_speed"].as<double>();
+            cfg.estimated_turn_speed              = config["estimated_turn_speed"].as<double>();
+            cfg.approach_distance_behind_ball     = config["approach_distance_behind_ball"].as<double>();
+            cfg.attack_equidistant_time_threshold = config["attack_equidistant_time_threshold"].as<double>();
+            cfg.center_circle_offset              = config["center_circle_offset"].as<double>();
+            cfg.max_localisation_cost             = config["max_localisation_cost"].as<double>();
+            cfg.search_when_lost                  = config["search_when_lost"].as<bool>();
+            cfg.localise_timeout                  = std::chrono::seconds(config["localise_timeout"].as<int>());
+        });
+
+        on<Configuration>("Formation.yaml").then([this](const Configuration& config) {
+            cfg.formation_player_ids.clear();
+            for (auto mode : config["modes"]) {
+                std::string mode_name = mode.first.as<std::string>();
+                for (auto robot : mode.second["robots"]) {
+                    cfg.formation_player_ids[mode_name].insert(std::stoi(robot.first.as<std::string>()));
+                }
+            }
+        });
+
+        // PLAYING state
+        on<Provide<FieldPlayerMsg>,
+           Optional<With<Ball>>,
+           Optional<With<Robots>>,
+           Optional<With<Field>>,
+           With<Sensors>,
+           With<GameState>,
+           With<GlobalConfig>,
+           With<FieldDescription>,
+           When<Phase, std::equal_to, Phase::PLAYING>>()
+            .then([this](const std::shared_ptr<const Ball>& ball,
+                         const std::shared_ptr<const Robots>& robots,
+                         const std::shared_ptr<const Field>& field,
+                         const Sensors& sensors,
+                         const GameState& game_state,
+                         const GlobalConfig& global_config,
+                         const FieldDescription& fd) {
+                // If play is stopped, stand still
+                if (game_state.stopped) {
+                    log<DEBUG>("Play is stopped, standing still.");
+                    emit<Task>(std::make_unique<StandStill>());
+                    return;
+                }
+
+                // Do not play until localisation has converged, e.g. when re-entering an already-playing
+                // game after being unpenalised or restarted. Stand still and scan for field features so
+                // the robot doesn't run out with a wrong or unconverged pose.
+                if (!field || !field->localised) {
+                    // Start the timer the first time we notice we are not localised
+                    if (!look_around_start) {
+                        look_around_start = NUClear::clock::now();
+                    }
+                    // Only stand and look around for a limited time, then give up and play anyway
+                    if (NUClear::clock::now() - *look_around_start < cfg.localise_timeout) {
+                        log<DEBUG>("Not localised, standing still and looking around to localise.");
+                        supporting = false;
+                        emit(std::make_unique<Purpose>(global_config.player_id,
+                                                       SoccerPosition::UNKNOWN,
+                                                       true,
+                                                       false,
+                                                       game_state.team.team_colour));
+                        emit<Task>(std::make_unique<LookAround>(), 1);
+                        emit<Task>(std::make_unique<StandStill>(), 1);
+                        return;
+                    }
+                    log<DEBUG>("Look around timed out without localising, playing anyway.");
+                }
+                else {
+                    // Localised, reset the timer for the next time localisation is lost
+                    look_around_start.reset();
+                }
+
+                // Determine if the game is in a set play situation
+                bool set_play = game_state.mode.value >= GameState::Mode::DIRECT_FREEKICK
+                                && game_state.mode.value <= GameState::Mode::THROW_IN;
+
+                // Search if no ball or field
+                if (!field || !ball) {
+                    log<DEBUG>("No field or ball, searching for landmarks to localise.");
+                    emit<Task>(std::make_unique<FindBall>());
+                    return;
+                }
+
+                // If the robot is uncertain about its position, it should not play
+                if (cfg.search_when_lost && field->cost > cfg.max_localisation_cost) {
+                    log<DEBUG>("Field cost is too high, not playing.");
+                    supporting = false;
+                    emit(std::make_unique<Purpose>(global_config.player_id,
+                                                   SoccerPosition::UNKNOWN,
+                                                   true,
+                                                   false,
+                                                   game_state.team.team_colour));
+
+                    // Search for landmarks to localise
+                    emit<Task>(std::make_unique<FindBall>());
+                    return;
+                }
+
+                // General tasks
+                emit<Task>(std::make_unique<LookAtBall>(), 1);  // Track the ball
+                // Higher priority than LookAtBall so it can take the head to re-localise when needed.
+                // It only emits a LookAround when the ball is stale or localisation cost is too high, so it
+                // releases the head back to ball tracking as soon as features are fresh again.
+                emit<Task>(std::make_unique<LookForStaleFeatures>(), 2);
+
+                // If there's no ball message, we can't play, just look for the ball
+                if (ball == nullptr) {
+                    return;
+                }
+
+                // Make an ignore list with inactive teammates
+                std::vector<unsigned int> ignore_ids{};
+                // Add inactive robots to the ignore list
+                if (robots) {
+                    for (const auto& robot : robots->robots) {
+                        if (robot.teammate && !robot.purpose.active) {
+                            ignore_ids.push_back(robot.purpose.player_id);
+                            log<DEBUG>("Ignoring teammate", robot.purpose.player_id, "because they are inactive.");
+                        }
+                    }
+                }
+
+                // Find who has the ball, if any
+                // If there are no robots, use an empty vector
+                Who ball_pos = utility::strategy::ball_possession(ball->rBWw,
+                                                                  (robots ? *robots : Robots{}),
+                                                                  field->Hfw,
+                                                                  sensors.Hrw,
+                                                                  cfg.ball_threshold,
+                                                                  cfg.equidistant_threshold,
+                                                                  global_config.player_id,
+                                                                  ignore_ids);
+
+                // If we have robots, determine if we are closest to the ball
+                // Otherwise assume we are alone and closest by default
+                // Only consider the goalie if the ball is in the defending third
+                Eigen::Vector3d rBFf     = field->Hfw * ball->rBWw;
+                double defending_third_x = fd.dimensions.field_length / 3.0;
+                if (robots && rBFf.x() < defending_third_x) {
+                    for (const auto& robot : robots->robots) {
+                        if (robot.purpose.purpose == SoccerPosition::GOALIE) {
+                            log<DEBUG>("Ball not in defending third, ignoring goalie for closest to ball");
+                            ignore_ids.push_back(robot.purpose.player_id);
+                        }
+                    }
+                }
+                // Who on the team could get kick-ready (behind the ball, facing goal) soonest - covers the
+                // "teammate already going for the ball" case too, since their head start shows up as a
+                // shorter estimated time.
+                Eigen::Vector2d goal_rFf(-fd.dimensions.field_length / 2.0, 0.0);
+                std::vector<std::pair<unsigned int, double>> times_to_ball;
+                const unsigned int fastest_to_ball =
+                    robots ? utility::strategy::fastest_to_ball_on_team(ball->rBWw,
+                                                                        goal_rFf,
+                                                                        cfg.approach_distance_behind_ball,
+                                                                        *robots,
+                                                                        field->Hfw,
+                                                                        sensors.Hrw,
+                                                                        cfg.estimated_walk_speed,
+                                                                        cfg.estimated_turn_speed,
+                                                                        cfg.attack_equidistant_time_threshold,
+                                                                        global_config.player_id,
+                                                                        ignore_ids,
+                                                                        &times_to_ball)
+                           : global_config.player_id;
+                bool is_fastest_to_ball = fastest_to_ball == global_config.player_id;
+
+                // Report every candidate's estimated time to ball for debugging/visualisation in NUsight
+                if (!times_to_ball.empty()) {
+                    auto time_to_ball_msg = std::make_unique<TimeToBall>();
+                    for (const auto& [id, time] : times_to_ball) {
+                        time_to_ball_msg->estimates.emplace_back(id, static_cast<float>(time));
+                    }
+                    emit(std::move(time_to_ball_msg));
+                }
+
+                // Determine if we need to wait for the other team to kick off
+                // If the ball moves, it is in play
+                bool ball_moved   = (field->Hfw * ball->rBWw).norm() > cfg.ball_off_center_threshold;
+                bool kickoff_wait = !ball_moved && !game_state.our_kick_off
+                                    && (game_state.secondary_time - NUClear::clock::now()).count() > 0;
+
+                // Only wait if the opponent hasn't kicked off yet
+                bool allowed_to_attack = !kickoff_wait;
+                log<DEBUG>("Allowed to attack:", allowed_to_attack, "is fastest to ball:", is_fastest_to_ball);
+
+                // Furthest back calculation
+                bool furthest_back = robots ? utility::strategy::furthest_back(*robots,
+                                                                               field->Hfw,
+                                                                               sensors.Hrw,
+                                                                               cfg.equidistant_threshold,
+                                                                               global_config.player_id,
+                                                                               ignore_ids)
+                                            : true;
+
+                // If it's the opponent's set play, position defensively
+                if (set_play && !game_state.our_kick_off) {
+                    log<DEBUG>("Opponent set play, defending.");
+                    if (furthest_back) {
+                        supporting = false;
+                        emit(std::make_unique<Purpose>(global_config.player_id,
+                                                       SoccerPosition::DEFEND,
+                                                       true,
+                                                       true,
+                                                       game_state.team.team_colour));
+                        emit<Task>(std::make_unique<Defend>());
+                    }
+                    else {
+                        if (!supporting) {
+                            log<INFO>("Opponent set play, switching to support.");
+                            supporting = true;
+                        }
+                        emit<Task>(std::make_unique<Support>());
+                        emit(std::make_unique<Purpose>(global_config.player_id,
+                                                       SoccerPosition::SUPPORT,
+                                                       true,
+                                                       true,
+                                                       game_state.team.team_colour));
+                    }
+                    return;
+                }
+
+                // If it's our set play, whoever is fastest to the ball takes the kick and everyone else supports
+                if (set_play && game_state.our_kick_off) {
+                    if (is_fastest_to_ball) {
+                        log<DEBUG>("Our set play, taking the kick.");
+                        supporting = false;
+                        emit(std::make_unique<Purpose>(global_config.player_id,
+                                                       SoccerPosition::ATTACK,
+                                                       true,
+                                                       true,
+                                                       game_state.team.team_colour));
+                        emit<Task>(std::make_unique<Attack>(ball_pos));
+                    }
+                    else {
+                        if (!supporting) {
+                            log<INFO>("Our set play, switching to support.");
+                            supporting = true;
+                        }
+                        emit<Task>(std::make_unique<Support>());
+                        emit(std::make_unique<Purpose>(global_config.player_id,
+                                                       SoccerPosition::SUPPORT,
+                                                       true,
+                                                       true,
+                                                       game_state.team.team_colour));
+                    }
+                    return;
+                }
+
+                // Attack if we are fastest to the ball BUT we have to be in a situation where we are allowed
+                // to attack, eg not in penalty set up phase.
+                if (is_fastest_to_ball && allowed_to_attack) {
+                    log<DEBUG>("Attack!");
+                    supporting = false;
+                    emit(std::make_unique<Purpose>(global_config.player_id,
+                                                   SoccerPosition::ATTACK,
+                                                   true,
+                                                   true,
+                                                   game_state.team.team_colour));
+                    // Emit attack task with ball position information
+                    emit<Task>(std::make_unique<Attack>(ball_pos));
+                    return;
+                }
+
+                // If we are in the best position to attack, but we can't because of the situation, eg penalty
+                // positioning or opponent kickoff, then we should stick to a good spot and be ready to attack
+                if (is_fastest_to_ball && !allowed_to_attack) {
+                    log<DEBUG>("Ready attack!");
+                    supporting = false;
+                    emit(std::make_unique<Purpose>(global_config.player_id,
+                                                   SoccerPosition::READY_ATTACK,
+                                                   true,
+                                                   true,
+                                                   game_state.team.team_colour));
+                    emit<Task>(std::make_unique<ReadyAttack>());
+                    return;
+                }
+
+                // If we can't attack, eg another robot is attacking, we don't want to get in the way.
+                // If we are closest to our goals (ignoring the attacking player), then stand back to defend.
+                // If there's no robots, assume we are alone and are the furthest back
+                // Shouldn't happen, as that should make us the attacker
+                // Ignore the attacker so it isn't considered for furthest back
+                ignore_ids.push_back(fastest_to_ball);
+                // Add goalies to the ignore list so we don't consider them as the furthest back
+                if (robots) {
+                    for (const auto& robot : robots->robots) {
+                        if (robot.purpose.purpose == SoccerPosition::GOALIE) {
+                            ignore_ids.push_back(robot.purpose.player_id);
+                        }
+                    }
+                }
+
+                if (furthest_back) {
+                    log<DEBUG>("Defend!");
+                    supporting = false;
+                    emit(std::make_unique<Purpose>(global_config.player_id,
+                                                   SoccerPosition::DEFEND,
+                                                   true,
+                                                   true,
+                                                   game_state.team.team_colour));
+                    emit<Task>(std::make_unique<Defend>());
+                    return;
+                }
+
+                // If we're not the attacker, nor are we the robot hanging back to protect in case the opponent takes
+                // the ball up towards our goal, we should help out the attacker however makes sense in the situation
+                if (!supporting) {
+                    log<INFO>("Switching to support.");
+                    supporting = true;
+                }
+                emit<Task>(std::make_unique<Support>());
+                emit(std::make_unique<Purpose>(global_config.player_id,
+                                               SoccerPosition::SUPPORT,
+                                               true,
+                                               true,
+                                               game_state.team.team_colour));
+            });
+
+        // READY state
+        on<Provide<FieldPlayerMsg>,
+           Optional<With<Robots>>,
+           With<FieldDescription>,
+           With<Field>,
+           With<Sensors>,
+           With<GameState>,
+           With<GlobalConfig>,
+           When<Phase, std::equal_to, Phase::READY>>()
+            .then([this](const std::shared_ptr<const Robots>& robots,
+                         const FieldDescription& field_desc,
+                         const Field& field,
+                         const Sensors& sensors,
+                         const GameState& game_state,
+                         const GlobalConfig& global_config) {
+                // A penalty kick also uses the READY state, but the kick-off formation doesn't apply.
+                // Stand still as a minimal rule-safe behaviour until proper penalty positioning exists.
+                if (game_state.mode == GameState::Mode::PENALTYKICK) {
+                    emit<Task>(std::make_unique<StandStill>());
+                    return;
+                }
+
+                // Use formation if this player has a slot, otherwise fall back to dynamic ready position
+                std::string mode_name = game_state.our_kick_off ? "kickoff_us" : "kickoff_them";
+                auto mode_it          = cfg.formation_player_ids.find(mode_name);
+                bool has_slot =
+                    mode_it != cfg.formation_player_ids.end() && mode_it->second.count(global_config.player_id);
+
+                if (has_slot) {
+                    emit<Task>(std::make_unique<Support>());
+                }
+                else {
+                    // Collect up teammates; empty if no one is around
+                    std::vector<Eigen::Vector3d> teammates{};
+                    if (robots) {
+                        // Collect all teammates in a vector, ignore the goalie
+                        for (const auto& robot : robots->robots) {
+                            if (robot.teammate && robot.purpose.purpose != SoccerPosition::GOALIE) {
+                                teammates.push_back(field.Hfw * robot.rRWw);
+                            }
+                        }
+                    }
+
+                    // Calculate optimal ready position based on everyone's position
+                    Eigen::Isometry3d Hfr = utility::strategy::ready_position(field.Hfw,
+                                                                              sensors.Hrw,
+                                                                              teammates,
+                                                                              field_desc,
+                                                                              game_state.our_kick_off,
+                                                                              cfg.center_circle_offset);
+                    emit<Task>(std::make_unique<WalkToFieldPosition>(Hfr, true));
+                }
+
+                // Send purpose. Both branches above put us in a supporting role for kickoff (either the formation
+                // slot or the dynamic ready position), so report SUPPORT rather than UNKNOWN.
+                emit(std::make_unique<Purpose>(global_config.player_id,
+                                               SoccerPosition::SUPPORT,
+                                               true,
+                                               true,
+                                               game_state.team.team_colour));
+            });
+
+        // When not in playing or ready state, send off the team colour and unknown state
+        on<Provide<FieldPlayerMsg>, With<GameState>, With<GlobalConfig>>().then(
+            [this](const GameState& game_state, const GlobalConfig& global_config) {
+                emit(std::make_unique<Purpose>(global_config.player_id,
+                                               SoccerPosition::UNKNOWN,
+                                               true,
+                                               true,
+                                               game_state.team.team_colour));
+            });
+    }
+}  // namespace module::purpose
