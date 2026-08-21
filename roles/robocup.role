@@ -66,5 +66,5 @@ nuclear_role(
   purpose::Support
   # Platform
   platform::${SUBCONTROLLER}::HardwareIO
-  # Datalogging support::logging::DataLogging
+  support::logging::DataLogging
 )
