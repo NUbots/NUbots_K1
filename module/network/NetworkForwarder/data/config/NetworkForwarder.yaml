@@ -33,7 +33,7 @@ targets:
 
     # Localisation Messages
     message.localisation.Ball: true
-    message.localisation.Field: true
+    message.localisation.Field: false
     message.localisation.Robots: true
 
     # Team communication (UDP broadcast) - used to debug what's actually on the wire between robots
