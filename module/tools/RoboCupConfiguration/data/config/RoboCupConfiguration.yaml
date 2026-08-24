@@ -9,6 +9,8 @@ wifi_networks:
   HSL_H: "HSL?!HSL?!"
   Football-4-1: "12345678"
   Football-4-2: "12345678"
+  FBL-F5V5-1: "12345678"
+  FBL-F5V5-2: "12345678"
 
 common_ips: [
     "10.1.2.X", # Typical ethernet/lab IP
