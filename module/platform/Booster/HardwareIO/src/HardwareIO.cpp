@@ -7,6 +7,7 @@
 #include "extension/Configuration.hpp"
 
 #include "utility/math/comparison.hpp"
+#include "utility/platform/Booster/channel_factory.hpp"
 
 namespace module::platform::Booster {
 
@@ -54,7 +55,7 @@ namespace module::platform::Booster {
 
         on<Startup>().then([this]() {
             log<INFO>("Starting Booster HardwareIO");
-            ChannelFactory::Instance()->Init(0);
+            utility::platform::Booster::ensure_channel_factory();
 
             booster_client.Init();
             booster_client.ChangeMode(RobotMode::kPrepare);
@@ -90,7 +91,26 @@ namespace module::platform::Booster {
                 booster::robot::b1::kTopicKickReference);
         });
 
-        on<Shutdown>().then([this]() { booster_client.ChangeMode(RobotMode::kPrepare); });
+        on<Shutdown>().then([this]() {
+            booster_client.ChangeMode(RobotMode::kPrepare);
+
+            log<INFO>("Closing HardwareIO channels");
+            if (low_state_channel != nullptr) {
+                ChannelFactory::Instance()->CloseReader("rt/low_state");
+            }
+            if (battery_channel != nullptr) {
+                ChannelFactory::Instance()->CloseReader("rt/battery_state");
+            }
+            if (fall_down_channel != nullptr) {
+                ChannelFactory::Instance()->CloseReader("rt/fall_down");
+            }
+            if (button_event_channel != nullptr) {
+                ChannelFactory::Instance()->CloseReader("rt/button_event");
+            }
+            if (odometer_channel != nullptr) {
+                ChannelFactory::Instance()->CloseReader("rt/odometer_state");
+            }
+        });
 
         on<Trigger<BoosterWalk>>().then([this](const BoosterWalk& move) {
             // The robot must not move in prep mode, so drop walk commands while in (or entering) prep.
