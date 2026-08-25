@@ -46,10 +46,17 @@ namespace module::skill {
             NUClear::clock::duration kick_duration{};
             /// @brief Scales the Kick task's direction magnitude into the SDK's kick power/range field
             double power_scale = 1.0;
+            /// @brief The minimum distance the ball moves from initial position to exit VisualKick
+            double min_ball_move_distance = 0.1;
+            /// @brief Fraction of the way from the robot to the ball to use as the kick reference point (1.0 = ball)
+            double ball_reference_fraction = 1.0;
         } cfg;
 
         /// @brief The time the current visual kick was started
         NUClear::clock::time_point kick_start_time{};
+
+        /// @brief The initial position of the ball
+        Eigen::Vector3d initial_ball_position{};
 
     public:
         /// @brief Called by the powerplant to build and setup the K1VisualKick reactor.

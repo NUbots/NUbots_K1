@@ -63,6 +63,9 @@ namespace module::planning {
             cfg.ball_distance_threshold = config["ball_distance_threshold"].as<double>();
             cfg.ball_angle_threshold    = config["ball_angle_threshold"].as<double>();
             cfg.target_angle_threshold  = config["target_angle_threshold"].as<Expression>();
+            cfg.kick_power_far          = config["kick_power_far"].as<double>();
+            cfg.kick_power_mid          = config["kick_power_mid"].as<double>();
+            cfg.kick_power_near         = config["kick_power_near"].as<double>();
         });
 
         // Shared with WalkToBall so both modules target the same point behind the goal line
@@ -72,7 +75,8 @@ namespace module::planning {
 
         on<Startup, Trigger<FieldDescription>>().then("Update Goal Position", [this](const FieldDescription& fd) {
             // Update the goal position
-            rGFf = Eigen::Vector3d(-fd.dimensions.field_length / 2 - cfg.goal_target_offset, 0, 0);
+            rGFf        = Eigen::Vector3d(-fd.dimensions.field_length / 2 - cfg.goal_target_offset, 0, 0);
+            field_length = fd.dimensions.field_length;
         });
 
         on<Provide<KickTo>, Uses<Kick>, Trigger<Ball>, With<Sensors>, With<Field>>().then(
@@ -81,6 +85,11 @@ namespace module::planning {
                    const Ball& ball,
                    const Sensors& sensors,
                    const Field& field) {
+                log<DEBUG>(fmt::format("PlanKick tick: run_state={} done={}",
+                                       kick.run_state == RunState::RUNNING   ? "RUNNING"
+                                       : kick.run_state == RunState::QUEUED  ? "QUEUED"
+                                                                              : "NO_TASK",
+                                       kick.done));
                 // If the kick is running, don't interrupt or the robot may fall
                 if (kick.run_state == RunState::RUNNING && !kick.done) {
                     emit<Task>(std::make_unique<Continue>());
@@ -126,17 +135,24 @@ namespace module::planning {
                     return;
                 }
 
-                // COMPUTE KICK TARGET (field space) AND DIRECTION (robot-relative unit vector toward it)
+                // COMPUTE KICK TARGET (field space) AND DIRECTION (robot-relative vector toward it)
                 // Field space -> robot space
                 const Eigen::Isometry3d Hrf = sensors.Hrw * field.Hfw.inverse();
                 // Transform the goal into robot space, then difference against the already robot-relative
                 // ball position so the translation cancels correctly (both points are in the same frame)
-                const Eigen::Vector3d direction = (Hrf * rGFf - rBRr).normalized();
+                const Eigen::Vector3d rGRr           = Hrf * rGFf;
+                const Eigen::Vector3d direction_unit = (rGRr - rBRr).normalized();
+
+                // Determine power based on distance to target
+                const double distance_to_target = rGRr.norm();
+                const double power = distance_to_target > 2.0 * field_length / 3.0 ? cfg.kick_power_far
+                                     : distance_to_target > field_length / 3.0     ? cfg.kick_power_mid
+                                                                                    : cfg.kick_power_near;
 
                 log<INFO>("KICK!");
                 auto kick_task        = std::make_unique<Kick>();
                 kick_task->target     = rGFf;
-                kick_task->direction  = direction;
+                kick_task->direction  = direction_unit * power;
                 emit<Task>(std::move(kick_task));
             });
     }
