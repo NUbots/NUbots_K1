@@ -25,7 +25,9 @@ nuclear_role(
   vision::Yolo
   # Localisation
   localisation::BallLocalisation
-  localisation::FieldLocalisationNLopt
+  # localisation::FieldLocalisationNLopt # disabled while evaluating SRIF below - both emit
+  # message::localisation::Field, so running both means every With<Field> consumer nondeterministically
+  # gets whichever last emitted. Re-enable and comment out SRIF instead to go back to NLopt.
   localisation::FieldLocalisationSRIF
   localisation::RobotLocalisation
   # Director
