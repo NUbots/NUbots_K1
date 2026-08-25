@@ -1,0 +1,87 @@
+log_level: INFO
+
+# The intent for what belongs here: if you would change it because something about the robot, the
+# venue or the game changed, it goes in this file. If it was tuned once against recorded data and
+# then left alone, it belongs next to its explanation in the header.
+
+# --- What the filter runs ------------------------------------------------------------------------
+
+# Multi-hypothesis (field-symmetry) Gaussian mixture bank. Off keeps a single Gaussian.
+# On its own this cannot resolve the symmetry: on-field landmarks fit a pose and its 180 deg mirror
+# equally well, so the pair sits at a genuine 50/50. Breaking the tie requires the prior of "we must
+# start on our own half" and we can keep better track of the mirror with out of field landmarks.
+# TODO: Decide whether to keep this at all.
+use_hypothesis_bank: false
+
+# Out-of-field side disambiguation. Maps background corners from the raw camera frame and compares
+# how well the current pose and its mirror explain them. That scenery is (ideally) not symmetric.
+#
+# With use_hypothesis_bank on, each frame's evidence goes into the mixture weights and the correction
+# happens smoothly as the representative changes; with it off, a sustained and decisive preference
+# for the mirror flips the belief outright.
+# TODO: confirm this
+#
+# Costs roughly 4 ms per camera frame, on its own reaction so it delays no landmark update. Turn it
+# off to get that time back on a robot that will never be picked up.
+# TODO: confirm timing
+use_side_disambiguator: true
+
+# Walk-engine odometry as a measurement of the body linear velocity. Off leaves vBb driven by the
+# process model alone while upright.
+use_odometry_velocity: true
+
+# Accelerometer gravity-direction measurement of torso roll/pitch. The gravity-aligned attitude is
+# also estimated upstream by the Mahony filter and delivered via Htw, so this is a secondary anchor
+# and may be turned off if Htw is trusted on its own.
+# TODO: compare on/off and remove if unneeded
+use_gravity: true
+
+# Forward-kinematic torso height above the ground plane. Anchors the weakly observable z state.
+# Suppressed automatically while the robot is not upright, so this switch is about trusting the
+# kinematic chain, not about falls.
+# TODO: I suspect this should never be turned off, test and see how bad it is
+use_kinematic_height: true
+
+# --- How far each sensor is trusted (noise standard deviations) ---------------------------------
+# TODO: replace with measured values where possible
+
+# The gyroscope is the only thing estimating the yaw-rate bias that turns into heading drift: the
+# upstream Mahony filter's bias integrator cannot observe rotation about gravity.
+gyroscope_sigma: 0.02 # [rad/s] per axis
+
+# Deliberately loose, comparable to the walk speed itself: the odometry slips on foot contact and
+# reports the gait the engine believes it is executing. As a measurement that is evidence the filter
+# can weigh, never truth it has to accept.
+odometry_velocity_sigma: 0.15 # [m/s]
+
+gravity_sigma: 1.0 # accelerometer gravity-direction noise [m/s^2] (TODO: this is huge not sure why)
+height_sigma: 0.02 # kinematic torso-height noise [m]
+
+# --- How far vision is trusted -------------------------------------------------------------------
+measurement:
+  # Total per-frame ray error including systematic terms, not just pixel noise.
+  sigma_angular: 0.25 # inlier ray angular noise [rad]
+  # Max association residual angle. Widened at runtime by the filter's own yaw uncertainty, so an
+  # inflated belief can still re-associate after a getup that turned the robot.
+  gate_angle: 0.35 # [rad]
+  # Detections below this are dropped outright. Above it, YOLO confidence scales the robust inlier
+  # weight rather than the noise, so a weak detection cannot sharpen the posterior.
+  min_confidence: 0.5
+
+# --- How fast the belief may move ----------------------------------------------------------------
+# The dominant process noise. Uncertainty reaches position by integrating velocity uncertainty,
+# which is where the real ignorance lives, so these two are the tuning dials; the position and
+# attitude PSDs in the header are only a floor against collapse in weakly observable directions.
+# Raise these if the filter is too slow to follow the robot, lower them if the pose is twitchy.
+process:
+  sigma_vel: 0.35 # body linear velocity [m/s/sqrt(s)]
+  sigma_omega: 1.50 # body angular velocity [rad/s/sqrt(s)]
+
+# --- How much confidence a fall costs ------------------------------------------------------------
+# The mean is kept on standing up -- a fall and getup move the torso well under a metre, so the
+# pre-fall position is still the best estimate available -- but the confidence attached to it is not
+# survivable, above all in yaw. This is also what reopens the landmark association gate; too small
+# and a getup that turned the robot leaves every predicted bearing outside it.
+fall:
+  recovery_pos_std: 0.5 # horizontal position std restored on recovery [m]
+  recovery_yaw_std: 0.6 # yaw std restored on recovery [rad]
