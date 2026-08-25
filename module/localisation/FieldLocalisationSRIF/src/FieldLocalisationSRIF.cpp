@@ -179,9 +179,9 @@ namespace module::localisation {
             cfg.height_sigma            = config["height_sigma"].as<double>();
 
             // How far vision is trusted
-            cfg.measurement.sigmaAngular  = config["measurement"]["sigma_angular"].as<double>();
-            cfg.measurement.gateAngle     = config["measurement"]["gate_angle"].as<double>();
-            cfg.measurement.minConfidence = config["measurement"]["min_confidence"].as<double>();
+            cfg.measurement.sigma_angular  = config["measurement"]["sigma_angular"].as<double>();
+            cfg.measurement.gate_angle     = config["measurement"]["gate_angle"].as<double>();
+            cfg.measurement.min_confidence = config["measurement"]["min_confidence"].as<double>();
 
             // How fast the belief may move. These two dominate: uncertainty reaches position by
             // integrating velocity uncertainty, so the pose PSDs are only a floor against collapse.
@@ -628,7 +628,7 @@ namespace module::localisation {
         // the grid search breaks the field symmetry using the known starting half -- a prior that
         // is false once play is under way. What a fall destroys is confidence, above all in yaw,
         // so that is what is handed back. The widened belief is also what reopens the landmark
-        // association gate (MeasurementFieldLandmarks::Options::gateYawScale); without it a getup
+        // association gate (MeasurementFieldLandmarks::Options::gate_yaw_scale); without it a getup
         // that turned the robot leaves every predicted bearing outside the gate and the filter
         // can never re-acquire.
         const Eigen::VectorXd xr = system->density.mean();

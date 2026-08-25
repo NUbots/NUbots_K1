@@ -25,8 +25,8 @@
  * SOFTWARE.
  */
 
-#ifndef UTILITY_SLAM_EVENT_HPP
-#define UTILITY_SLAM_EVENT_HPP
+#ifndef UTILITY_GAUSSIAN_FILTERING_EVENT_HPP
+#define UTILITY_GAUSSIAN_FILTERING_EVENT_HPP
 
 
 #include "system/SystemBase.hpp"
@@ -76,4 +76,4 @@ namespace utility::gaussian_filtering {
 
 }  // namespace utility::gaussian_filtering
 
-#endif  // UTILITY_SLAM_EVENT_HPP
+#endif  // UTILITY_GAUSSIAN_FILTERING_EVENT_HPP

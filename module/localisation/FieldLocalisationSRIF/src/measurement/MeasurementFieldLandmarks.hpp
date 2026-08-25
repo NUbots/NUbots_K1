@@ -48,7 +48,7 @@ namespace module::localisation::measurement {
     using srif::SystemLocalisation;
     using srif::VisionSample;
     using utility::gaussian_filtering::Pose;
-    using utility::gaussian_filtering::tangentBasis;
+    using utility::gaussian_filtering::tangent_basis;
     using utility::gaussian_filtering::gaussian::GaussianInfo;
     using utility::gaussian_filtering::measurement::Measurement;
     using utility::gaussian_filtering::system::SystemBase;
@@ -65,25 +65,25 @@ namespace module::localisation::measurement {
          * mixed with a uniform clutter component over the unit sphere.
          */
         struct Options {
-            double sigmaAngular =
+            double sigma_angular =
                 0.25;  ///< Inlier ray angular noise std dev [rad] (total per-frame error incl. systematic)
-            double gateAngle = 0.35;  ///< Max association residual angle [rad] (~20 deg)
+            double gate_angle = 0.35;  ///< Max association residual angle [rad] (~20 deg)
 
             // The pre-gate above is a hard geometric cap, so on its own it also caps
             // what the filter can ever recover from: a getup that leaves the robot
-            // yawed by more than gateAngle puts every predicted bearing outside it,
+            // yawed by more than gate_angle puts every predicted bearing outside it,
             // and no amount of covariance inflation helps, because the pre-gate does
             // not look at the covariance. Widening it with the yaw uncertainty is what
             // makes an inflated belief actually able to re-associate. The surprisal
             // score still decides what associates -- this only stops the cheap
             // geometric filter from throwing the candidates away first. Normal
-            // operation is unaffected: it takes sigma_yaw > gateAngle/gateYawScale
-            // (10 deg at these defaults) before the widened gate exceeds gateAngle.
-            double gateYawScale = 2.0;  ///< Pre-gate widens to this many yaw std devs
-            double gateAngleMax = 1.0;  ///< Ceiling on the widened pre-gate [rad] (~57 deg)
+            // operation is unaffected: it takes sigma_yaw > gate_angle/gate_yaw_scale
+            // (10 deg at these defaults) before the widened gate exceeds gate_angle.
+            double gate_yaw_scale = 2.0;  ///< Pre-gate widens to this many yaw std devs
+            double gate_angle_max = 1.0;  ///< Ceiling on the widened pre-gate [rad] (~57 deg)
 
-            double minConfidence     = 0.5;  ///< Reject detections below this confidence outright
-            double inlierProbability = 0.7;  ///< Inlier mixture weight at confidenceReference
+            double min_confidence     = 0.5;  ///< Reject detections below this confidence outright
+            double inlier_probability = 0.7;  ///< Inlier mixture weight at confidence_reference
 
             // YOLO confidence is (roughly) the probability that a box is a true
             // positive, which is exactly what the inlier weight of the robust
@@ -95,8 +95,8 @@ namespace module::localisation::measurement {
             // contributes almost nothing to the gradient AND almost nothing to the
             // Hessian, so a weak detection cannot sharpen the posterior: admitting
             // them is safe against overconfidence in a way that simply lowering
-            // minConfidence under a fixed weight would not be.
-            double confidenceReference  = 0.7;   ///< Confidence that maps to inlierProbability
+            // min_confidence under a fixed weight would not be.
+            double confidence_reference  = 0.7;   ///< Confidence that maps to inlier_probability
             double maxInlierProbability = 0.95;  ///< Cap: no detection is ever treated as certain
         };
 
@@ -139,7 +139,7 @@ namespace module::localisation::measurement {
          * @brief Templated log-likelihood for autodiff.
          */
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const;
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const;
 
         /**
          * @brief Predicted unit rays in {c} for the associated landmarks.
@@ -245,7 +245,7 @@ namespace module::localisation::measurement {
     }
 
     template <typename Scalar>
-    Scalar MeasurementFieldLandmarks::logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+    Scalar MeasurementFieldLandmarks::log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
         const Eigen::Index n = uMeas_.cols();
         if (n == 0) {
             return Scalar(0);
@@ -253,7 +253,7 @@ namespace module::localisation::measurement {
 
         Eigen::Matrix<Scalar, 3, Eigen::Dynamic> uPred = predictRays<Scalar>(x);
 
-        const double sigma2       = options_.sigmaAngular * options_.sigmaAngular;
+        const double sigma2       = options_.sigma_angular * options_.sigma_angular;
         const double logNormConst = -std::log(2.0 * M_PI * sigma2);  // 2 effective DOF per ray
 
         using std::exp, std::log;

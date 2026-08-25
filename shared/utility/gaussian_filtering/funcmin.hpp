@@ -25,8 +25,8 @@
  * SOFTWARE.
  */
 
-#ifndef UTILITY_SLAM_FUNCMIN_HPP
-#define UTILITY_SLAM_FUNCMIN_HPP
+#ifndef UTILITY_GAUSSIAN_FILTERING_FUNCMIN_HPP
+#define UTILITY_GAUSSIAN_FILTERING_FUNCMIN_HPP
 
 #include <Eigen/Core>
 #include <Eigen/Eigenvalues>
@@ -212,8 +212,6 @@ namespace utility::gaussian_filtering::funcmin {
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p
 
-            // const Scalar LambdaSqThreshold = std::sqrt(std::numeric_limits<Scalar>::epsilon());     // Loose
-            // convergence tolerance
             const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();  // Tight convergence tolerance
             if (std::fabs(LambdaSq) < LambdaSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
@@ -386,8 +384,6 @@ namespace utility::gaussian_filtering::funcmin {
 
             const Scalar LambdaSqThreshold =
                 std::sqrt(std::numeric_limits<Scalar>::epsilon());  // Loose convergence tolerance
-            // const Scalar LambdaSqThreshold = 2*std::numeric_limits<Scalar>::epsilon();              // Tight
-            // convergence tolerance
             if (std::fabs(LambdaSq) < LambdaSqThreshold && v(0) > 0.0) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
                     fmt::format("Converged: Newton decrement below threshold in {} iterations", i));
@@ -556,8 +552,6 @@ namespace utility::gaussian_filtering::funcmin {
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p = p.'*Xi.'*Xi*p
 
-            // const Scalar LambdaSqThreshold = std::sqrt(std::numeric_limits<Scalar>::epsilon());     // Loose
-            // convergence tolerance
             const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();  // Tight convergence tolerance
             if (std::fabs(LambdaSq) < LambdaSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
@@ -704,7 +698,6 @@ namespace utility::gaussian_filtering::funcmin {
                             Eigen::PermutationMatrix<Eigen::Dynamic>& Pi) {
         typedef double Scalar;
         typedef Eigen::VectorXd Vector;
-        // typedef Eigen::MatrixXd Matrix;
 
         assert(x.cols() == 1);
         g.resize(x.size());
@@ -738,8 +731,6 @@ namespace utility::gaussian_filtering::funcmin {
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p = p.'*Xi.'*Xi*p
 
-            // const Scalar LambdaSqThreshold = std::sqrt(std::numeric_limits<Scalar>::epsilon());     // Loose
-            // convergence tolerance
             const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();  // Tight convergence tolerance
             if (std::fabs(LambdaSq) < LambdaSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
@@ -947,8 +938,6 @@ namespace utility::gaussian_filtering::funcmin {
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p = p.'*inv(S.'*S)*p
 
-            // const Scalar LambdaSqThreshold = std::sqrt(std::numeric_limits<Scalar>::epsilon());     // Loose
-            // convergence tolerance
             const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();  // Tight convergence tolerance
             if (std::fabs(LambdaSq) < LambdaSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
@@ -1107,13 +1096,7 @@ namespace utility::gaussian_filtering::funcmin {
             return -1;
         }
 
-        // Scalar maxDiagH = (Xi.transpose()*Xi).diagonal().maxCoeff();
-        // Scalar Delta = 10e0;     // Initial trust-region radius
         Scalar lambda = 1e-7;
-        // Scalar lambda = 1e-10*(Xi.transpose()*Xi).diagonal().maxCoeff();
-        // Scalar lambda = 1e-2;
-        // Scalar nu = 2.0;
-        // Scalar alpha = 0.00;         // 0: robust, 1: fast
 
         const int maxIterations = 5000;
         for (int i = 0; i < maxIterations; ++i) {
@@ -1124,29 +1107,12 @@ namespace utility::gaussian_filtering::funcmin {
             Vector p = -XiI.topRows(Xi.cols()).triangularView<Eigen::Upper>().solve(
                 XiI.topRows(Xi.cols()).triangularView<Eigen::Upper>().transpose().solve(g));
 
-            // // Solve ( H + lambda*diag(H) )*p = -g for p
-            // Matrix XiI(Xi.rows() + Xi.cols(), Xi.cols());
-            // Vector d = Xi.array().square().colwise().sum(); // diag(H)
-            // Scalar tol = Xi.cols()*std::numeric_limits<Scalar>::epsilon()*d.maxCoeff();
-            // d.cwiseMax(tol);
-            // Matrix sqrtLambdaH = (lambda*d).cwiseSqrt().asDiagonal();
-            // XiI << Xi, sqrtLambdaH;
-            // Eigen::HouseholderQR<Eigen::Ref<Matrix>> qrXiI(XiI);    // In-place QR decomposition
-            // Vector p = -XiI.topRows(Xi.cols()).triangularView<Eigen::Upper>().solve(
-            //     XiI.topRows(Xi.cols()).triangularView<Eigen::Upper>().transpose().solve(g)
-            // );
-
-            // trsSqrt(Xi, g, Delta, p);   // minimise 0.5*p.'*Xi.'*Xi*p + g.'*p subject to ||Xi*p|| <= Delta
             Vector z = Xi * p;
 
             Scalar pg = p.dot(g);
             Scalar NewtonDecrSq =
                 -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p = p.'*Xi.'*Xi*p if p is the Newton step
-            // Scalar NewtonDecrSq = z.squaredNorm();
 
-            // const Scalar NewtonDecrSqThreshold = std::sqrt(std::numeric_limits<Scalar>::epsilon());     // Loose
-            // convergence tolerance const Scalar NewtonDecrSqThreshold = 2*std::numeric_limits<Scalar>::epsilon(); //
-            // Tight convergence tolerance
             const Scalar NewtonDecrSqThreshold = 1e3 * std::numeric_limits<Scalar>::epsilon();
             if (std::fabs(NewtonDecrSq) < NewtonDecrSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
@@ -1268,4 +1234,4 @@ namespace utility::gaussian_filtering::funcmin {
 
 }  // namespace utility::gaussian_filtering::funcmin
 
-#endif  // UTILITY_SLAM_FUNCMIN_HPP
+#endif  // UTILITY_GAUSSIAN_FILTERING_FUNCMIN_HPP

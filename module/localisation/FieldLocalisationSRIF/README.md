@@ -18,7 +18,7 @@ attitude bias.
 |  Index | Symbol   | Meaning                                                       |
 | -----: | -------- | ------------------------------------------------------------- |
 |   0..2 | `rTFf`   | Torso position in the field frame [m]                         |
-|   3..6 | `q`      | Torso attitude quaternion `(w, x, y, z)`, `Rfb = quat2rot(q)` |
+|   3..6 | `q`      | Torso attitude quaternion `(w, x, y, z)`, `Rft = quat2rot(q)` |
 |   7..9 | `v`      | Torso fixed linear velocities [m/s]                           |
 | 10..12 | `omega`  | Torso fixed rotational velocities [rads/s]                    |
 | 13..15 | `bG`     | Gyroscope bias estimates [rads/s]                             |

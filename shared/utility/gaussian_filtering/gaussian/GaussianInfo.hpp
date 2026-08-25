@@ -25,8 +25,8 @@
  * SOFTWARE.
  */
 
-#ifndef UTILITY_SLAM_GAUSSIAN_GAUSSIAN_INFO_HPP
-#define UTILITY_SLAM_GAUSSIAN_GAUSSIAN_INFO_HPP
+#ifndef UTILITY_GAUSSIAN_FILTERING_GAUSSIAN_GAUSSIAN_INFO_HPP
+#define UTILITY_GAUSSIAN_FILTERING_GAUSSIAN_GAUSSIAN_INFO_HPP
 
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
@@ -779,4 +779,4 @@ namespace utility::gaussian_filtering::gaussian {
 
 }  // namespace utility::gaussian_filtering::gaussian
 
-#endif  // UTILITY_SLAM_GAUSSIAN_GAUSSIAN_INFO_HPP
+#endif  // UTILITY_GAUSSIAN_FILTERING_GAUSSIAN_GAUSSIAN_INFO_HPP

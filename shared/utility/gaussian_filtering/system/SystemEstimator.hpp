@@ -25,8 +25,8 @@
  * SOFTWARE.
  */
 
-#ifndef UTILITY_SLAM_SYSTEM_ESTIMATOR_HPP
-#define UTILITY_SLAM_SYSTEM_ESTIMATOR_HPP
+#ifndef UTILITY_GAUSSIAN_FILTERING_SYSTEM_ESTIMATOR_HPP
+#define UTILITY_GAUSSIAN_FILTERING_SYSTEM_ESTIMATOR_HPP
 
 #include <Eigen/Core>
 #include <vector>
@@ -115,4 +115,4 @@ namespace utility::gaussian_filtering::system {
 
 }  // namespace utility::gaussian_filtering::system
 
-#endif  // UTILITY_SLAM_SYSTEM_ESTIMATOR_HPP
+#endif  // UTILITY_GAUSSIAN_FILTERING_SYSTEM_ESTIMATOR_HPP

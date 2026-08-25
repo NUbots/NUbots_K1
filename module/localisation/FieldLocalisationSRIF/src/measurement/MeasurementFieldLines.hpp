@@ -111,7 +111,7 @@ namespace module::localisation::measurement {
          * @brief Templated log-likelihood for autodiff.
          */
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const;
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const;
 
         std::size_t numPoints() const {
             return static_cast<std::size_t>(rays_.cols());
@@ -128,7 +128,7 @@ namespace module::localisation::measurement {
     };
 
     template <typename Scalar>
-    Scalar MeasurementFieldLines::logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+    Scalar MeasurementFieldLines::log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
         using std::exp, std::log;
 
         const Eigen::Index n = rays_.cols();

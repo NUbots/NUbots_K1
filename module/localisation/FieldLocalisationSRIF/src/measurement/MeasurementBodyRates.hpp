@@ -65,7 +65,7 @@ namespace module::localisation::measurement {
 
         /// @brief Templated log-likelihood for autodiff.
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
             const Eigen::Vector3<Scalar> yhat =
                 Eigen::Vector3<Scalar>(x.segment(srif::SystemLocalisation::iOmega, 3))
                 + Eigen::Vector3<Scalar>(x.segment(srif::SystemLocalisation::iGyroBias, 3));
@@ -125,7 +125,7 @@ namespace module::localisation::measurement {
 
         /// @brief Templated log-likelihood for autodiff.
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
             const Eigen::Vector3<Scalar> e =
                 y_.cast<Scalar>() - Eigen::Vector3<Scalar>(x.segment(srif::SystemLocalisation::iVel, 3));
             const double sigma2 = sigma_ * sigma_;

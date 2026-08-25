@@ -55,7 +55,7 @@ namespace module::localisation::measurement {
         }
 
         virtual double logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const override {
-            return logLikelihoodImpl<double>(x);
+            return log_likelihood_impl<double>(x);
         }
 
         virtual double logLikelihood(const Eigen::VectorXd& x,
@@ -68,7 +68,7 @@ namespace module::localisation::measurement {
 
         /// @brief Templated log-likelihood for autodiff.
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
             using std::sqrt;
             const Eigen::Vector4<Scalar> q = x.segment(srif::SystemLocalisation::iQuat, 4);
             const Scalar n                 = sqrt(q(0) * q(0) + q(1) * q(1) + q(2) * q(2) + q(3) * q(3));

@@ -56,7 +56,7 @@ namespace module::localisation::measurement {
          * @brief Templated log-likelihood for autodiff.
          */
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const;
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const;
 
     protected:
         Eigen::Vector3d y_;  ///< Measured specific force in torso frame [m/s^2]
@@ -66,7 +66,7 @@ namespace module::localisation::measurement {
     };
 
     template <typename Scalar>
-    Scalar MeasurementGravity::logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+    Scalar MeasurementGravity::log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
         const Eigen::Vector4<Scalar> q   = x.segment(srif::SystemLocalisation::iQuat, 4);
         const Eigen::Matrix3<Scalar> Rfb = quat2rot(q);
 

@@ -25,8 +25,8 @@
  * SOFTWARE.
  */
 
-#ifndef UTILITY_SLAM_SYSTEM_BASE_HPP
-#define UTILITY_SLAM_SYSTEM_BASE_HPP
+#ifndef UTILITY_GAUSSIAN_FILTERING_SYSTEM_BASE_HPP
+#define UTILITY_GAUSSIAN_FILTERING_SYSTEM_BASE_HPP
 
 #include <Eigen/Core>
 
@@ -91,4 +91,4 @@ namespace utility::gaussian_filtering::system {
 
 }  // namespace utility::gaussian_filtering::system
 
-#endif  // UTILITY_SLAM_SYSTEM_BASE_HPP
+#endif  // UTILITY_GAUSSIAN_FILTERING_SYSTEM_BASE_HPP

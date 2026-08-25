@@ -25,8 +25,8 @@
  * SOFTWARE.
  */
 
-#ifndef UTILITY_SLAM_POSE_HPP
-#define UTILITY_SLAM_POSE_HPP
+#ifndef UTILITY_GAUSSIAN_FILTERING_POSE_HPP
+#define UTILITY_GAUSSIAN_FILTERING_POSE_HPP
 
 #include <Eigen/Core>
 
@@ -151,4 +151,4 @@ namespace utility::gaussian_filtering {
 
 }  // namespace utility::gaussian_filtering
 
-#endif  // UTILITY_SLAM_POSE_HPP
+#endif  // UTILITY_GAUSSIAN_FILTERING_POSE_HPP

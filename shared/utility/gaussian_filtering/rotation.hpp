@@ -25,11 +25,11 @@
  * SOFTWARE.
  */
 
-#ifndef UTILITY_SLAM_ROTATION_HPP
-#define UTILITY_SLAM_ROTATION_HPP
+#ifndef UTILITY_GAUSSIAN_FILTERING_ROTATION_HPP
+#define UTILITY_GAUSSIAN_FILTERING_ROTATION_HPP
 
 #include <Eigen/Core>
-#include <Eigen/Geometry>  // tangentBasis uses cross products
+#include <Eigen/Geometry>  // tangent_basis uses cross products
 #include <autodiff/forward/dual.hpp>
 #include <autodiff/forward/dual/eigen.hpp>
 
@@ -378,7 +378,7 @@ namespace utility::gaussian_filtering {
      * @param u Unit vector
      * @return 3x2 matrix whose columns are orthonormal and perpendicular to u
      */
-    inline Eigen::Matrix<double, 3, 2> tangentBasis(const Eigen::Vector3d& u) {
+    inline Eigen::Matrix<double, 3, 2> tangent_basis(const Eigen::Vector3d& u) {
         Eigen::Vector3d t1 = u.cross(Eigen::Vector3d::UnitZ());
         if (t1.squaredNorm() < 1e-8) {
             t1 = u.cross(Eigen::Vector3d::UnitX());
@@ -392,4 +392,4 @@ namespace utility::gaussian_filtering {
 
 }  // namespace utility::gaussian_filtering
 
-#endif  // UTILITY_SLAM_ROTATION_HPP
+#endif  // UTILITY_GAUSSIAN_FILTERING_ROTATION_HPP

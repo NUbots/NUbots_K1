@@ -25,8 +25,8 @@
  * SOFTWARE.
  */
 
-#ifndef UTILITY_SLAM_GAUSSIAN_GAUSSIAN_BASE_HPP
-#define UTILITY_SLAM_GAUSSIAN_GAUSSIAN_BASE_HPP
+#ifndef UTILITY_GAUSSIAN_FILTERING_GAUSSIAN_GAUSSIAN_BASE_HPP
+#define UTILITY_GAUSSIAN_FILTERING_GAUSSIAN_GAUSSIAN_BASE_HPP
 
 #include <Eigen/Core>
 #include <boost/math/special_functions/gamma.hpp>
@@ -369,4 +369,4 @@ namespace utility::gaussian_filtering::gaussian {
 
 }  // namespace utility::gaussian_filtering::gaussian
 
-#endif  // UTILITY_SLAM_GAUSSIAN_GAUSSIAN_BASE_HPP
+#endif  // UTILITY_GAUSSIAN_FILTERING_GAUSSIAN_GAUSSIAN_BASE_HPP
