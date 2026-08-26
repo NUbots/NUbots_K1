@@ -19,6 +19,7 @@ import { LocalisationNetwork } from "./network";
 import { AssociationLines } from "./r3f_components/association_lines";
 import { Ball } from "./r3f_components/ball";
 import { BoundingBox } from "./r3f_components/bounding_box/view";
+import { ExpectedFieldLines } from "./r3f_components/expected_field_lines";
 import { FieldView } from "./r3f_components/field/view";
 import { FieldIntersections } from "./r3f_components/field_intersections";
 import { FieldObjects } from "./r3f_components/field_objects";
@@ -139,6 +140,7 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
             toggleGoalVisibility={this.toggleGoalVisibility}
             toggleFieldLinePointsVisibility={this.toggleFieldLinePointsVisibility}
             toggleFieldIntersectionsVisibility={this.toggleFieldIntersectionsVisibility}
+            toggleExpectedFieldLinesVisibility={this.toggleExpectedFieldLinesVisibility}
             toggleWalkToDebugVisibility={this.toggleWalkToDebugVisibility}
             toggleBoundedBoxVisibility={this.toggleBoundedBoxVisibility}
             togglePurposeLabelVisibility={this.togglePurposeLabelVisibility}
@@ -171,6 +173,7 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
             toggleGoalVisibility={this.toggleGoalVisibility}
             toggleFieldLinePointsVisibility={this.toggleFieldLinePointsVisibility}
             toggleFieldIntersectionsVisibility={this.toggleFieldIntersectionsVisibility}
+            toggleExpectedFieldLinesVisibility={this.toggleExpectedFieldLinesVisibility}
             toggleWalkToDebugVisibility={this.toggleWalkToDebugVisibility}
             toggleBoundedBoxVisibility={this.toggleBoundedBoxVisibility}
             togglePurposeLabelVisibility={this.togglePurposeLabelVisibility}
@@ -271,6 +274,10 @@ export class LocalisationView extends React.Component<LocalisationViewProps> {
     this.props.controller.toggleFieldIntersectionsVisibility(this.props.model);
   };
 
+  private toggleExpectedFieldLinesVisibility = () => {
+    this.props.controller.toggleExpectedFieldLinesVisibility(this.props.model);
+  };
+
   private toggleWalkToDebugVisibility = () => {
     this.props.controller.toggleWalkToDebugVisibility(this.props.model);
   };
@@ -320,6 +327,7 @@ interface LocalisationMenuBarProps {
   toggleGoalVisibility(): void;
   toggleFieldLinePointsVisibility(): void;
   toggleFieldIntersectionsVisibility(): void;
+  toggleExpectedFieldLinesVisibility(): void;
   toggleWalkToDebugVisibility(): void;
   toggleBoundedBoxVisibility(): void;
   togglePurposeLabelVisibility(): void;
@@ -336,9 +344,10 @@ const MenuItem = (props: { label: string; onClick(): void; isVisible: boolean })
       className={`
         w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm font-medium
         transition-all duration-150 ease-out
-        ${props.isVisible
-          ? "bg-auto-primary/20 text-auto-primary border border-auto-primary/30"
-          : "bg-auto-surface-2 text-auto-on-surface border border-auto-outline hover:bg-auto-surface-3"
+        ${
+          props.isVisible
+            ? "bg-auto-primary/20 text-auto-primary border border-auto-primary/30"
+            : "bg-auto-surface-2 text-auto-on-surface border border-auto-outline hover:bg-auto-surface-3"
         }
         focus:outline-none focus:ring-1 focus:ring-auto-primary
         active:scale-[0.98]
@@ -426,6 +435,7 @@ const LocalisationMenuBar = observer((props: LocalisationMenuBarProps) => {
         toggleGoalVisibility={props.toggleGoalVisibility}
         toggleFieldLinePointsVisibility={props.toggleFieldLinePointsVisibility}
         toggleFieldIntersectionsVisibility={props.toggleFieldIntersectionsVisibility}
+        toggleExpectedFieldLinesVisibility={props.toggleExpectedFieldLinesVisibility}
         toggleWalkToDebugVisibility={props.toggleWalkToDebugVisibility}
         toggleBoundedBoxVisibility={props.toggleBoundedBoxVisibility}
         togglePurposeLabelVisibility={props.togglePurposeLabelVisibility}
@@ -454,6 +464,11 @@ const VisibilityPanel = observer((props: Omit<LocalisationMenuBarProps, "Menu">)
           label: "Intersections",
           isVisible: model.fieldIntersectionsVisible,
           onClick: props.toggleFieldIntersectionsVisibility,
+        },
+        {
+          label: "Expected Lines",
+          isVisible: model.expectedFieldLinesVisible,
+          onClick: props.toggleExpectedFieldLinesVisibility,
         },
       ],
     },
@@ -595,6 +610,10 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
       {model.fieldIntersectionsVisible && robot.rIFf && <FieldIntersections intersections={robot.rIFf} />}
 
       {model.fieldIntersectionsVisible && robot.associationLines && <AssociationLines lines={robot.associationLines} />}
+
+      {model.expectedFieldLinesVisible && (
+        <ExpectedFieldLines dimensions={model.field.dimensions} fit={robot.fieldFit} />
+      )}
 
       {model.walkToDebugVisible && robot.Hfd && robot.Hfr && robot.Hft && (
         <WalkPathVisualiser

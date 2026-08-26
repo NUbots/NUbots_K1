@@ -126,6 +126,7 @@ export class LocalisationModel {
   @observable goalsVisible = true;
   @observable fieldLinePointsVisible = true;
   @observable fieldIntersectionsVisible = true;
+  @observable expectedFieldLinesVisible = false;
   @observable walkToDebugVisible = false;
   @observable boundedBoxVisible = true;
   @observable purposeLabelVisible = true;

@@ -10,6 +10,8 @@ import { Vector3 } from "../../../shared/math/vector3";
 import { memoize } from "../../base/memoize";
 import { RobotModel } from "../robot/model";
 
+import { RigidFit2D } from "./r3f_components/field/field_landmarks";
+
 class ServoMotor {
   @observable angle: number;
 
@@ -185,6 +187,12 @@ export class LocalisationRobotModel {
   // fields on this model, which store world-space data and expose field-space via a computed).
   @observable desiredSupportPosition?: Vector2;
   @observable associationLines?: Line[];
+  // Best-fit rotation/translation between the known field template and this frame's detected
+  // intersections (see network.ts#onField, field_landmarks.ts#computeBestFitTransform). Only
+  // replaced when a given frame has enough simultaneous matches (>=2) to compute a fit - held
+  // across frames otherwise, so the "expected field lines" overlay never mixes landmark
+  // detections from different, temporally-inconsistent localisation states into one fit.
+  @observable fieldFit?: RigidFit2D;
   @observable maxAlignRadius: number;
   @observable minAlignRadius: number;
   @observable angleToFinalHeading: number;

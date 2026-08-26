@@ -10,6 +10,7 @@ import { Purpose, SoccerPositionFromEnum } from "@proto/message/purpose/Purpose"
 import { SupportPosition } from "@proto/message/purpose/SupportPosition";
 import { TimeToBall } from "@proto/message/strategy/TimeToBall";
 import { WalkInsideBoundedBox } from "@proto/message/strategy/WalkInsideBoundedBox";
+import { FieldDescription } from "@proto/message/support/FieldDescription";
 import { Overview } from "@proto/message/support/nusight/Overview";
 import { FieldIntersections } from "@proto/message/vision/FieldIntersections";
 import { FieldLines } from "@proto/message/vision/FieldLines";
@@ -18,6 +19,7 @@ import { Iiso3 } from "@proto/Transform";
 import { action } from "mobx";
 import * as THREE from "three";
 
+import { FieldDimensions } from "../../../shared/field/dimensions";
 import { Matrix2 } from "../../../shared/math/matrix2";
 import { Matrix3 } from "../../../shared/math/matrix3";
 import { Matrix4 } from "../../../shared/math/matrix4";
@@ -32,6 +34,11 @@ import { RobotModel } from "../robot/model";
 
 import { DashboardRobotModel } from "./dashboard_components/dashboard_robot/model";
 import { LocalisationModel } from "./model";
+import {
+  buildFieldLandmarkGraph,
+  computeBestFitTransform,
+  matchLandmarkEstimates,
+} from "./r3f_components/field/field_landmarks";
 import { LocalisationRobotModel } from "./robot_model";
 import { FieldIntersection } from "./robot_model";
 
@@ -56,6 +63,7 @@ export class LocalisationNetwork {
     this.network.on(RobocupMessage, this.onTeamCommunication);
     this.network.on(WalkState, this.onWalkState);
     this.network.on(Overview, this.onOverview);
+    this.network.on(FieldDescription, this.onFieldDescription);
   }
 
   static of(nusightNetwork: NUsightNetwork, model: LocalisationModel): LocalisationNetwork {
@@ -84,6 +92,18 @@ export class LocalisationNetwork {
       start: Vector3.from(line.start),
       end: Vector3.from(line.end),
     }));
+
+    // Fit the known field template to this frame's detected/matched intersections. Only
+    // replace the held fit when this frame has enough simultaneous matches (>=2) to compute one
+    // - otherwise keep showing the last good fit rather than combining landmarks detected at
+    // different times (and potentially different localisation states) into one inconsistent fit
+    // (see robot_model.ts#fieldFit).
+    const { landmarks } = buildFieldLandmarkGraph(this.model.field.dimensions);
+    const matches = matchLandmarkEstimates(landmarks, robot.associationLines);
+    const fit = computeBestFitTransform(landmarks, matches);
+    if (fit) {
+      robot.fieldFit = fit;
+    }
   };
 
   @action
@@ -151,7 +171,9 @@ export class LocalisationNetwork {
     // This robot's own opinion of how long it - and each teammate it can see - would take to reach
     // the ball, keyed by player id (self included). Kept on the observing robot's own model rather
     // than the teammates' synthetic models since it's this robot's estimate, not the teammate's.
-    robot.timeToBallEstimates = new Map(timeToBall.estimates.map((estimate) => [estimate.playerId!, estimate.timeToBall!]));
+    robot.timeToBallEstimates = new Map(
+      timeToBall.estimates.map((estimate) => [estimate.playerId!, estimate.timeToBall!]),
+    );
   }
 
   @action.bound
@@ -367,6 +389,40 @@ export class LocalisationNetwork {
     // The walk command and
     robot.walkCommand = Vector3.from(overview.walkCommand);
   };
+
+  // The field is a single shared scene object (not per-robot), so this reports whichever
+  // connected robot's field description arrived most recently - matching how the manual
+  // Field Type selector already sets `model.field.dimensions` as one global value.
+  @action.bound
+  private onFieldDescription(_robotModel: RobotModel, fieldDescription: FieldDescription) {
+    const dim = fieldDescription.dimensions;
+    if (!dim) {
+      return;
+    }
+
+    // markWidth and goalPostDiameter have no equivalent in FieldDescription, so keep whatever
+    // is already set for them (e.g. from the Field Type selector's presets).
+    const { markWidth, goalPostDiameter } = this.model.field.dimensions;
+
+    this.model.field.dimensions = new FieldDimensions({
+      lineWidth: dim.lineWidth,
+      markWidth,
+      fieldLength: dim.fieldLength,
+      fieldWidth: dim.fieldWidth,
+      goalDepth: dim.goalDepth,
+      goalWidth: dim.goalWidth,
+      goalAreaLength: dim.goalAreaLength,
+      goalAreaWidth: dim.goalAreaWidth,
+      penaltyAreaLength: dim.penaltyAreaLength,
+      penaltyAreaWidth: dim.penaltyAreaWidth,
+      goalCrossbarHeight: dim.goalCrossbarHeight,
+      goalPostDiameter,
+      goalNetHeight: dim.goalNetHeight,
+      penaltyMarkDistance: dim.penaltyMarkDistance,
+      centerCircleDiameter: dim.centerCircleDiameter,
+      borderStripMinWidth: dim.borderStripMinWidth,
+    });
+  }
 }
 
 function decompose(m: THREE.Matrix4): {

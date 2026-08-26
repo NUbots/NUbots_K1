@@ -407,6 +407,11 @@ export class LocalisationController {
   };
 
   @action
+  toggleExpectedFieldLinesVisibility = (model: LocalisationModel) => {
+    model.expectedFieldLinesVisible = !model.expectedFieldLinesVisible;
+  };
+
+  @action
   toggleWalkToDebugVisibility = (model: LocalisationModel) => {
     model.walkToDebugVisible = !model.walkToDebugVisible;
   };
