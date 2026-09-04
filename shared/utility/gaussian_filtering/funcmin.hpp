@@ -41,15 +41,7 @@
 namespace utility::gaussian_filtering::funcmin {
 
     /**
-     * @brief Solve trust-region subproblem
-     *
-     * This function solves the following trust-region subproblem:
-     * @f[
-     * \begin{aligned}
-     * \text{minimize} \quad & \frac12 \mathbf{p}^\mathsf{T} \mathbf{H} \mathbf{p} + \mathbf{g}^\mathsf{T} \mathbf{p} \\
-     * \text{subject to} \quad & \Vert \mathbf{p} \Vert \leq D
-     * \end{aligned}
-     * @f]
+     * @brief Solve the trust-region subproblem: minimise 0.5*p.'*H*p + g.'*p subject to ||p|| <= D.
      *
      * @param H Hessian matrix
      * @param g Gradient vector
@@ -63,15 +55,7 @@ namespace utility::gaussian_filtering::funcmin {
     int trsEig(const Eigen::MatrixXd& H, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p);
 
     /**
-     * @brief Solve trust-region subproblem with pre-computed eigendecomposition
-     *
-     * This function solves the following trust-region subproblem given the eigendecomposition H = Q*diag(v)*Q':
-     * @f[
-     * \begin{aligned}
-     * \text{minimize} \quad & \frac12 \mathbf{p}^\mathsf{T} \mathbf{H} \mathbf{p} + \mathbf{g}^\mathsf{T} \mathbf{p} \\
-     * \text{subject to} \quad & \Vert \mathbf{p} \Vert \leq D
-     * \end{aligned}
-     * @f]
+     * @brief As trsEig above, but with H already eigendecomposed as H = Q*diag(v)*Q.'.
      *
      * @param Q Eigenvectors of H
      * @param v Eigenvalues of H
@@ -88,15 +72,8 @@ namespace utility::gaussian_filtering::funcmin {
 
 
     /**
-     * @brief Solve trust-region subproblem with square-root Hessian
-     *
-     * This function solves the following trust-region subproblem:
-     * @f[
-     * \begin{aligned}
-     * \text{minimize} \quad & \frac12 \mathbf{p}^\mathsf{T} \boldsymbol\Xi^\mathsf{T}\boldsymbol\Xi \mathbf{p} +
-     * \mathbf{g}^\mathsf{T} \mathbf{p} \\ \text{subject to} \quad & \Vert \boldsymbol\Xi\mathbf{p} \Vert \leq D
-     * \end{aligned}
-     * @f]
+     * @brief Trust-region subproblem for H = Xi.'*Xi: minimise 0.5*p.'*Xi.'*Xi*p + g.'*p
+     * subject to ||Xi*p|| <= D.
      *
      * @param Xi Square-root Hessian matrix (upper triangular)
      * @param g Gradient vector
@@ -107,18 +84,8 @@ namespace utility::gaussian_filtering::funcmin {
     int trsSqrt(const Eigen::MatrixXd& Xi, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p);
 
     /**
-     * @brief Solve trust-region subproblem with sparse square-root Hessian
-     *
-     * This function solves the following trust-region subproblem with sparse matrix representation:
-     * @f[
-     * \begin{aligned}
-     * \text{minimize} \quad & \frac12 \mathbf{p}^\mathsf{T} \boldsymbol\Pi \boldsymbol\Xi^\mathsf{T}\boldsymbol\Xi
-     * \boldsymbol\Pi^\mathsf{T} \mathbf{p} + \mathbf{g}^\mathsf{T} \mathbf{p} \\ \text{subject to} \quad & \Vert
-     * \boldsymbol\Xi \boldsymbol\Pi^\mathsf{T} \mathbf{p} \Vert \leq D \end{aligned}
-     * @f]
-     *
-     * where the Hessian approximation is H = Pi*Xi^T*Xi*Pi^T with Xi being a sparse upper triangular matrix
-     * and Pi being a permutation matrix used for fill-in reduction during sparse factorization.
+     * @brief Trust-region subproblem for sparse H = Pi*Xi.'*Xi*Pi.': minimise
+     * 0.5*p.'*Pi*Xi.'*Xi*Pi.'*p + g.'*p subject to ||Xi*Pi.'*p|| <= D.
      *
      * @param Xi Sparse square-root Hessian matrix (upper triangular)
      * @param Pi Permutation matrix for column pivoting to reduce fill-in
@@ -126,10 +93,6 @@ namespace utility::gaussian_filtering::funcmin {
      * @param D Trust region radius
      * @param[out] p Solution vector
      * @return 0 on success, non-zero on failure
-     *
-     * @note This variant is particularly efficient for large-scale optimization problems where
-     *       the Hessian has a sparse structure that can be exploited to reduce memory usage
-     *       and computational complexity.
      */
     int trsSqrtSparse(const Eigen::SparseMatrix<double>& Xi,
                       const Eigen::PermutationMatrix<Eigen::Dynamic>& Pi,
@@ -138,15 +101,8 @@ namespace utility::gaussian_filtering::funcmin {
                       Eigen::VectorXd& p);
 
     /**
-     * @brief Solve trust-region subproblem with square-root inverse Hessian
-     *
-     * This function solves the following trust-region subproblem:
-     * @f[
-     * \begin{aligned}
-     * \text{minimize} \quad & \frac12 \mathbf{p}^\mathsf{T} (\mathbf{S}^\mathsf{T}\mathbf{S})^{-1} \mathbf{p} +
-     * \mathbf{g}^\mathsf{T} \mathbf{p} \\ \text{subject to} \quad & \Vert \mathbf{S}^\mathsf{-T} \mathbf{p} \Vert \leq
-     * D \end{aligned}
-     * @f]
+     * @brief Trust-region subproblem for H = inv(S.'*S): minimise 0.5*p.'*inv(S.'*S)*p + g.'*p
+     * subject to ||inv(S.')*p|| <= D.
      *
      * @param S Square-root inverse Hessian matrix (upper triangular)
      * @param g Gradient vector
@@ -157,10 +113,8 @@ namespace utility::gaussian_filtering::funcmin {
     int trsSqrtInv(const Eigen::MatrixXd& S, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p);
 
     /**
-     * @brief Minimize f(x) using trust-region Newton method with eigendecomposition
-     *
-     * This function minimizes the cost function f(x) using a trust-region Newton method.
-     * It uses eigendecomposition of the Hessian matrix for solving the trust-region subproblem.
+     * @brief Minimise f(x) by trust-region Newton, returning the Hessian as the
+     * eigendecomposition H = Q*diag(v)*Q.' that trsEig needs each iteration.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient and Hessian
@@ -212,7 +166,8 @@ namespace utility::gaussian_filtering::funcmin {
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p
 
-            const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();  // Tight convergence tolerance
+            // Tight convergence tolerance; sqrt(epsilon) is the loose alternative
+            const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();
             if (std::fabs(LambdaSq) < LambdaSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
                     fmt::format("Converged: Newton decrement below threshold in {} iterations", i));
@@ -259,10 +214,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region Newton method
-     *
-     * This function minimizes the cost function f(x) using a trust-region Newton method.
-     * It computes the Hessian matrix as part of the optimization process.
+     * @brief Minimise f(x) by trust-region Newton, returning the Hessian.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient and Hessian
@@ -281,10 +233,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region Newton method
-     *
-     * This function minimizes the cost function f(x) using a trust-region Newton method.
-     * It does not return the Hessian matrix.
+     * @brief Minimise f(x) by trust-region Newton, returning the gradient.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient and Hessian
@@ -299,7 +248,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region Newton method
+     * @brief Minimise f(x) by trust-region Newton.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient and Hessian
@@ -313,16 +262,11 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Sign function
-     *
-     * Returns the sign of a value.
+     * @brief Sign of a value.
      *
      * @tparam T The type of the input value
      * @param val The input value
-     * @return int
-     * @retval -1 if val < 0
-     * @retval 0 if val = 0
-     * @retval 1 if val > 0
+     * @return -1 if val < 0, 0 if val = 0, 1 if val > 0
      */
     template <typename T>
     int sgn(T val) {
@@ -330,10 +274,8 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton SR1 method
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton SR1
-     * (Symmetric Rank-1) method. It updates the Hessian approximation using the SR1 update formula.
+     * @brief Minimise f(x) by trust-region SR1, which needs only the gradient: the Hessian is
+     * built up from symmetric rank-1 updates rather than supplied by the cost function.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -382,8 +324,8 @@ namespace utility::gaussian_filtering::funcmin {
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p
 
-            const Scalar LambdaSqThreshold =
-                std::sqrt(std::numeric_limits<Scalar>::epsilon());  // Loose convergence tolerance
+            // Loose convergence tolerance; 2*epsilon is the tight alternative
+            const Scalar LambdaSqThreshold = std::sqrt(std::numeric_limits<Scalar>::epsilon());
             if (std::fabs(LambdaSq) < LambdaSqThreshold && v(0) > 0.0) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
                     fmt::format("Converged: Newton decrement below threshold in {} iterations", i));
@@ -446,10 +388,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton SR1 method
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton SR1 method.
-     * It computes and returns the Hessian matrix as part of the optimization process.
+     * @brief Minimise f(x) by trust-region SR1, returning the Hessian.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -470,10 +409,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton SR1 method
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton SR1 method.
-     * It does not return the Hessian matrix.
+     * @brief Minimise f(x) by trust-region SR1, returning the gradient.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -488,10 +424,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton SR1 method
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton SR1 method.
-     * It does not return the gradient or Hessian matrix.
+     * @brief Minimise f(x) by trust-region SR1.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -505,11 +438,8 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton BFGS method with square-root Hessian
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton BFGS
-     * (Broyden-Fletcher-Goldfarb-Shanno) method. It uses a square-root representation of the Hessian
-     * matrix for improved numerical stability.
+     * @brief Minimise f(x) by trust-region BFGS, carrying the Hessian in square-root form
+     * H = Xi.'*Xi so it stays positive semidefinite under rounding.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -552,7 +482,8 @@ namespace utility::gaussian_filtering::funcmin {
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p = p.'*Xi.'*Xi*p
 
-            const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();  // Tight convergence tolerance
+            // Tight convergence tolerance; sqrt(epsilon) is the loose alternative
+            const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();
             if (std::fabs(LambdaSq) < LambdaSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
                     fmt::format("Converged: Newton decrement below threshold in {} iterations", i));
@@ -614,10 +545,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using BFGS trust-region method
-     *
-     * This function minimizes the cost function f(x) using a BFGS trust-region method.
-     * It computes and returns the Hessian matrix as part of the optimization process.
+     * @brief Minimise f(x) by trust-region BFGS, returning the Hessian.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -636,10 +564,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using BFGS trust-region method
-     *
-     * This function minimizes the cost function f(x) using a BFGS trust-region method.
-     * It does not return the Hessian matrix.
+     * @brief Minimise f(x) by trust-region BFGS, returning the gradient.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -654,10 +579,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using BFGS trust-region method
-     *
-     * This function minimizes the cost function f(x) using a BFGS trust-region method.
-     * It does not return the gradient or Hessian matrix.
+     * @brief Minimise f(x) by trust-region BFGS.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -671,13 +593,8 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton BFGS method with sparse square-root Hessian
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton BFGS
-     * (Broyden-Fletcher-Goldfarb-Shanno) method. It uses a sparse square-root representation of the Hessian
-     * matrix for improved numerical stability and memory efficiency when dealing with large sparse problems.
-     * The Hessian approximation is maintained as H = Pi*Xi^T*Xi*Pi^T where Xi is sparse upper triangular
-     * and Pi is a permutation matrix for fill-in reduction.
+     * @brief Minimise f(x) by trust-region BFGS with a sparse square-root Hessian
+     * H = Pi*Xi.'*Xi*Pi.', where Pi is a fill-reducing permutation.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -686,9 +603,6 @@ namespace utility::gaussian_filtering::funcmin {
      * @param[in,out] Xi Sparse square-root of the Hessian matrix (upper triangular)
      * @param[in,out] Pi Permutation matrix for column pivoting to reduce fill-in
      * @return 0 on success, non-zero on failure
-     *
-     * @note This variant is particularly efficient for large-scale optimization problems where
-     *       the Hessian has a sparse structure that can be exploited.
      */
     template <typename Func>
     int BFGSTrustSqrtSparse(Func costFunc,
@@ -698,6 +612,7 @@ namespace utility::gaussian_filtering::funcmin {
                             Eigen::PermutationMatrix<Eigen::Dynamic>& Pi) {
         typedef double Scalar;
         typedef Eigen::VectorXd Vector;
+        // typedef Eigen::MatrixXd Matrix;
 
         assert(x.cols() == 1);
         g.resize(x.size());
@@ -731,7 +646,8 @@ namespace utility::gaussian_filtering::funcmin {
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p = p.'*Xi.'*Xi*p
 
-            const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();  // Tight convergence tolerance
+            // Tight convergence tolerance; sqrt(epsilon) is the loose alternative
+            const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();
             if (std::fabs(LambdaSq) < LambdaSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
                     fmt::format("Converged: Newton decrement below threshold in {} iterations", i));
@@ -816,12 +732,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton BFGS method with sparse matrices
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton BFGS
-     * (Broyden-Fletcher-Goldfarb-Shanno) method with sparse matrix representation for improved
-     * memory efficiency in large-scale optimization problems. It computes and returns the
-     * Hessian matrix as part of the optimization process.
+     * @brief Minimise f(x) by sparse trust-region BFGS, returning a dense Hessian.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -829,10 +740,6 @@ namespace utility::gaussian_filtering::funcmin {
      * @param[out] g Gradient vector at the optimal solution
      * @param[out] H Hessian matrix at the optimal solution
      * @return 0 on success, non-zero on failure
-     *
-     * @note This variant uses sparse matrix operations internally but returns a dense Hessian matrix.
-     *       It is suitable for problems where the Hessian structure can benefit from sparse storage
-     *       during optimization but a dense result is desired.
      */
     template <typename Func>
     int BFGSTrustSparse(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
@@ -846,20 +753,13 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton BFGS method with sparse matrices
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton BFGS
-     * (Broyden-Fletcher-Goldfarb-Shanno) method with sparse matrix representation for improved
-     * memory efficiency in large-scale optimization problems. It does not return the Hessian matrix.
+     * @brief Minimise f(x) by sparse trust-region BFGS, returning the gradient.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @return 0 on success, non-zero on failure
-     *
-     * @note This variant is optimized for large-scale problems where memory usage is a concern
-     *       and the final Hessian matrix is not needed.
      */
     template <typename Func>
     int BFGSTrustSparse(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g) {
@@ -868,20 +768,12 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton BFGS method with sparse matrices
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton BFGS
-     * (Broyden-Fletcher-Goldfarb-Shanno) method with sparse matrix representation for improved
-     * memory efficiency in large-scale optimization problems. It does not return the gradient
-     * or Hessian matrix.
+     * @brief Minimise f(x) by sparse trust-region BFGS.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @return 0 on success, non-zero on failure
-     *
-     * @note This is the most memory-efficient variant, suitable for large-scale optimization
-     *       problems where only the optimal solution is needed.
      */
     template <typename Func>
     int BFGSTrustSparse(Func costFunc, Eigen::VectorXd& x) {
@@ -890,11 +782,8 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using trust-region quasi-Newton BFGS method with square-root inverse Hessian
-     *
-     * This function minimizes the cost function f(x) using a trust-region quasi-Newton BFGS
-     * (Broyden-Fletcher-Goldfarb-Shanno) method. It uses a square-root representation of the
-     * inverse Hessian matrix for improved numerical stability.
+     * @brief Minimise f(x) by trust-region BFGS, carrying the inverse Hessian in square-root
+     * form inv(H) = S.'*S.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -938,7 +827,8 @@ namespace utility::gaussian_filtering::funcmin {
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p = p.'*inv(S.'*S)*p
 
-            const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();  // Tight convergence tolerance
+            // Tight convergence tolerance; sqrt(epsilon) is the loose alternative
+            const Scalar LambdaSqThreshold = 2 * std::numeric_limits<Scalar>::epsilon();
             if (std::fabs(LambdaSq) < LambdaSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
                     fmt::format("Converged: Newton decrement below threshold in {} iterations", i));
@@ -999,11 +889,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using BFGS trust-region method with inverse Hessian
-     *
-     * This function minimizes the cost function f(x) using a BFGS trust-region method
-     * with inverse Hessian approximation. It computes and returns the Hessian matrix
-     * as part of the optimization process.
+     * @brief Minimise f(x) by inverse-form trust-region BFGS, returning the Hessian.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -1026,10 +912,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using BFGS trust-region method with inverse Hessian
-     *
-     * This function minimizes the cost function f(x) using a BFGS trust-region method
-     * with inverse Hessian approximation. It does not return the Hessian matrix.
+     * @brief Minimise f(x) by inverse-form trust-region BFGS, returning the gradient.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -1044,10 +927,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using BFGS trust-region method with inverse Hessian
-     *
-     * This function minimizes the cost function f(x) using a BFGS trust-region method
-     * with inverse Hessian approximation. It does not return the gradient or Hessian matrix.
+     * @brief Minimise f(x) by inverse-form trust-region BFGS.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -1061,11 +941,8 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using Levenberg-Marquardt quasi-Newton BFGS method with square-root Hessian
-     *
-     * This function minimizes the cost function f(x) using a Levenberg-Marquardt quasi-Newton BFGS
-     * (Broyden-Fletcher-Goldfarb-Shanno) method. It uses a square-root representation of the Hessian
-     * matrix for improved numerical stability.
+     * @brief Minimise f(x) by Levenberg-Marquardt BFGS with a square-root Hessian: a damping
+     * factor lambda takes the place of the trust-region radius.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -1096,7 +973,13 @@ namespace utility::gaussian_filtering::funcmin {
             return -1;
         }
 
+        // Scalar maxDiagH = (Xi.transpose()*Xi).diagonal().maxCoeff();
+        // Scalar Delta = 10e0;     // Initial trust-region radius
         Scalar lambda = 1e-7;
+        // Scalar lambda = 1e-10*(Xi.transpose()*Xi).diagonal().maxCoeff();
+        // Scalar lambda = 1e-2;
+        // Scalar nu = 2.0;
+        // Scalar alpha = 0.00;         // 0: robust, 1: fast
 
         const int maxIterations = 5000;
         for (int i = 0; i < maxIterations; ++i) {
@@ -1107,12 +990,27 @@ namespace utility::gaussian_filtering::funcmin {
             Vector p = -XiI.topRows(Xi.cols()).triangularView<Eigen::Upper>().solve(
                 XiI.topRows(Xi.cols()).triangularView<Eigen::Upper>().transpose().solve(g));
 
+            // // Solve ( H + lambda*diag(H) )*p = -g for p
+            // Matrix XiI(Xi.rows() + Xi.cols(), Xi.cols());
+            // Vector d = Xi.array().square().colwise().sum(); // diag(H)
+            // Scalar tol = Xi.cols()*std::numeric_limits<Scalar>::epsilon()*d.maxCoeff();
+            // d.cwiseMax(tol);
+            // Matrix sqrtLambdaH = (lambda*d).cwiseSqrt().asDiagonal();
+            // XiI << Xi, sqrtLambdaH;
+            // Eigen::HouseholderQR<Eigen::Ref<Matrix>> qrXiI(XiI);    // In-place QR decomposition
+            // Vector p = -XiI.topRows(Xi.cols()).triangularView<Eigen::Upper>().solve(
+            //     XiI.topRows(Xi.cols()).triangularView<Eigen::Upper>().transpose().solve(g)
+            // );
+
+            // trsSqrt(Xi, g, Delta, p);   // minimise 0.5*p.'*Xi.'*Xi*p + g.'*p subject to ||Xi*p|| <= Delta
             Vector z = Xi * p;
 
             Scalar pg = p.dot(g);
             Scalar NewtonDecrSq =
                 -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p = p.'*Xi.'*Xi*p if p is the Newton step
+            // Scalar NewtonDecrSq = z.squaredNorm();
 
+            // Between the loose sqrt(epsilon) and tight 2*epsilon tolerances used elsewhere
             const Scalar NewtonDecrSqThreshold = 1e3 * std::numeric_limits<Scalar>::epsilon();
             if (std::fabs(NewtonDecrSq) < NewtonDecrSqThreshold) {
                 NUClear::log<NUClear::LogLevel::DEBUG>(
@@ -1175,10 +1073,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using BFGS Levenberg-Marquardt method
-     *
-     * This function minimizes the cost function f(x) using a BFGS Levenberg-Marquardt method.
-     * It computes and returns the Hessian matrix as part of the optimization process.
+     * @brief Minimise f(x) by Levenberg-Marquardt BFGS, returning the Hessian.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -1197,10 +1092,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using BFGS Levenberg-Marquardt method
-     *
-     * This function minimizes the cost function f(x) using a BFGS Levenberg-Marquardt method.
-     * It does not return the Hessian matrix.
+     * @brief Minimise f(x) by Levenberg-Marquardt BFGS, returning the gradient.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient
@@ -1215,10 +1107,7 @@ namespace utility::gaussian_filtering::funcmin {
     }
 
     /**
-     * @brief Minimize f(x) using BFGS Levenberg-Marquardt method
-     *
-     * This function minimizes the cost function f(x) using a BFGS Levenberg-Marquardt method.
-     * It does not return the gradient or Hessian matrix.
+     * @brief Minimise f(x) by Levenberg-Marquardt BFGS.
      *
      * @tparam Func Type of the cost function
      * @param costFunc Cost function that returns f(x) and computes gradient

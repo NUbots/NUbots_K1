@@ -55,7 +55,7 @@
 namespace module::localisation::srif {
 
     using utility::gaussian_filtering::Pose;
-    using utility::gaussian_filtering::tangent_basis;
+    using utility::gaussian_filtering::tangentBasis;
 
     class SideDisambiguator {
     public:

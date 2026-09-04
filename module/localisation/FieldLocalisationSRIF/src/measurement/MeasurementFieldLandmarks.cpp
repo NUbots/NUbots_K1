@@ -31,7 +31,7 @@ namespace module::localisation::measurement {
         // Gather usable detections
         for (std::size_t i = 0; i < sample.detections.size(); ++i) {
             const Detection& det = sample.detections[i];
-            if (det.confidence < options_.min_confidence) {
+            if (det.confidence < options_.minConfidence) {
                 continue;
             }
             Eigen::Vector3d ray;
@@ -39,7 +39,7 @@ namespace module::localisation::measurement {
             if (detectionRay(det, ray, type)) {
                 // Confidence sets how much of this detection's likelihood is the
                 // inlier Gaussian rather than flat clutter (see Options).
-                const double w = std::clamp(options_.inlier_probability * det.confidence / options_.confidence_reference,
+                const double w = std::clamp(options_.inlierProbability * det.confidence / options_.confidenceReference,
                                             1e-3,
                                             options_.maxInlierProbability);
                 candidates_.push_back({ray, type, i, w});
@@ -106,15 +106,15 @@ namespace module::localisation::measurement {
         // Yaw is no longer a state element -- the attitude is a quaternion, so the
         // heading variance is a projection of its 4x4 block onto the field z axis.
         const double yawVar = SystemLocalisation::yawVariance(x, P);
-        const double sigma2 = options_.sigma_angular * options_.sigma_angular;
-        // Pre-gate widened by the yaw uncertainty (see Options::gate_yaw_scale): a
+        const double sigma2 = options_.sigmaAngular * options_.sigmaAngular;
+        // Pre-gate widened by the yaw uncertainty (see Options::gateYawScale): a
         // no-op while the belief is tight, and the only thing that lets a recovering
         // filter re-associate after a fall has turned the robot further than the
         // nominal gate.
-        const double gate_angle =
-            std::min(std::max(options_.gate_angle, options_.gate_yaw_scale * std::sqrt(std::max(yawVar, 0.0))),
-                     options_.gate_angle_max);
-        const double cosGate = std::cos(gate_angle);
+        const double gateAngle =
+            std::min(std::max(options_.gateAngle, options_.gateYawScale * std::sqrt(std::max(yawVar, 0.0))),
+                     options_.gateAngleMax);
+        const double cosGate = std::cos(gateAngle);
 
         // SNN: enumerate all (detection, landmark) pairs of matching type inside the
         // geometric pre-gate, score each by its surprisal relative to the clutter
@@ -150,7 +150,7 @@ namespace module::localisation::measurement {
 
                 // Innovation covariance in the tangent plane: bearing noise + camera
                 // position uncertainty across the range + yaw uncertainty.
-                const Eigen::Matrix<double, 3, 2> T = tangent_basis(uPredF);
+                const Eigen::Matrix<double, 3, 2> T = tangentBasis(uPredF);
                 const Eigen::Vector2d a             = T.transpose() * Eigen::Vector3d::UnitZ().cross(uPredF);
                 const Eigen::Matrix2d S             = Eigen::Matrix2d::Identity() * sigma2
                                           + T.transpose() * Ppos * T / (range * range) + yawVar * a * a.transpose();
@@ -207,7 +207,7 @@ namespace module::localisation::measurement {
     }
 
     double MeasurementFieldLandmarks::logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
-        return log_likelihood_impl<double>(x);
+        return logLikelihoodImpl<double>(x);
     }
 
     double MeasurementFieldLandmarks::logLikelihood(const Eigen::VectorXd& x,
@@ -221,7 +221,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual> xdual = x.cast<dual>();
         dual fdual;
         auto func = [this](const Eigen::VectorX<dual>& xd) -> dual {
-            return this->template log_likelihood_impl<dual>(xd);
+            return this->template logLikelihoodImpl<dual>(xd);
         };
         g = gradient(func, wrt(xdual), at(xdual), fdual);
         return static_cast<double>(fdual);
@@ -242,7 +242,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual2nd> xdual = x.cast<dual2nd>();
         dual2nd fdual;
         auto func = [this](const Eigen::VectorX<dual2nd>& xd) -> dual2nd {
-            return this->template log_likelihood_impl<dual2nd>(xd);
+            return this->template logLikelihoodImpl<dual2nd>(xd);
         };
         H = hessian(func, wrt(xdual), at(xdual), fdual, g);
         return static_cast<double>(fdual);

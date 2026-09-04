@@ -184,7 +184,7 @@ namespace module::localisation::srif {
 
             Predicted pr;
             pr.uFf = uFf;
-            pr.T   = tangent_basis(uFf);
+            pr.T   = tangentBasis(uFf);
 
             // Innovation covariance in the tangent plane: bearing noise + landmark
             // and camera position uncertainty projected across the range + camera

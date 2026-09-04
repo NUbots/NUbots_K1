@@ -6,6 +6,9 @@
 
 #include "utility/gaussian_filtering/measurement/Measurement.hpp"
 
+// Both models are linear in the state, so the exact Hessian is constant and the
+// trust-region Newton update converges in one step.
+
 namespace module::localisation::measurement {
 
     using srif::SystemLocalisation;
@@ -24,7 +27,7 @@ namespace module::localisation::measurement {
     }
 
     double MeasurementGyroscope::logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
-        return log_likelihood_impl<double>(x);
+        return logLikelihoodImpl<double>(x);
     }
 
     double MeasurementGyroscope::logLikelihood(const Eigen::VectorXd& x,
@@ -38,7 +41,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual> xdual = x.cast<dual>();
         dual fdual;
         auto func = [this](const Eigen::VectorX<dual>& xd) -> dual {
-            return this->template log_likelihood_impl<dual>(xd);
+            return this->template logLikelihoodImpl<dual>(xd);
         };
         g = gradient(func, wrt(xdual), at(xdual), fdual);
         return static_cast<double>(fdual);
@@ -59,7 +62,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual2nd> xdual = x.cast<dual2nd>();
         dual2nd fdual;
         auto func = [this](const Eigen::VectorX<dual2nd>& xd) -> dual2nd {
-            return this->template log_likelihood_impl<dual2nd>(xd);
+            return this->template logLikelihoodImpl<dual2nd>(xd);
         };
         H = hessian(func, wrt(xdual), at(xdual), fdual, g);
         return static_cast<double>(fdual);
@@ -80,7 +83,7 @@ namespace module::localisation::measurement {
     }
 
     double MeasurementBodyVelocity::logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
-        return log_likelihood_impl<double>(x);
+        return logLikelihoodImpl<double>(x);
     }
 
     double MeasurementBodyVelocity::logLikelihood(const Eigen::VectorXd& x,
@@ -94,7 +97,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual> xdual = x.cast<dual>();
         dual fdual;
         auto func = [this](const Eigen::VectorX<dual>& xd) -> dual {
-            return this->template log_likelihood_impl<dual>(xd);
+            return this->template logLikelihoodImpl<dual>(xd);
         };
         g = gradient(func, wrt(xdual), at(xdual), fdual);
         return static_cast<double>(fdual);
@@ -115,7 +118,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual2nd> xdual = x.cast<dual2nd>();
         dual2nd fdual;
         auto func = [this](const Eigen::VectorX<dual2nd>& xd) -> dual2nd {
-            return this->template log_likelihood_impl<dual2nd>(xd);
+            return this->template logLikelihoodImpl<dual2nd>(xd);
         };
         H = hessian(func, wrt(xdual), at(xdual), fdual, g);
         return static_cast<double>(fdual);

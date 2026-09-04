@@ -55,13 +55,6 @@ namespace module::localisation::measurement {
         /**
          * @brief Noise and selection options.
          */
-        /**
-         * Defaults calibrated against the recorded data: at NUbots' own converged
-         * pose the line points sit a median 0.17-0.38 m from the line map with
-         * 25-55% beyond 0.3 m, and per-frame errors are correlated through the
-         * shared camera pose, so the point budget is kept small and the noise
-         * model deliberately loose.
-         */
         struct Options {
             double sigmaDistance     = 0.25;  ///< Base line-distance noise std dev [m]
             double sigmaAngular      = 0.02;  ///< Ray angular noise mapped to ground range [rad]
@@ -111,7 +104,7 @@ namespace module::localisation::measurement {
          * @brief Templated log-likelihood for autodiff.
          */
         template <typename Scalar>
-        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const;
+        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const;
 
         std::size_t numPoints() const {
             return static_cast<std::size_t>(rays_.cols());
@@ -128,7 +121,7 @@ namespace module::localisation::measurement {
     };
 
     template <typename Scalar>
-    Scalar MeasurementFieldLines::log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
+    Scalar MeasurementFieldLines::logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
         using std::exp, std::log;
 
         const Eigen::Index n = rays_.cols();
