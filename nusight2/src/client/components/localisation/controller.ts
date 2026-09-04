@@ -188,6 +188,7 @@ export class LocalisationController {
           centerCircleDiameter: 1.5,
           borderStripMinWidth: 1.0,
         });
+        break;
       case "robocup_large":
         model.field.dimensions = new FieldDimensions({
           lineWidth: 0.06,
@@ -205,6 +206,26 @@ export class LocalisationController {
           goalNetHeight: 1.2,
           penaltyMarkDistance: 1.47,
           centerCircleDiameter: 1.5,
+          borderStripMinWidth: 1.0,
+        });
+        break;
+      case "robocup_5v5":
+        model.field.dimensions = new FieldDimensions({
+          lineWidth: 0.06,
+          markWidth: 0.1,
+          fieldLength: 22.0,
+          fieldWidth: 14.0,
+          goalDepth: 0.6,
+          goalWidth: 2.6,
+          goalAreaLength: 2.0,
+          goalAreaWidth: 5.0,
+          penaltyAreaLength: 5.0,
+          penaltyAreaWidth: 8.0,
+          goalCrossbarHeight: 1.25,
+          goalPostDiameter: 0.1,
+          goalNetHeight: 1.2,
+          penaltyMarkDistance: 3.5,
+          centerCircleDiameter: 4,
           borderStripMinWidth: 1.0,
         });
         break;
@@ -366,6 +387,11 @@ export class LocalisationController {
   };
 
   @action
+  toggleUncertaintyVisibility = (model: LocalisationModel) => {
+    model.uncertaintyVisible = !model.uncertaintyVisible;
+  };
+
+  @action
   toggleGoalVisibility = (model: LocalisationModel) => {
     model.goalsVisible = !model.goalsVisible;
   };
@@ -393,6 +419,31 @@ export class LocalisationController {
   @action
   toggleBoundedBoxVisibility = (model: LocalisationModel) => {
     model.boundedBoxVisible = !model.boundedBoxVisible;
+  };
+
+  @action
+  togglePurposeLabelVisibility = (model: LocalisationModel) => {
+    model.purposeLabelVisible = !model.purposeLabelVisible;
+  };
+
+  @action
+  toggleTimeToBallVisibility = (model: LocalisationModel) => {
+    model.timeToBallVisible = !model.timeToBallVisible;
+  };
+
+  @action
+  toggleSupportPositionVisibility = (model: LocalisationModel) => {
+    model.supportPositionVisible = !model.supportPositionVisible;
+  };
+
+  @action
+  toggleTeammatesVisibility = (model: LocalisationModel) => {
+    model.teammatesVisible = !model.teammatesVisible;
+  };
+
+  @action
+  toggleTeammateBallVisibility = (model: LocalisationModel) => {
+    model.teammateBallVisible = !model.teammateBallVisible;
   };
 
   @action

@@ -123,11 +123,17 @@ export class LocalisationModel {
   @observable robotVisible = true;
   @observable ballVisible = true;
   @observable particlesVisible = true;
+  @observable uncertaintyVisible = true;
   @observable goalsVisible = true;
   @observable fieldLinePointsVisible = true;
   @observable fieldIntersectionsVisible = true;
   @observable walkToDebugVisible = false;
   @observable boundedBoxVisible = true;
+  @observable purposeLabelVisible = true;
+  @observable timeToBallVisible = true;
+  @observable supportPositionVisible = false;
+  @observable teammatesVisible = false;
+  @observable teammateBallVisible = false;
 
   constructor(
     appModel: AppModel,

@@ -91,9 +91,10 @@ RUN cd /usr/local && ln -sf lib lib64
 COPY usr/local/bin/install-from-source.py /usr/local/bin/install-from-source.py
 RUN ln -s /usr/local/bin/install-from-source.py /usr/local/bin/install-from-source
 
+COPY usr/local/toolchain /usr/local/toolchain
+
 # Generate toolchain files for generic
-RUN --mount=type=bind,source=usr/local/toolchain,target=/usr/local/toolchain \
-    python3 /usr/local/toolchain/generate_generic_toolchain.py --prefix /usr
+RUN python3 /usr/local/toolchain/generate_generic_toolchain.py --prefix /usr
 
 ##############################################
 ### ADD NEW SYSTEM PROGRAMS/LIBRARIES HERE ###
@@ -107,7 +108,6 @@ RUN --mount=type=bind,source=usr/local/toolchain,target=/usr/local/toolchain \
 #   |_|\___/ \___/|_|\___|_| |_|\__,_|_|_| |_| #
 ################################################
 ARG prefix=/usr/local
-ARG jobs=1
 
 # Install prefix/toolchain-dir for source-built dependencies below, computed once per platform
 RUN if [ "${platform}" = "orinnx" ]; then \
@@ -129,8 +129,7 @@ RUN pip3 install \
     tqdm==4.62.3
 
 # Generate toolchain files for the current platform
-RUN --mount=type=bind,source=usr/local/toolchain,target=/usr/local/toolchain \
-    python3 /usr/local/toolchain/generate_${platform}_toolchain.py --prefix ${prefix}
+RUN python3 /usr/local/toolchain/generate_${platform}_toolchain.py --prefix ${prefix}
 
 
 # We install ncurses rather than building it as it's used by many of the build tools and they don't like it when it changes
@@ -145,7 +144,7 @@ RUN pip3 install pyyaml mako
 # Install OpenCL C Headers
 RUN . /root/.dep_env && \
     install-from-source https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2022.05.18.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     --prefix ${DEP_PREFIX} \
     ${DEP_TOOLCHAIN}
 
@@ -154,7 +153,7 @@ RUN . /root/.dep_env && \
 RUN install-package ruby autotools-dev automake libtool
 RUN . /root/.dep_env && \
     install-from-source https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v2.3.1.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     --prefix ${DEP_PREFIX} \
     ${DEP_TOOLCHAIN}
 
@@ -167,7 +166,7 @@ RUN if [ "${platform}" != "generic" ]; then \
 
 # OpenCV
 RUN install-from-source https://github.com/opencv/opencv/archive/refs/tags/4.9.0.tar.gz \
-    --jobs ${jobs}
+    --jobs $(nproc)
 
 RUN wget -nv https://github.com/protocolbuffers/protobuf/releases/download/v21.4/protoc-21.4-linux-x86_64.zip -O protoc-21.4-linux-x86_64.zip && \
     unzip protoc-21.4-linux-x86_64.zip -d /usr/ && \
@@ -175,7 +174,7 @@ RUN wget -nv https://github.com/protocolbuffers/protobuf/releases/download/v21.4
 
 # Protobuf
 RUN install-from-source https://github.com/protocolbuffers/protobuf/releases/download/v21.4/protobuf-cpp-3.21.4.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -Dprotobuf_PROTOC_EXECUTABLE="/usr/bin/protoc" \
     -Dprotobuf_BUILD_TESTS=OFF \
     -Dprotobuf_BUILD_LIBPROTOC=ON \
@@ -187,7 +186,7 @@ RUN if [ "${platform}" != "generic" ]; then \
     unzip protoc-21.4-linux-aarch_64.zip -d /l4t/targetfs/usr/ && \
     rm protoc-21.4-linux-aarch_64.zip && \
     install-from-source https://github.com/protocolbuffers/protobuf/releases/download/v21.4/protobuf-cpp-3.21.4.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     --toolchain-dir /usr \
     -Dprotobuf_PROTOC_EXECUTABLE="/usr/bin/protoc" \
     -Dprotobuf_BUILD_TESTS=OFF \
@@ -209,7 +208,7 @@ RUN install-package opencl-c-headers \
 
 
 RUN install-from-source https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2021.13.0.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     --build-system cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DTBB_TEST:BOOL='OFF' \
@@ -223,7 +222,6 @@ RUN git clone https://github.com/openvinotoolkit/openvino.git --branch 2024.6.0 
 # Build OpenVINO
 WORKDIR /openvino
 RUN mkdir build && cd build && \
-    ARM_COMPUTE=$([ "${platform}" = "orinnx" ] && echo "ON" || echo "OFF") && \
     cmake .. -DBUILD_TESTING:BOOL='OFF' \
     -DCMAKE_BUILD_TYPE:STRING='Release' \
     -DCMAKE_TOOLCHAIN_FILE=${prefix}/toolchain.cmake \
@@ -239,12 +237,13 @@ RUN mkdir build && cd build && \
     -DENABLE_SYSTEM_FLATBUFFERS:BOOL='OFF' \
     -DENABLE_INTEL_GPU:BOOL='OFF' \
     -DENABLE_INTEL_CPU:BOOL='ON' \
-    -DENABLE_ARM_COMPUTE_CMAKE:BOOL="${ARM_COMPUTE}" \
+    -DENABLE_ARM_COMPUTE_CMAKE:BOOL='OFF' \
+    -DARM_COMPUTE_SCONS_JOBS="$(nproc)" \
     -DENABLE_CPPLINT:BOOL='OFF' \
     -DCMAKE_CXX_STANDARD='17' \
     -Wno-dev \
     -GNinja && \
-    ninja -j${jobs} && ninja -j${jobs} install
+    ninja -j$(nproc) && ninja -j$(nproc) install
 
 # Move OpenVino libraries to our library path
 RUN ARCH=$([ "${platform}" = "orinnx" ] && echo "aarch64" || echo "intel64") && \
@@ -280,12 +279,12 @@ RUN install-package -p ${platform} \
 
 # Eigen3
 RUN install-from-source https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz \
-    --jobs ${jobs}
+    --jobs $(nproc)
 
 # tcmalloc
 RUN . /root/.dep_env && \
     install-from-source https://github.com/gperftools/gperftools/releases/download/gperftools-2.10/gperftools-2.10.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     --build-system autotools \
     --prefix ${DEP_PREFIX} \
     ${DEP_TOOLCHAIN} \
@@ -295,7 +294,7 @@ RUN . /root/.dep_env && \
 # Libjpeg
 RUN install-package yasm
 RUN install-from-source https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.0.7-esr.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -DWITH_SIMD=ON \
     -DFORCE_INLINE=ON \
     -DINLINE_WORKS=1 \
@@ -309,19 +308,19 @@ RUN install-from-source https://github.com/libjpeg-turbo/libjpeg-turbo/archive/r
 
 # yaml-cpp
 RUN install-from-source https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -DYAML_CPP_BUILD_TESTS=OFF \
     -DBUILD_SHARED_LIBS=OFF
 
 # fmt formatting library
 RUN install-from-source https://github.com/fmtlib/fmt/archive/refs/tags/9.0.0.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -DFMT_DOC=OFF \
     -DFMT_TEST=OFF
 
 # Catch unit testing library
 RUN install-from-source https://github.com/catchorg/Catch2/archive/refs/tags/v3.8.0.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -DCATCH_CONFIG_CONSOLE_WIDTH=120 \
     -DCATCH_CONFIG_CPP11_TO_STRING=ON \
     -DCATCH_CONFIG_CPP17_UNCAUGHT_EXCEPTIONS=ON \
@@ -332,19 +331,19 @@ RUN install-from-source https://github.com/catchorg/Catch2/archive/refs/tags/v3.
 
 # LibUV
 RUN install-from-source https://github.com/libuv/libuv/archive/refs/tags/v1.44.2.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -Dlibuv_buildtests=OFF \
     -DBUILD_TESTING=OFF
 
 # NUClear!
 RUN install-from-source https://github.com/Fastcode/NUClear/archive/925dca0f31484a7df64fd335de5a6c9335483c7f.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -DBUILD_TESTS=OFF
 
 # Backtrace
 RUN . /root/.dep_env && \
     install-from-source https://github.com/ianlancetaylor/libbacktrace/archive/8602fda64e78f1f46563220f2ee9f7e70819c51d.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     --prefix ${DEP_PREFIX} \
     ${DEP_TOOLCHAIN} \
     --without-system-libunwind \
@@ -354,7 +353,7 @@ RUN . /root/.dep_env && \
 # Alsa and espeak
 RUN . /root/.dep_env && \
     install-from-source https://github.com/alsa-project/alsa-lib/archive/refs/tags/v1.2.7.2.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     --prefix ${DEP_PREFIX} \
     ${DEP_TOOLCHAIN} \
     --without-debug
@@ -362,7 +361,7 @@ RUN install-package -p ${platform} alsa-utils
 
 # mio memory mapping library
 RUN install-from-source https://github.com/mandreyel/mio/archive/3f86a95c0784d73ce6815237ec33ed25f233b643.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     --patch https://patch-diff.githubusercontent.com/raw/mandreyel/mio/pull/93.patch
 
 # zstr header to have file streams that do zlib compression
@@ -376,7 +375,7 @@ RUN . /root/.dep_env && \
 
 # Visual Mesh
 RUN install-from-source https://github.com/NUbots/VisualMesh/archive/64c49fce3a17bbee73339eaee556f47a80b93c40.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -DBUILD_TENSORFLOW_OP=OFF \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_OPENCL_ENGINE=ON
@@ -388,40 +387,48 @@ RUN . /root/.dep_env && \
 
 # TinyXML
 RUN install-from-source https://github.com/leethomason/tinyxml2/archive/refs/tags/9.0.0.tar.gz \
-    --jobs ${jobs}
+    --jobs $(nproc)
 
 # NLopt
 RUN install-from-source https://github.com/stevengj/nlopt/archive/refs/tags/v2.7.1.tar.gz \
-    --jobs ${jobs}
+    --jobs $(nproc)
 
 # tinyrobotics
 RUN install-from-source https://github.com/Tom0Brien/tinyrobotics/archive/refs/tags/0.0.1.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -DBUILD_TESTS=OFF
 
 # lame
 RUN . /root/.dep_env && \
     install-from-source https://downloads.sourceforge.net/lame/lame-3.100.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     --prefix ${DEP_PREFIX} \
     ${DEP_TOOLCHAIN}
 
 # Nanopb for generating messages for NUSense
 RUN install-from-source https://github.com/nanopb/nanopb/archive/refs/tags/0.4.9.1.tar.gz \
-    --jobs ${jobs}
+    --jobs $(nproc)
+
+# autodiff
+RUN install-from-source https://github.com/autodiff/autodiff/archive/refs/tags/v1.1.2.tar.gz \
+    --jobs $(nproc) \
+    -DAUTODIFF_BUILD_PYTHON=OFF \
+    -DAUTODIFF_BUILD_TESTS=OFF \
+    -DAUTODIFF_BUILD_EXAMPLES=OFF \
+    -DAUTODIFF_BUILD_DOCS=OFF
 
 # Install Booster Robotics SDK
 
 RUN install-package curl lsb-release
 
-RUN curl -L https://github.com/BoosterRobotics/booster_robotics_sdk/archive/324946e7c885de6cd6d37220eca64ed4e0f8d418.tar.gz \
+RUN curl -L https://github.com/BoosterRobotics/booster_robotics_sdk/archive/d5d8f7ae76d3e9f8cc224e682216f4681003ca46.tar.gz \
     -o /tmp/booster_robotics_sdk.tar.gz && \
     cd /tmp && tar -xzf booster_robotics_sdk.tar.gz && \
-    mv booster_robotics_sdk-324946e7c885de6cd6d37220eca64ed4e0f8d418 booster_robotics_sdk && \
+    mv booster_robotics_sdk-d5d8f7ae76d3e9f8cc224e682216f4681003ca46 booster_robotics_sdk && \
     rm /tmp/booster_robotics_sdk.tar.gz
 
 WORKDIR /tmp/booster_robotics_sdk
-RUN curl -L https://gist.githubusercontent.com/ZeoNyph/69e4ec80b66cc083191522de7eb4f43b/raw/ef9393748b5a8797fb8ef08d9eaa56ade76d7547/install_script.patch \
+RUN curl -L https://gist.githubusercontent.com/ZeoNyph/69e4ec80b66cc083191522de7eb4f43b/raw/e0cf865742fcdcbc9d09592b42c9ab5af6f450ef/install_script.patch \
     -o install_script.patch && \
     patch -p1 < install_script.patch
 

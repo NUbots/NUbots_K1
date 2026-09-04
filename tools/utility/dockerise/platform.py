@@ -82,7 +82,7 @@ def list():
     ]
 
 
-def build(image, platform, username, uid, reset, jobs):
+def build(image, platform, username, uid, reset):
     pty = WrapPty()
 
     # If we are building the selected platform we need to work out what that refers to
@@ -155,9 +155,9 @@ def build(image, platform, username, uid, reset, jobs):
             local_tag,
             "--pull",
             "--build-arg",
-            f"platform={build_platform}",
-            "--build-arg",
-            f"jobs={jobs}",
+            f"platform={platform_arg}",
+            "--platform",
+            "linux/amd64",
             "--build-arg",
             f"user_uid={uid}",
             "--output=type=docker",

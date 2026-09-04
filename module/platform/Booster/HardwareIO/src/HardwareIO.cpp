@@ -7,10 +7,12 @@
 #include "extension/Configuration.hpp"
 
 #include "utility/math/comparison.hpp"
+#include "utility/platform/Booster/channel_factory.hpp"
 
 namespace module::platform::Booster {
 
     using booster::robot::ChannelFactory;
+    using booster::robot::RobotMode;
     using booster::robot::b1::GetModeResponse;
     using booster::robot::b1::JointIndexK1;
     using extension::Configuration;
@@ -53,7 +55,7 @@ namespace module::platform::Booster {
 
         on<Startup>().then([this]() {
             log<INFO>("Starting Booster HardwareIO");
-            ChannelFactory::Instance()->Init(0);
+            utility::platform::Booster::ensure_channel_factory();
 
             booster_client.Init();
             booster_client.ChangeMode(RobotMode::kPrepare);

@@ -40,6 +40,7 @@
 #include "message/strategy/FindBall.hpp"
 #include "message/strategy/LookAtFeature.hpp"
 #include "message/strategy/StandStill.hpp"
+#include "message/strategy/TimeToBall.hpp"
 #include "message/strategy/WalkToFieldPosition.hpp"
 #include "message/strategy/Who.hpp"
 #include "message/support/FieldDescription.hpp"
@@ -71,6 +72,7 @@ namespace module::purpose {
     using message::strategy::LookAtBall;
     using message::strategy::LookForStaleFeatures;
     using message::strategy::StandStill;
+    using message::strategy::TimeToBall;
     using message::strategy::WalkToFieldPosition;
     using message::strategy::Who;
     using message::support::FieldDescription;
@@ -81,14 +83,18 @@ namespace module::purpose {
 
         on<Configuration>("FieldPlayer.yaml").then([this](const Configuration& config) {
             // Use configuration here from file FieldPlayer.yaml
-            this->log_level               = config["log_level"].as<NUClear::LogLevel>();
-            cfg.ball_threshold            = config["ball_threshold"].as<double>();
-            cfg.equidistant_threshold     = config["equidistant_threshold"].as<double>();
-            cfg.ball_off_center_threshold = config["ball_off_center_threshold"].as<double>();
-            cfg.center_circle_offset      = config["center_circle_offset"].as<double>();
-            cfg.max_localisation_cost     = config["max_localisation_cost"].as<double>();
-            cfg.search_when_lost          = config["search_when_lost"].as<bool>();
-            cfg.localise_timeout          = std::chrono::seconds(config["localise_timeout"].as<int>());
+            this->log_level                       = config["log_level"].as<NUClear::LogLevel>();
+            cfg.ball_threshold                    = config["ball_threshold"].as<double>();
+            cfg.equidistant_threshold             = config["equidistant_threshold"].as<double>();
+            cfg.ball_off_center_threshold         = config["ball_off_center_threshold"].as<double>();
+            cfg.estimated_walk_speed              = config["estimated_walk_speed"].as<double>();
+            cfg.estimated_turn_speed              = config["estimated_turn_speed"].as<double>();
+            cfg.approach_distance_behind_ball     = config["approach_distance_behind_ball"].as<double>();
+            cfg.attack_equidistant_time_threshold = config["attack_equidistant_time_threshold"].as<double>();
+            cfg.center_circle_offset              = config["center_circle_offset"].as<double>();
+            cfg.max_localisation_cost             = config["max_localisation_cost"].as<double>();
+            cfg.search_when_lost                  = config["search_when_lost"].as<bool>();
+            cfg.localise_timeout                  = std::chrono::seconds(config["localise_timeout"].as<int>());
         });
 
         on<Configuration>("Formation.yaml").then([this](const Configuration& config) {
@@ -198,6 +204,7 @@ namespace module::purpose {
                     for (const auto& robot : robots->robots) {
                         if (robot.teammate && !robot.purpose.active) {
                             ignore_ids.push_back(robot.purpose.player_id);
+                            log<DEBUG>("Ignoring teammate", robot.purpose.player_id, "because they are inactive.");
                         }
                     }
                 }
@@ -226,16 +233,35 @@ namespace module::purpose {
                         }
                     }
                 }
-                const unsigned int closest_to_ball =
-                    robots ? utility::strategy::closest_to_ball_on_team(ball->rBWw,
+                // Who on the team could get kick-ready (behind the ball, facing goal) soonest - covers the
+                // "teammate already going for the ball" case too, since their head start shows up as a
+                // shorter estimated time.
+                Eigen::Vector2d goal_rFf(-fd.dimensions.field_length / 2.0, 0.0);
+                std::vector<std::pair<unsigned int, double>> times_to_ball;
+                const unsigned int fastest_to_ball =
+                    robots ? utility::strategy::fastest_to_ball_on_team(ball->rBWw,
+                                                                        goal_rFf,
+                                                                        cfg.approach_distance_behind_ball,
                                                                         *robots,
                                                                         field->Hfw,
                                                                         sensors.Hrw,
-                                                                        cfg.equidistant_threshold,
+                                                                        cfg.estimated_walk_speed,
+                                                                        cfg.estimated_turn_speed,
+                                                                        cfg.attack_equidistant_time_threshold,
                                                                         global_config.player_id,
-                                                                        ignore_ids)
+                                                                        ignore_ids,
+                                                                        &times_to_ball)
                            : global_config.player_id;
-                bool is_closest = closest_to_ball == global_config.player_id;
+                bool is_fastest_to_ball = fastest_to_ball == global_config.player_id;
+
+                // Report every candidate's estimated time to ball for debugging/visualisation in NUsight
+                if (!times_to_ball.empty()) {
+                    auto time_to_ball_msg = std::make_unique<TimeToBall>();
+                    for (const auto& [id, time] : times_to_ball) {
+                        time_to_ball_msg->estimates.emplace_back(id, static_cast<float>(time));
+                    }
+                    emit(std::move(time_to_ball_msg));
+                }
 
                 // Determine if we need to wait for the other team to kick off
                 // If the ball moves, it is in play
@@ -245,18 +271,7 @@ namespace module::purpose {
 
                 // Only wait if the opponent hasn't kicked off yet
                 bool allowed_to_attack = !kickoff_wait;
-
-                // Only attack if teammate with a higher ID is already attacking. ie higher ID teammates have priority
-                bool higher_id_attacking = false;
-                if (robots) {
-                    for (const auto& robot : robots->robots) {
-                        if (robot.teammate && robot.purpose.purpose == SoccerPosition::ATTACK && robot.purpose.active
-                            && robot.purpose.player_id > global_config.player_id) {
-                            higher_id_attacking = true;
-                            break;
-                        }
-                    }
-                }
+                log<DEBUG>("Allowed to attack:", allowed_to_attack, "is fastest to ball:", is_fastest_to_ball);
 
                 // Furthest back calculation
                 bool furthest_back = robots ? utility::strategy::furthest_back(*robots,
@@ -294,9 +309,9 @@ namespace module::purpose {
                     return;
                 }
 
-                // If it's our set play, the closest robot takes the kick and everyone else supports
+                // If it's our set play, whoever is fastest to the ball takes the kick and everyone else supports
                 if (set_play && game_state.our_kick_off) {
-                    if (is_closest) {
+                    if (is_fastest_to_ball) {
                         log<DEBUG>("Our set play, taking the kick.");
                         supporting = false;
                         emit(std::make_unique<Purpose>(global_config.player_id,
@@ -321,9 +336,9 @@ namespace module::purpose {
                     return;
                 }
 
-                // Attack if we are closest BUT we have to be in a situation where we are allowed to attack, eg not in
-                // penalty set up phase.
-                if (is_closest && allowed_to_attack && !higher_id_attacking) {
+                // Attack if we are fastest to the ball BUT we have to be in a situation where we are allowed
+                // to attack, eg not in penalty set up phase.
+                if (is_fastest_to_ball && allowed_to_attack) {
                     log<DEBUG>("Attack!");
                     supporting = false;
                     emit(std::make_unique<Purpose>(global_config.player_id,
@@ -338,11 +353,11 @@ namespace module::purpose {
 
                 // If we are in the best position to attack, but we can't because of the situation, eg penalty
                 // positioning or opponent kickoff, then we should stick to a good spot and be ready to attack
-                if (is_closest && !allowed_to_attack) {
+                if (is_fastest_to_ball && !allowed_to_attack) {
                     log<DEBUG>("Ready attack!");
                     supporting = false;
                     emit(std::make_unique<Purpose>(global_config.player_id,
-                                                   SoccerPosition::ATTACK,
+                                                   SoccerPosition::READY_ATTACK,
                                                    true,
                                                    true,
                                                    game_state.team.team_colour));
@@ -354,8 +369,8 @@ namespace module::purpose {
                 // If we are closest to our goals (ignoring the attacking player), then stand back to defend.
                 // If there's no robots, assume we are alone and are the furthest back
                 // Shouldn't happen, as that should make us the attacker
-                // Add closest_to_ball to the ignore list so we don't consider the attacker as the furthest back
-                ignore_ids.push_back(closest_to_ball);
+                // Ignore the attacker so it isn't considered for furthest back
+                ignore_ids.push_back(fastest_to_ball);
                 // Add goalies to the ignore list so we don't consider them as the furthest back
                 if (robots) {
                     for (const auto& robot : robots->robots) {
@@ -444,9 +459,10 @@ namespace module::purpose {
                     emit<Task>(std::make_unique<WalkToFieldPosition>(Hfr, true));
                 }
 
-                // Send purpose
+                // Send purpose. Both branches above put us in a supporting role for kickoff (either the formation
+                // slot or the dynamic ready position), so report SUPPORT rather than UNKNOWN.
                 emit(std::make_unique<Purpose>(global_config.player_id,
-                                               SoccerPosition::UNKNOWN,
+                                               SoccerPosition::SUPPORT,
                                                true,
                                                true,
                                                game_state.team.team_colour));

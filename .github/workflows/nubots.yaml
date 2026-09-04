@@ -117,10 +117,6 @@ jobs:
       - name: Enforce file permissions
         run: chmod -Rv g-w,o-w docker/
 
-      - name: Get CPU count
-        id: cpu-count
-        run: echo "count=$(nproc)" >> $GITHUB_OUTPUT
-
       # Build and push the docker image
       - name: 🐳 Build the docker image 🐳
         uses: docker/build-push-action@v4
@@ -135,7 +131,6 @@ jobs:
           cache-to: type=inline
           build-args: |
             platform=generic
-            jobs=${{ steps.cpu-count.outputs.count }}
           push: true
 
       - id: image_output
