@@ -1,6 +1,7 @@
 #ifndef MODULE_NETWORK_MCPSERVER_HPP
 #define MODULE_NETWORK_MCPSERVER_HPP
 
+#include <atomic>
 #include <mcp/http_server_host.hpp>
 #include <memory>
 #include <mutex>
@@ -13,6 +14,13 @@
 #include "message/localisation/Field.hpp"
 
 namespace module::network {
+
+    /// @brief Delayed trigger that stops the "walk" tool's command once its requested duration has elapsed.
+    /// Carries the generation of the walk call it belongs to, so a stale delay from a superseded walk command
+    /// doesn't cut a newer one short.
+    struct StopWalk {
+        uint64_t generation;
+    };
 
     class MCPServer : public NUClear::Reactor {
     private:
@@ -47,6 +55,10 @@ namespace module::network {
         std::mutex field_mutex;
         /// @brief The most recent Field localisation message if one has been seen yet
         std::shared_ptr<const message::localisation::Field> last_field{};
+
+        /// @brief Incremented on every "walk" tool call so a delayed StopWalk can tell whether it still belongs
+        /// to the walk command it was scheduled for, or whether a newer walk call has since superseded it
+        std::atomic<uint64_t> walk_generation{0};
 
         /// @brief Register the tools exposed to each MCP session
         void register_tools(mcp::Server& server);

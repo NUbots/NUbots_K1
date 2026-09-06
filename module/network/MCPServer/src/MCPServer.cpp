@@ -218,6 +218,13 @@ namespace module::network {
             std::lock_guard<std::mutex> lock(field_mutex);
             last_field = field;
         });
+
+        on<Trigger<StopWalk>>().then("Stop Walk After Duration", [this](const StopWalk& stop_walk) {
+            // Only stop if no newer walk call has come in since this one was scheduled
+            if (stop_walk.generation == walk_generation.load()) {
+                emit<Task>(std::make_unique<Walk>(Eigen::Vector3d::Zero()), 3);
+            }
+        });
     }
 
     void MCPServer::register_tools(mcp::Server& server) {
@@ -236,89 +243,97 @@ namespace module::network {
                         };
                     });
 
-        server.tool(
-            "get_localisation",
-            nlohmann::json{
-                {"type", "object"},
-                {"properties", nlohmann::json::object()},
-                {"description",
-                 "Returns the robot's pose in field space (Hft: field {f} to torso {t}), combining the field "
-                 "localisation estimate (Hfw, from FieldLocalisationNLopt) with the torso pose from Sensors. "
-                 "The field frame is centred on the pitch with x toward the opponent's goal, so this is what "
-                 "you want to compare against the pitch markings you see in get_image — unlike a raw odometry "
-                 "frame, it's anchored to the field itself. Also reports cost: the field localisation "
-                 "optimiser's fit cost for the current estimate, low is good, and whether the optimiser has "
-                 "produced an estimate at all yet."}},
-            [this](const nlohmann::json&) -> mcp::CallToolResult {
-                std::shared_ptr<const Sensors> sensors;
-                /* Mutex Scope */ {
-                    std::lock_guard<std::mutex> lock(sensors_mutex);
-                    sensors = last_sensors;
-                }
+        server.tool("get_localisation",
+                    nlohmann::json{
+                        {"type", "object"},
+                        {"properties", nlohmann::json::object()},
+                        {"description",
+                         "Returns the robot's pose in field space (Hft: field {f} to torso {t}), combining the field "
+                         "localisation estimate (Hfw, from FieldLocalisationNLopt) with the torso pose from Sensors. "
+                         "The field frame is centred on the pitch with x toward the opponent's goal, so this is what "
+                         "you want to compare against the pitch markings you see in get_image — unlike a raw odometry "
+                         "frame, it's anchored to the field itself. Also reports cost: the field localisation "
+                         "optimiser's fit cost for the most recent attempt (low is good; below the module's accept "
+                         "threshold means the pose below was just updated, above it means the pose is unchanged from "
+                         "last accepted fit), and localised: whether the optimiser currently trusts its estimate "
+                         "enough to have accepted enough recent measurements (false right after startup or an "
+                         "uncertainty reset)."}},
+                    [this](const nlohmann::json&) -> mcp::CallToolResult {
+                        std::shared_ptr<const Sensors> sensors;
+                        /* Mutex Scope */ {
+                            std::lock_guard<std::mutex> lock(sensors_mutex);
+                            sensors = last_sensors;
+                        }
 
-                if (sensors == nullptr) {
-                    log<DEBUG>("get_localisation called: no message received from Sensors yet");
-                    return {
-                        .content            = {mcp::TextContent{.text        = "No info has been received yet.",
-                                                                .annotations = std::nullopt}},
-                        .structured_content = std::nullopt,
-                        .is_error           = std::nullopt,
-                        .meta               = std::nullopt,
-                    };
-                }
+                        if (sensors == nullptr) {
+                            log<DEBUG>("get_localisation called: no message received from Sensors yet");
+                            return {
+                                .content            = {mcp::TextContent{.text        = "No info has been received yet.",
+                                                                        .annotations = std::nullopt}},
+                                .structured_content = std::nullopt,
+                                .is_error           = std::nullopt,
+                                .meta               = std::nullopt,
+                            };
+                        }
 
-                std::shared_ptr<const Field> field;
-                /* Mutex Scope */ {
-                    std::lock_guard<std::mutex> lock(field_mutex);
-                    field = last_field;
-                }
+                        std::shared_ptr<const Field> field;
+                        /* Mutex Scope */ {
+                            std::lock_guard<std::mutex> lock(field_mutex);
+                            field = last_field;
+                        }
 
-                if (field == nullptr) {
-                    log<DEBUG>("get_localisation called: no message received from FieldLocalisationNLopt yet");
-                    return {
-                        .content =
-                            {mcp::TextContent{.text        = "No field localisation estimate has been received "
-                                                              "yet — is localisation::FieldLocalisationNLopt "
-                                                              "(and its FieldDescription dependency) running?",
-                                              .annotations = std::nullopt}},
-                        .structured_content = std::nullopt,
-                        .is_error           = std::nullopt,
-                        .meta               = std::nullopt,
-                    };
-                }
+                        if (field == nullptr) {
+                            log<DEBUG>("get_localisation called: no message received from FieldLocalisationNLopt yet");
+                            return {
+                                .content = {mcp::TextContent{.text = "No field localisation estimate has been received "
+                                                                     "yet — is localisation::FieldLocalisationNLopt "
+                                                                     "(and its FieldDescription dependency) running?",
+                                                             .annotations = std::nullopt}},
+                                .structured_content = std::nullopt,
+                                .is_error           = std::nullopt,
+                                .meta               = std::nullopt,
+                            };
+                        }
 
-                // Hfw is world {w} to field {f}, Htw is world {w} to torso {t}.
-                // Hft = Hfw * Hwt gives the torso's pose expressed in field space.
-                const Eigen::Isometry3d Hfw = Eigen::Isometry3d(field->Hfw);
-                const Eigen::Isometry3d Hwt = Eigen::Isometry3d(sensors->Htw).inverse();
-                const Eigen::Isometry3d Hft = Hfw * Hwt;
-                const Eigen::Vector3d rTFf  = Hft.translation();
-                const double yaw            = Hft.rotation().eulerAngles(0, 1, 2).z();
+                        // Hfw is world {w} to field {f}, Htw is world {w} to torso {t}.
+                        // Hft = Hfw * Hwt gives the torso's pose expressed in field space.
+                        const Eigen::Isometry3d Hfw = Eigen::Isometry3d(field->Hfw);
+                        const Eigen::Isometry3d Hwt = Eigen::Isometry3d(sensors->Htw).inverse();
+                        const Eigen::Isometry3d Hft = Hfw * Hwt;
+                        const Eigen::Vector3d rTFf  = Hft.translation();
+                        // atan2 on the rotation matrix's x-column, not eulerAngles(), to match the convention used
+                        // elsewhere (e.g. WalkToFieldPosition, FieldLocalisationNLopt) and avoid eulerAngles'
+                        // branch-cut discontinuities near small roll/pitch noise.
+                        const Eigen::Vector3d Hft_x = Hft.rotation().col(0);
+                        const double yaw            = std::atan2(Hft_x.y(), Hft_x.x());
 
-                log<DEBUG>("get_localisation called: returning position",
-                           rTFf.x(),
-                           rTFf.y(),
-                           rTFf.z(),
-                           "yaw",
-                           yaw,
-                           "cost",
-                           field->cost);
+                        log<DEBUG>("get_localisation called: returning position",
+                                   rTFf.x(),
+                                   rTFf.y(),
+                                   rTFf.z(),
+                                   "yaw",
+                                   yaw,
+                                   "cost",
+                                   field->cost,
+                                   "localised",
+                                   field->localised);
 
-                const nlohmann::json result{
-                    {"x", rTFf.x()},
-                    {"y", rTFf.y()},
-                    {"z", rTFf.z()},
-                    {"yaw", yaw},
-                    {"cost", field->cost},
-                };
+                        const nlohmann::json result{
+                            {"x", rTFf.x()},
+                            {"y", rTFf.y()},
+                            {"z", rTFf.z()},
+                            {"yaw", yaw},
+                            {"cost", field->cost},
+                            {"localised", field->localised},
+                        };
 
-                return {
-                    .content            = {mcp::TextContent{.text = result.dump(), .annotations = std::nullopt}},
-                    .structured_content = std::nullopt,
-                    .is_error           = std::nullopt,
-                    .meta               = std::nullopt,
-                };
-            });
+                        return {
+                            .content = {mcp::TextContent{.text = result.dump(), .annotations = std::nullopt}},
+                            .structured_content = std::nullopt,
+                            .is_error           = std::nullopt,
+                            .meta               = std::nullopt,
+                        };
+                    });
 
         server.tool(
             "walk",  // god is dead and i killed him
@@ -326,11 +341,7 @@ namespace module::network {
                 {"type", "object"},
                 {"properties",
                  nlohmann::json{
-                     {"speed",
-                      nlohmann::json{
-                          {"type", "number"},
-                          {"description",
-                           "Walk speed, m/s. Cap at 0.3m/s. Remember to return this to 0 when you're done!"}}},
+                     {"speed", nlohmann::json{{"type", "number"}, {"description", "Walk speed, m/s. Cap at 0.5m/s."}}},
                      {"angle",
                       nlohmann::json{{"type", "number"}, {"description", "Walk strafe angle in rad. +clockwise"}}},
                      {"rotation",
@@ -338,14 +349,20 @@ namespace module::network {
                           {"type", "number"},
                           {"description",
                            "Rotation (yaw) rate in rad/s while walking. +clockwise. Cap at 1.0rad/s. Defaults to 0 "
-                           "(no turning) if omitted."}}}}},
-                {"required", nlohmann::json::array({"speed", "angle"})},
+                           "(no turning) if omitted."}}},
+                     {"duration",
+                      nlohmann::json{{"type", "number"},
+                                     {"description",
+                                      "how long this speed is valid for in seconds. after that it will stop out of "
+                                      "your control."}}}}},
+                {"required", nlohmann::json::array({"speed", "angle", "duration"})},
             },
             [this](const nlohmann::json& input) -> mcp::CallToolResult {
                 float speed    = input.at("speed").get<float>();     // get the speed
                 float angle    = input.at("angle").get<float>();     // and the angle
                 float rotation = input.value("rotation", 0.0f);      // and the rotation, if given
-                speed          = std::clamp(speed, 0.0f, 0.3f);      // enforce stated safety cap
+                float duration = input.value("duration", 0.0f);      // and the duration
+                speed          = std::clamp(speed, 0.0f, 0.5f);      // enforce stated safety cap
                 rotation       = std::clamp(rotation, -1.0f, 1.0f);  // enforce stated safety cap
                 log<DEBUG>("Starting to walk at ", speed, "with angle ", angle, "and rotation", rotation);
 
@@ -353,6 +370,15 @@ namespace module::network {
                 float vy = speed * sin(angle);
 
                 emit<Task>(std::make_unique<Walk>(Eigen::Vector3d(vx, vy, rotation)), 3);
+
+                // Bump the generation on every call (not just timed ones) so a stale StopWalk from an earlier
+                // call can never match and cut short a walk call that came after it
+                const uint64_t generation = ++walk_generation;
+                if (duration > 0.0f) {
+                    emit<Scope::DELAY>(std::make_unique<StopWalk>(StopWalk{generation}),
+                                        std::chrono::milliseconds(int64_t(duration * 1000)));
+                }
+
                 return {
                     .content            = {mcp::TextContent{.text = "Started walking.", .annotations = std::nullopt}},
                     .structured_content = std::nullopt,
@@ -547,11 +573,9 @@ namespace module::network {
                 {"properties",
                  nlohmann::json{
                      {"x",
-                      nlohmann::json{{"type", "number"},
-                                     {"description", "Target X position in field space (meters)"}}},
+                      nlohmann::json{{"type", "number"}, {"description", "Target X position in field space (meters)"}}},
                      {"y",
-                      nlohmann::json{{"type", "number"},
-                                     {"description", "Target Y position in field space (meters)"}}},
+                      nlohmann::json{{"type", "number"}, {"description", "Target Y position in field space (meters)"}}},
                      {"theta",
                       nlohmann::json{{"type", "number"},
                                      {"description", "Target heading/angle in field space (radians)"}}},
@@ -563,10 +587,10 @@ namespace module::network {
                 {"required", nlohmann::json::array({"x", "y", "theta"})},
             },
             [this](const nlohmann::json& input) -> mcp::CallToolResult {
-                double x             = input.at("x").get<double>();
-                double y             = input.at("y").get<double>();
-                double theta         = input.at("theta").get<double>();
-                bool stop_at_target  = input.value("stop_at_target", true);
+                double x            = input.at("x").get<double>();
+                double y            = input.at("y").get<double>();
+                double theta        = input.at("theta").get<double>();
+                bool stop_at_target = input.value("stop_at_target", true);
 
                 // Create iso3 transform (6D pose in field space)
                 Eigen::Isometry3d Hfd = Eigen::Isometry3d::Identity();
@@ -578,10 +602,10 @@ namespace module::network {
                 emit<Task>(std::make_unique<WalkToFieldPosition>(Hfd, stop_at_target), 3);
 
                 return {
-                    .content = {mcp::TextContent{
-                        .text = "Walking to field position (" + std::to_string(x) + ", " + std::to_string(y)
-                                + ") with heading " + std::to_string(theta),
-                        .annotations = std::nullopt}},
+                    .content = {mcp::TextContent{.text        = "Walking to field position (" + std::to_string(x) + ", "
+                                                                + std::to_string(y) + ") with heading "
+                                                                + std::to_string(theta),
+                                                 .annotations = std::nullopt}},
                     .structured_content = std::nullopt,
                     .is_error           = std::nullopt,
                     .meta               = std::nullopt,
