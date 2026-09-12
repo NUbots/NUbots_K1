@@ -30,6 +30,11 @@ messages:
   message.input.Sensors: true
   message.support.FieldDescription: true
   message.booster.BoosterOdometry: true
+  message.booster.BoosterOdometryTwist: true
+  message.booster.BoosterModeState: true # mode changes reset the controller's odometry
+  # Motion capture ground truth (roles with input::NatNet and localisation::Mocap)
+  message.input.MotionCapture: true
+  message.localisation.RobotPoseGroundTruth: true
   # Behaviour state
   message.behaviour.state.WalkState: true
   message.purpose.Purpose: true

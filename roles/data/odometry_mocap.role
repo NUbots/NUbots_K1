@@ -1,0 +1,45 @@
+# Records the K1 controller's odometry against motion capture ground truth, to fit NUSim's odometry
+# error model (NUSim mujoco/config/odometry.yaml) with `./b nbs odometry_fit`. Walk the robot with the
+# keyboard under the OptiTrack rig: it walks with the controller's own gait (skill::K1Walk), which is
+# what rt/odometer_state and rt/odom describe. See tools/nbs/odometry_fit.py for the workflow.
+nuclear_role(
+  # FileWatcher, ConsoleLogHandler and Signal Catcher Must Go First and without it many roles do not run
+  extension::FileWatcher # Watches configuration files for changes
+  support::SignalCatcher # Allows for graceful shutdown
+  support::logging::ConsoleLogHandler # `log()` calls show in the console filtered for log level
+  # Configuration
+  actuation::KinematicsConfiguration # Must go early in the role as other modules depend on it
+  support::configuration::GlobalConfig
+  # Network
+  network::NUClearNet
+  network::NetworkForwarder
+  # Output
+  output::Overview
+  # Ground truth: OptiTrack rigid bodies (NatNet), and the robot's pose from them (Mocap.yaml)
+  input::NatNet
+  localisation::Mocap
+  # Odometry: HardwareIO below receives rt/odometer_state and rt/odom, K1Sensors builds Sensors from them
+  input::K1Sensors
+  # Director
+  extension::Director
+  # Servos
+  actuation::Kinematics
+  actuation::Servos
+  actuation::FootController
+  # Skills
+  skill::K1Walk
+  skill::KickWalk
+  skill::K1GetUp
+  skill::K1Look
+  # Planners
+  planning::GetUpPlanner
+  planning::FallingRelaxPlanner
+  # Strategies
+  strategy::FallRecovery
+  strategy::StandStill
+  # Purpose
+  purpose::KeyboardWalk
+  # Platform
+  platform::${SUBCONTROLLER}::HardwareIO
+  support::logging::DataLogging
+)
