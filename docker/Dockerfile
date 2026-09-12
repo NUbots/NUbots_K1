@@ -446,7 +446,7 @@ RUN install-package -p ${platform} libusb-1.0-0-dev libcurl4-openssl-dev zlib1g-
 # libtinyxml2.so.9, but the earlier tinyxml2 layer only produces the static archive.
 # Kept down here so the expensive source-build layers above stay cached.
 RUN install-from-source https://github.com/leethomason/tinyxml2/archive/refs/tags/9.0.0.tar.gz \
-    --jobs ${jobs} \
+    --jobs $(nproc) \
     -DBUILD_SHARED_LIBS=ON
 
 # Install tools needed for building individual modules as well as development tools
