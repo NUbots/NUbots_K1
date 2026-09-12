@@ -41,7 +41,7 @@ namespace module::localisation::measurement {
     using srif::SystemLocalisation;
     using srif::VisionSample;
     using utility::gaussian_filtering::Pose;
-    using utility::gaussian_filtering::tangentBasis;
+    using utility::gaussian_filtering::tangent_basis;
     using utility::gaussian_filtering::gaussian::GaussianInfo;
     using utility::gaussian_filtering::measurement::Measurement;
     using utility::gaussian_filtering::system::SystemBase;
@@ -53,19 +53,19 @@ namespace module::localisation::measurement {
          * @brief Association and noise options.
          */
         struct Options {
-            double sigmaAngular =
+            double sigma_angular =
                 0.25;  ///< Inlier ray angular noise std dev [rad] (total per-frame error incl. systematic)
-            double gateAngle = 0.35;  ///< Max association residual angle [rad] (~20 deg)
+            double gate_angle = 0.35;  ///< Max association residual angle [rad] (~20 deg)
 
             /// Yaw std devs the pre-gate widens by, so an uncertain belief can re-associate
-            double gateYawScale = 2.0;
-            double gateAngleMax = 1.0;  ///< Ceiling on the widened pre-gate [rad] (~57 deg)
+            double gate_yaw_scale = 2.0;
+            double gate_angle_max = 1.0;  ///< Ceiling on the widened pre-gate [rad] (~57 deg)
 
-            double minConfidence     = 0.5;  ///< Reject detections below this confidence outright
-            double inlierProbability = 0.7;  ///< Inlier mixture weight at confidenceReference
+            double min_confidence     = 0.5;  ///< Reject detections below this confidence outright
+            double inlier_probability = 0.7;  ///< Inlier mixture weight at confidence_reference
 
-            double confidenceReference  = 0.7;   ///< Confidence that maps to inlierProbability
-            double maxInlierProbability = 0.95;  ///< Cap: no detection is ever treated as certain
+            double confidence_reference   = 0.7;   ///< Confidence that maps to inlier_probability
+            double max_inlier_probability = 0.95;  ///< Cap: no detection is ever treated as certain
         };
 
         /**
@@ -94,32 +94,32 @@ namespace module::localisation::measurement {
                                   const SystemLocalisation& system);
 
         virtual Eigen::VectorXd simulate(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g,
-                                     Eigen::MatrixXd& H) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g,
+                                      Eigen::MatrixXd& H) const override;
 
         /**
          * @brief Templated log-likelihood for autodiff.
          */
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const;
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const;
 
         /**
          * @brief Predicted unit rays in {c} for the associated landmarks.
          */
         template <typename Scalar>
-        Eigen::Matrix<Scalar, 3, Eigen::Dynamic> predictRays(const Eigen::VectorX<Scalar>& x) const;
+        Eigen::Matrix<Scalar, 3, Eigen::Dynamic> predict_rays(const Eigen::VectorX<Scalar>& x) const;
 
-        std::size_t numAssociated() const {
-            return static_cast<std::size_t>(uMeas_.cols());
+        std::size_t num_associated() const {
+            return static_cast<std::size_t>(u_meas_.cols());
         }
-        const Eigen::Matrix<double, 3, Eigen::Dynamic>& measuredRays() const {
-            return uMeas_;
+        const Eigen::Matrix<double, 3, Eigen::Dynamic>& measured_rays() const {
+            return u_meas_;
         }
 
         /**
@@ -129,7 +129,7 @@ namespace module::localisation::measurement {
          * landmark assignment implied by its own pose rather than a shared one.
          */
         void reassociate(const SystemEstimator& system) override {
-            assocKeys_ = associate(system.density.mean(), system.density.cov());
+            assoc_keys_ = associate(system.density.mean(), system.density.cov());
         }
 
     protected:
@@ -143,7 +143,7 @@ namespace module::localisation::measurement {
          * @brief Extract the measurement ray and landmark class for a detection.
          * @return true if the detection is a usable landmark class
          */
-        static bool detectionRay(const Detection& det, Eigen::Vector3d& ray, LandmarkType& type);
+        static bool detection_ray(const Detection& det, Eigen::Vector3d& ray, LandmarkType& type);
 
         /**
          * @brief A usable detection before association.
@@ -152,7 +152,7 @@ namespace module::localisation::measurement {
             Eigen::Vector3d ray;
             LandmarkType type;
             std::size_t detection;  ///< Index into the vision sample's detection list (for display)
-            double inlierWeight;    ///< Mixture inlier weight implied by this detection's confidence
+            double inlier_weight;   ///< Mixture inlier weight implied by this detection's confidence
         };
 
         /**
@@ -168,71 +168,71 @@ namespace module::localisation::measurement {
          */
         std::vector<std::pair<std::size_t, std::size_t>> associate(const Eigen::VectorXd& x, const Eigen::MatrixXd& P);
 
-        const FieldMap& map_;                             ///< Field landmark map
-        std::vector<CandidateDetection> candidates_;      ///< Usable detections (rays in {c})
-        Pose<double> Tbc_;                                ///< Camera pose w.r.t. torso at capture time
-        Eigen::Matrix<double, 3, Eigen::Dynamic> uMeas_;  ///< Measured unit rays in {c} (associated only)
-        Eigen::Matrix<double, 3, Eigen::Dynamic> rLFf_;   ///< Associated landmark positions in {f}
-        std::vector<double> inlierWeight_;                ///< Per-column mixture inlier weight (from confidence)
-        std::vector<std::pair<std::size_t, std::size_t>> assocKeys_;  ///< Last association (candidate, landmark)
-        Options options_;                                             ///< Association and noise options
-        int maxAssociationIterations_ = 1;                            ///< Maximum association/optimisation passes
+        const FieldMap& map_;                              ///< Field landmark map
+        std::vector<CandidateDetection> candidates_;       ///< Usable detections (rays in {c})
+        Pose<double> Tbc_;                                 ///< Camera pose w.r.t. torso at capture time
+        Eigen::Matrix<double, 3, Eigen::Dynamic> u_meas_;  ///< Measured unit rays in {c} (associated only)
+        Eigen::Matrix<double, 3, Eigen::Dynamic> rLFf_;    ///< Associated landmark positions in {f}
+        std::vector<double> inlier_weight_;                ///< Per-column mixture inlier weight (from confidence)
+        std::vector<std::pair<std::size_t, std::size_t>> assoc_keys_;  ///< Last association (candidate, landmark)
+        Options options_;                                              ///< Association and noise options
+        int max_association_iterations_ = 1;                           ///< Maximum association/optimisation passes
     };
 
     template <typename Scalar>
-    Eigen::Matrix<Scalar, 3, Eigen::Dynamic> MeasurementFieldLandmarks::predictRays(
+    Eigen::Matrix<Scalar, 3, Eigen::Dynamic> MeasurementFieldLandmarks::predict_rays(
         const Eigen::VectorX<Scalar>& x) const {
         // Camera pose in field frame with mount-bias correction:
         // Tfc = Tfb(x) * Tbc * R(deltaC)
-        Pose<Scalar> Tfb = SystemLocalisation::fieldPose(x);
-        Pose<Scalar> Tbias(SystemLocalisation::cameraBiasRotation(x), Eigen::Vector3<Scalar>::Zero());
+        Pose<Scalar> Tfb = SystemLocalisation::field_pose(x);
+        Pose<Scalar> Tbias(SystemLocalisation::camera_bias_rotation(x), Eigen::Vector3<Scalar>::Zero());
         Pose<Scalar> Tfc = Tfb * Pose<Scalar>(Tbc_) * Tbias;
 
-        const Eigen::Matrix3<Scalar> Rcf  = Tfc.rotationMatrix.transpose();
-        const Eigen::Vector3<Scalar> rCFf = Tfc.translationVector;
+        const Eigen::Matrix3<Scalar> Rcf  = Tfc.rotation_matrix.transpose();
+        const Eigen::Vector3<Scalar> rCFf = Tfc.translation_vector;
 
-        Eigen::Matrix<Scalar, 3, Eigen::Dynamic> uPred(3, rLFf_.cols());
+        Eigen::Matrix<Scalar, 3, Eigen::Dynamic> u_pred(3, rLFf_.cols());
         for (Eigen::Index j = 0; j < rLFf_.cols(); ++j) {
             Eigen::Vector3<Scalar> rLCc = Rcf * (rLFf_.col(j).cast<Scalar>() - rCFf);
-            uPred.col(j)                = rLCc / rLCc.norm();
+            u_pred.col(j)               = rLCc / rLCc.norm();
         }
-        return uPred;
+        return u_pred;
     }
 
     template <typename Scalar>
-    Scalar MeasurementFieldLandmarks::logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
-        const Eigen::Index n = uMeas_.cols();
+    Scalar MeasurementFieldLandmarks::log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
+        const Eigen::Index n = u_meas_.cols();
         if (n == 0) {
             return Scalar(0);
         }
 
-        Eigen::Matrix<Scalar, 3, Eigen::Dynamic> uPred = predictRays<Scalar>(x);
+        Eigen::Matrix<Scalar, 3, Eigen::Dynamic> u_pred = predict_rays<Scalar>(x);
 
-        const double sigma2       = options_.sigmaAngular * options_.sigmaAngular;
-        const double logNormConst = -std::log(2.0 * M_PI * sigma2);  // 2 effective DOF per ray
+        const double sigma2         = options_.sigma_angular * options_.sigma_angular;
+        const double log_norm_const = -std::log(2.0 * M_PI * sigma2);  // 2 effective DOF per ray
 
         using std::exp, std::log;
 
-        Scalar logLik = Scalar(0);
+        Scalar log_lik = Scalar(0);
         for (Eigen::Index j = 0; j < n; ++j) {
             // Inlier Gaussian on the chordal residual, mixed with uniform clutter
             // over the unit sphere at density 1/(4 pi) per steradian
-            const double w               = inlierWeight_[static_cast<std::size_t>(j)];
-            const double logInlierWeight = std::log(w);
-            const double logClutter      = std::log(1.0 - w) - std::log(4.0 * M_PI);
+            const double w                 = inlier_weight_[static_cast<std::size_t>(j)];
+            const double log_inlier_weight = std::log(w);
+            const double log_clutter       = std::log(1.0 - w) - std::log(4.0 * M_PI);
 
-            Eigen::Vector3<Scalar> e = uMeas_.col(j).cast<Scalar>() - uPred.col(j);
-            Scalar a = Scalar(logInlierWeight + logNormConst) - Scalar(0.5) * e.squaredNorm() / Scalar(sigma2);
-            Scalar b = Scalar(logClutter);
+            Eigen::Vector3<Scalar> e = u_meas_.col(j).cast<Scalar>() - u_pred.col(j);
+            Scalar a = Scalar(log_inlier_weight + log_norm_const) - Scalar(0.5) * e.squaredNorm() / Scalar(sigma2);
+            Scalar b = Scalar(log_clutter);
             // Stable log-sum-exp of the two mixture components
             if (a > b) {
-                logLik += a + log(Scalar(1) + exp(b - a));
+                log_lik += a + log(Scalar(1) + exp(b - a));
             }
             else {
-                logLik += b + log(Scalar(1) + exp(a - b));
+                log_lik += b + log(Scalar(1) + exp(a - b));
             }
         }
-        return logLik;
+        return log_lik;
     }
 }  // namespace module::localisation::measurement
 

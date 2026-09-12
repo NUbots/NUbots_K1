@@ -43,7 +43,7 @@ namespace module::localisation::srif {
      */
     struct VisionSample {
         double t;          ///< image capture time [s since epoch]
-        int videoFrame;    ///< index into frameTimes / Left.mp4, or -1 if no matching frame
+        int video_frame;   ///< index into frameTimes / Left.mp4, or -1 if no matching frame
         Pose<double> Hcw;  ///< world -> camera
         std::vector<Detection> detections;
     };
@@ -53,7 +53,7 @@ namespace module::localisation::srif {
      */
     struct LinePointsSample {
         double t;          ///< image capture time [s since epoch]
-        int videoFrame;    ///< index into frameTimes / Left.mp4, or -1
+        int video_frame;   ///< index into frameTimes / Left.mp4, or -1
         Pose<double> Hcw;  ///< world -> camera
         Eigen::Matrix<double, 3, Eigen::Dynamic>
             rays;  ///< unit rays in camera frame {c}, one column per field-line point

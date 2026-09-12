@@ -30,7 +30,7 @@
 
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
-#include <Eigen/LU>  // TODO: Remove this header after fixing GaussianInfo::affineTransform to pass all unit tests
+#include <Eigen/LU>  // TODO: Remove this header after fixing GaussianInfo::affine_transform to pass all unit tests
 #include <Eigen/QR>
 #include <Eigen/SVD>
 #include <cmath>
@@ -125,7 +125,7 @@ namespace utility::gaussian_filtering::gaussian {
          * @param S The square root of the covariance matrix (upper triangular).
          * @return The resulting GaussianInfo object.
          */
-        static GaussianInfo fromSqrtMoment(const Eigen::VectorX<Scalar>& mu, const Eigen::MatrixX<Scalar>& S) {
+        static GaussianInfo from_sqrt_moment(const Eigen::VectorX<Scalar>& mu, const Eigen::MatrixX<Scalar>& S) {
             assert(mu.size() == S.cols());
             assert(S.isUpperTriangular());
 
@@ -150,7 +150,7 @@ namespace utility::gaussian_filtering::gaussian {
          * @param P The covariance matrix.
          * @return The resulting GaussianInfo object.
          */
-        static GaussianInfo fromMoment(const Eigen::VectorX<Scalar>& mu, const Eigen::MatrixX<Scalar>& P) {
+        static GaussianInfo from_moment(const Eigen::VectorX<Scalar>& mu, const Eigen::MatrixX<Scalar>& P) {
             assert(mu.size() == P.cols());
             assert(P.rows() == P.cols());
 
@@ -158,7 +158,7 @@ namespace utility::gaussian_filtering::gaussian {
             Eigen::LLT<Eigen::MatrixX<Scalar>, Eigen::Upper> llt(P);
             Eigen::MatrixX<Scalar> S = llt.matrixU();
 
-            return fromSqrtMoment(mu, S);
+            return from_sqrt_moment(mu, S);
         }
 
         /**
@@ -168,7 +168,7 @@ namespace utility::gaussian_filtering::gaussian {
          * @param Xi The square root information matrix (upper triangular).
          * @return The resulting GaussianInfo object.
          */
-        static GaussianInfo fromSqrtInfo(const Eigen::VectorX<Scalar>& nu, const Eigen::MatrixX<Scalar>& Xi) {
+        static GaussianInfo from_sqrt_info(const Eigen::VectorX<Scalar>& nu, const Eigen::MatrixX<Scalar>& Xi) {
             assert(nu.size() == Xi.cols());
             assert(Xi.isUpperTriangular());
 
@@ -191,8 +191,8 @@ namespace utility::gaussian_filtering::gaussian {
          * @param Xi The square root information matrix (upper triangular).
          * @return The resulting GaussianInfo object.
          */
-        static GaussianInfo fromSqrtInfo(const Eigen::MatrixX<Scalar>& Xi) {
-            return fromSqrtInfo(Eigen::VectorX<Scalar>::Zero(Xi.cols()), Xi);
+        static GaussianInfo from_sqrt_info(const Eigen::MatrixX<Scalar>& Xi) {
+            return from_sqrt_info(Eigen::VectorX<Scalar>::Zero(Xi.cols()), Xi);
         }
 
         /**
@@ -222,7 +222,7 @@ namespace utility::gaussian_filtering::gaussian {
          *
          * @return The upper triangular square root of the covariance matrix.
          */
-        virtual Eigen::MatrixX<Scalar> sqrtCov() const override {
+        virtual Eigen::MatrixX<Scalar> sqrt_cov() const override {
             // S = qr(Xi^{-T})
             Eigen::MatrixX<Scalar> S = Xi_.template triangularView<Eigen::Upper>().transpose().solve(
                 Eigen::MatrixX<Scalar>::Identity(Xi_.cols(), Xi_.cols()));
@@ -240,7 +240,7 @@ namespace utility::gaussian_filtering::gaussian {
          * @return The covariance matrix of the distribution.
          */
         virtual Eigen::MatrixX<Scalar> cov() const override {
-            const Eigen::MatrixX<Scalar>& S = sqrtCov();
+            const Eigen::MatrixX<Scalar>& S = sqrt_cov();
             return S.transpose() * S;
         }
 
@@ -252,7 +252,7 @@ namespace utility::gaussian_filtering::gaussian {
          *
          * @return The square root of the information matrix.
          */
-        virtual Eigen::MatrixX<Scalar> sqrtInfoMat() const override {
+        virtual Eigen::MatrixX<Scalar> sqrt_info_mat() const override {
             return Xi_;
         }
 
@@ -264,19 +264,19 @@ namespace utility::gaussian_filtering::gaussian {
          * @tparam IndexType The type of the index container
          * @tparam NotIndexType The type of the complementary index container
          * @param idx The indices of the variables to keep in the marginal
-         * @param idxNot The indices of the variables to marginalize out
+         * @param idx_not The indices of the variables to marginalize out
          * @return The marginal Gaussian distribution
          */
         template <typename IndexType, typename NotIndexType>
-        GaussianInfo marginal(const IndexType& idx, const NotIndexType& idxNot) const {
-            const std::size_t& nI    = idx.size();
-            const std::size_t& nNotI = idxNot.size();
-            const std::size_t n      = nI + nNotI;
+        GaussianInfo marginal(const IndexType& idx, const NotIndexType& idx_not) const {
+            const std::size_t& n_i     = idx.size();
+            const std::size_t& n_not_i = idx_not.size();
+            const std::size_t n        = n_i + n_not_i;
             assert(n == static_cast<std::size_t>(dim()));
 
-            // Form [Xi(:, idxNot), Xi(:, idx), nu]
+            // Form [Xi(:, idx_not), Xi(:, idx), nu]
             Eigen::MatrixX<Scalar> RR(n, n + 1);
-            RR << Xi_(Eigen::all, idxNot), Xi_(Eigen::all, idx), nu_;
+            RR << Xi_(Eigen::all, idx_not), Xi_(Eigen::all, idx), nu_;
 
             // Q-less QR yields
             // [R1, R2, nu1;
@@ -284,9 +284,9 @@ namespace utility::gaussian_filtering::gaussian {
             Eigen::HouseholderQR<Eigen::Ref<Eigen::MatrixX<Scalar>>> qr(RR);  // In-place QR decomposition
 
             // p(x(idx)) = N^-0.5(x(idx); nu2, R3)
-            GaussianInfo out(nI);
-            out.nu_ = RR.block(nNotI, n, nI, 1);
-            out.Xi_ = RR.block(nNotI, nNotI, nI, nI).template triangularView<Eigen::Upper>();
+            GaussianInfo out(n_i);
+            out.nu_ = RR.block(n_not_i, n, n_i, 1);
+            out.Xi_ = RR.block(n_not_i, n_not_i, n_i, n_i).template triangularView<Eigen::Upper>();
             return out;
         }
 
@@ -303,22 +303,22 @@ namespace utility::gaussian_filtering::gaussian {
         template <typename IndexType>
         GaussianInfo marginal(const IndexType& idx) const {
             const std::size_t& n = dim();
-            std::vector<bool> isNotInIdx(n, true);
+            std::vector<bool> is_not_in_idx(n, true);
             for (Eigen::Index ii = 0; ii < idx.size(); ++ii) {
-                std::size_t i = idx[ii];
-                isNotInIdx[i] = false;
+                std::size_t i    = idx[ii];
+                is_not_in_idx[i] = false;
             }
 
             // Complementary indices
-            std::vector<int> idxNot;
-            idxNot.reserve(n);  // Reserve maximum possible size to avoid reallocation
+            std::vector<int> idx_not;
+            idx_not.reserve(n);  // Reserve maximum possible size to avoid reallocation
             for (std::size_t i = 0; i < n; ++i) {
-                if (isNotInIdx[i]) {
-                    idxNot.push_back(i);
+                if (is_not_in_idx[i]) {
+                    idx_not.push_back(i);
                 }
             }
 
-            return marginal(idx, idxNot);
+            return marginal(idx, idx_not);
         }
 
         /**
@@ -335,7 +335,7 @@ namespace utility::gaussian_filtering::gaussian {
          * @return A new Gaussian distribution representing p(y).
          */
         template <typename Func>
-        GaussianInfo affineTransform(Func h) const {
+        GaussianInfo affine_transform(Func h) const {
             Eigen::MatrixX<Scalar> J;
             Eigen::VectorX<Scalar> mux = mean();
             Eigen::VectorX<Scalar> muy = h(mux, J);  // Evaluate function at mean value

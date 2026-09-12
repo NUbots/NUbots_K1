@@ -30,29 +30,29 @@ namespace module::localisation::srif {
         , lens_(lens)
         , dimensions_(dimensions)
         , detector_(lens, dimensions, dims)
-        , halfCarpetLength_(dims.fieldLength / 2 + dims.borderStripMinWidth + opts.fieldMargin)
-        , halfCarpetWidth_(dims.fieldWidth / 2 + dims.borderStripMinWidth + opts.fieldMargin) {}
+        , half_carpet_length_(dims.field_length / 2 + dims.border_strip_min_width + opts.field_margin)
+        , half_carpet_width_(dims.field_width / 2 + dims.border_strip_min_width + opts.field_margin) {}
 
     SideDisambiguator::SideDisambiguator(const message::input::Image::Lens& lens,
                                          const Eigen::Vector2d& dimensions,
                                          const FieldDimensions& dims)
         : SideDisambiguator(lens, dimensions, dims, Options{}) {}
 
-    bool SideDisambiguator::isBackgroundPoint(const Eigen::Vector3d& rPFf) const {
+    bool SideDisambiguator::is_background_point(const Eigen::Vector3d& rPFf) const {
         // Plausible static background: beyond the carpet in plan view, or overhead
         // structure (ceiling lights/trusses above the field are static and useful).
         // Reject underground or absurdly high solutions outright.
         if (rPFf.z() < -1.0 || rPFf.z() > 15.0) {
             return false;
         }
-        const bool offCarpet = std::abs(rPFf.x()) > halfCarpetLength_ || std::abs(rPFf.y()) > halfCarpetWidth_;
-        return offCarpet || rPFf.z() > options.minHeightOnCarpet;
+        const bool off_carpet = std::abs(rPFf.x()) > half_carpet_length_ || std::abs(rPFf.y()) > half_carpet_width_;
+        return off_carpet || rPFf.z() > options.min_height_on_carpet;
     }
 
     SideDisambiguator::TriResult SideDisambiguator::triangulate(const std::vector<Landmark::Obs>& obs,
                                                                 Eigen::Vector3d& rPFf,
                                                                 Eigen::Matrix3d& P,
-                                                                double& meanChi2) const {
+                                                                double& mean_chi2) const {
         if (obs.size() < 2) {
             return TriResult::GEOMETRY;
         }
@@ -78,79 +78,79 @@ namespace module::localisation::srif {
         // Static-consistency test: every observation must point at the solved point
         // to within the angular residual scale. Dynamic objects (crowd, robots)
         // cannot satisfy this once there is parallax in the window.
-        const double sigma2  = options.sigmaStatic * options.sigmaStatic;
+        const double sigma2  = options.sigma_static * options.sigma_static;
         double chi2          = 0.0;
-        Eigen::Matrix3d info = Eigen::Matrix3d::Identity() * (1.0 / (options.maxRange * options.maxRange));
+        Eigen::Matrix3d info = Eigen::Matrix3d::Identity() * (1.0 / (options.max_range * options.max_range));
         for (const Landmark::Obs& o : obs) {
             const Eigen::Vector3d rel = rPFf - o.rCFf;
             const double range        = rel.norm();
             const double depth        = rel.dot(o.uFf);
-            if (depth < options.minRange || range > options.maxRange) {
+            if (depth < options.min_range || range > options.max_range) {
                 return TriResult::RANGE;  // Behind or implausibly close/far for a background point
             }
             const Eigen::Matrix3d M = Eigen::Matrix3d::Identity() - o.uFf * o.uFf.transpose();
             chi2 += (M * rel).squaredNorm() / (sigma2 * range * range);
             info += M / (sigma2 * range * range);
         }
-        meanChi2 = chi2 / obs.size();
-        if (meanChi2 > options.staticChi2Mean) {
+        mean_chi2 = chi2 / obs.size();
+        if (mean_chi2 > options.static_chi2_mean) {
             return TriResult::CHI2;
         }
         P = info.inverse();
         return TriResult::OK;
     }
 
-    bool SideDisambiguator::fitFar(const std::vector<Landmark::Obs>& obs,
-                                   Eigen::Vector3d& rPFf,
-                                   Eigen::Matrix3d& P) const {
-        Eigen::Vector3d uSum  = Eigen::Vector3d::Zero();
-        Eigen::Vector3d cMean = Eigen::Vector3d::Zero();
+    bool SideDisambiguator::fit_far(const std::vector<Landmark::Obs>& obs,
+                                    Eigen::Vector3d& rPFf,
+                                    Eigen::Matrix3d& P) const {
+        Eigen::Vector3d u_sum  = Eigen::Vector3d::Zero();
+        Eigen::Vector3d c_mean = Eigen::Vector3d::Zero();
         for (const Landmark::Obs& o : obs) {
-            uSum += o.uFf;
-            cMean += o.rCFf;
+            u_sum += o.uFf;
+            c_mean += o.rCFf;
         }
-        if (uSum.norm() < 1e-9) {
+        if (u_sum.norm() < 1e-9) {
             return false;
         }
-        const Eigen::Vector3d uMean = uSum.normalized();
-        cMean /= obs.size();
+        const Eigen::Vector3d u_mean = u_sum.normalized();
+        c_mean /= obs.size();
 
         double spread2 = 0.0;
         for (const Landmark::Obs& o : obs) {
-            const double a = std::acos(std::clamp(o.uFf.dot(uMean), -1.0, 1.0));
+            const double a = std::acos(std::clamp(o.uFf.dot(u_mean), -1.0, 1.0));
             spread2 += a * a;
         }
-        const double spreadRms = std::sqrt(spread2 / obs.size());
-        if (spreadRms > options.farMaxSpread) {
+        const double spread_rms = std::sqrt(spread2 / obs.size());
+        if (spread_rms > options.far_max_spread) {
             return false;  // Jittery bearings: dynamic object or track hopping
         }
 
-        rPFf                   = cMean + options.assumedRange * uMean;
-        const double sigmaR    = 0.5 * options.assumedRange;  // Depth stand-in
-        const double sigmaPerp = std::max(spreadRms, options.sigmaStatic) * options.assumedRange;
-        P                      = sigmaR * sigmaR * uMean * uMean.transpose()
-            + sigmaPerp * sigmaPerp * (Eigen::Matrix3d::Identity() - uMean * uMean.transpose());
+        rPFf                    = c_mean + options.assumed_range * u_mean;
+        const double sigma_r    = 0.5 * options.assumed_range;  // Depth stand-in
+        const double sigma_perp = std::max(spread_rms, options.sigma_static) * options.assumed_range;
+        P                       = sigma_r * sigma_r * u_mean * u_mean.transpose()
+            + sigma_perp * sigma_perp * (Eigen::Matrix3d::Identity() - u_mean * u_mean.transpose());
         return true;
     }
 
     std::vector<SideDisambiguator::Association> SideDisambiguator::associate(
         const std::vector<OutOfFieldFeature>& features,
         const Pose<double>& Tfc,
-        double posStd,
-        double yawStd,
+        double pos_std,
+        double yaw_std,
         double& score,
         std::vector<Prediction>& predictions,
-        std::vector<char>& featureOutlier) const {
+        std::vector<char>& feature_outlier) const {
         score = 0.0;
         predictions.clear();
-        featureOutlier.assign(features.size(), 0);
+        feature_outlier.assign(features.size(), 0);
 
-        const Eigen::Matrix3d Rcf  = Tfc.rotationMatrix.transpose();
-        const Eigen::Vector3d rCFf = Tfc.translationVector;
-        const double logClutter    = std::log(options.clutterDensity);
-        const double cosPreGate    = std::cos(options.preGateAngle);
-        const double effPosStd     = std::max(posStd, options.posStdFloor);
-        const Eigen::Matrix3d Pcam = Eigen::Matrix3d::Identity() * effPosStd * effPosStd;
+        const Eigen::Matrix3d Rcf  = Tfc.rotation_matrix.transpose();
+        const Eigen::Vector3d rCFf = Tfc.translation_vector;
+        const double log_clutter   = std::log(options.clutter_density);
+        const double cos_pre_gate  = std::cos(options.pre_gate_angle);
+        const double eff_pos_std   = std::max(pos_std, options.pos_std_floor);
+        const Eigen::Matrix3d Pcam = Eigen::Matrix3d::Identity() * eff_pos_std * eff_pos_std;
 
         // Predict every landmark into this camera and precompute its predictive
         // density in the ray tangent plane. Predictions that project into the image
@@ -160,7 +160,7 @@ namespace module::localisation::srif {
             Eigen::Vector3d uFf;            ///< Predicted unit ray in {f}
             Eigen::Matrix<double, 3, 2> T;  ///< Tangent basis at the predicted ray
             Eigen::Matrix2d Sinv;           ///< Inverse innovation covariance
-            double halfLogDet2piS;          ///< 0.5*log det(2 pi S)
+            double half_log_det_2pi_S;      ///< 0.5*log det(2 pi S)
         };
         std::vector<Predicted> predicted;  ///< Parallel to predictions
         predicted.reserve(landmarks_.size());
@@ -169,7 +169,7 @@ namespace module::localisation::srif {
             const Landmark& lm        = landmarks_[j];
             const Eigen::Vector3d rel = lm.rPFf - rCFf;
             const double range        = rel.norm();
-            if (range < options.minRange)
+            if (range < options.min_range)
                 continue;
 
             const Eigen::Vector3d uFf = rel / range;
@@ -184,33 +184,34 @@ namespace module::localisation::srif {
 
             Predicted pr;
             pr.uFf = uFf;
-            pr.T   = tangentBasis(uFf);
+            pr.T   = tangent_basis(uFf);
 
             // Innovation covariance in the tangent plane: bearing noise + landmark
             // and camera position uncertainty projected across the range + camera
             // yaw uncertainty (rotation about field-up).
             const Eigen::Vector2d a = pr.T.transpose() * Eigen::Vector3d::UnitZ().cross(uFf);
-            Eigen::Matrix2d S       = Eigen::Matrix2d::Identity() * (options.sigmaAngular * options.sigmaAngular)
+            Eigen::Matrix2d S       = Eigen::Matrix2d::Identity() * (options.sigma_angular * options.sigma_angular)
                                 + pr.T.transpose() * (lm.P + Pcam) * pr.T / (range * range)
-                                + yawStd * yawStd * a * a.transpose();
+                                + yaw_std * yaw_std * a * a.transpose();
 
             // A bearing-only landmark viewed far from its anchor smears into a long
             // thin acceptance corridor (its radial depth variance leaks into the
             // tangent plane). Such a prediction cannot discriminate anything at
             // this baseline: exclude the landmark from matching rather than let
             // corridor matches alias, and don't count it as predicted-visible either.
-            const double trS = S.trace();
-            const double dS  = std::sqrt(std::max(0.25 * trS * trS - S.determinant(), 0.0));
+            const double tr_S = S.trace();
+            const double dS   = std::sqrt(std::max(0.25 * tr_S * tr_S - S.determinant(), 0.0));
 
             Prediction out;
             out.landmark   = j;
             out.px         = px;
-            const double m = options.visibleMargin;
-            out.wellInside = px.x() >= m && px.x() < dimensions_.x() - m && px.y() >= m && px.y() < dimensions_.y() - m;
-            out.ambiguous  = 0.5 * trS + dS > options.maxTangentSigma * options.maxTangentSigma;
+            const double m = options.visible_margin;
+            out.well_inside =
+                px.x() >= m && px.x() < dimensions_.x() - m && px.y() >= m && px.y() < dimensions_.y() - m;
+            out.ambiguous = 0.5 * tr_S + dS > options.max_tangent_sigma * options.max_tangent_sigma;
 
-            pr.Sinv           = S.inverse();
-            pr.halfLogDet2piS = 0.5 * std::log(S.determinant()) + std::log(2.0 * M_PI);
+            pr.Sinv               = S.inverse();
+            pr.half_log_det_2pi_S = 0.5 * std::log(S.determinant()) + std::log(2.0 * M_PI);
             predicted.push_back(pr);
             predictions.push_back(out);
         }
@@ -226,27 +227,27 @@ namespace module::localisation::srif {
         };
         std::vector<Pair> pairs;
         for (std::size_t i = 0; i < features.size(); ++i) {
-            if (!features[i].outOfField)
+            if (!features[i].out_of_field)
                 continue;
-            const Eigen::Vector3d uMeasF = Tfc.rotationMatrix * features[i].uPCc;
+            const Eigen::Vector3d u_meas_f = Tfc.rotation_matrix * features[i].uPCc;
             for (std::size_t k = 0; k < predicted.size(); ++k) {
                 if (predictions[k].ambiguous)
                     continue;
                 const Predicted& pr = predicted[k];
-                if (uMeasF.dot(pr.uFf) < cosPreGate)
+                if (u_meas_f.dot(pr.uFf) < cos_pre_gate)
                     continue;
                 const int dist = static_cast<int>(
                     cv::norm(landmarks_[predictions[k].landmark].descriptor, features[i].descriptor, cv::NORM_HAMMING));
-                if (dist > options.maxDescriptorDistance)
+                if (dist > options.max_descriptor_distance)
                     continue;
                 // Past both gates this corner is a plausible sighting of this
                 // landmark; if it still ends the frame unassociated it was rejected
                 // on the evidence, which is worth telling the visualiser apart from
                 // a corner nothing ever proposed a match for.
-                featureOutlier[i]       = 1;
-                const Eigen::Vector2d e = pr.T.transpose() * (uMeasF - pr.uFf);
-                const double s          = 0.5 * e.dot(pr.Sinv * e) + pr.halfLogDet2piS;
-                if (s < -logClutter) {
+                feature_outlier[i]      = 1;
+                const Eigen::Vector2d e = pr.T.transpose() * (u_meas_f - pr.uFf);
+                const double s          = 0.5 * e.dot(pr.Sinv * e) + pr.half_log_det_2pi_S;
+                if (s < -log_clutter) {
                     pairs.push_back({s, i, k});
                 }
             }
@@ -254,31 +255,31 @@ namespace module::localisation::srif {
 
         // Greedy one-to-one assignment by ascending surprisal (SNN).
         std::sort(pairs.begin(), pairs.end(), [](const Pair& a, const Pair& b) { return a.surprisal < b.surprisal; });
-        std::vector<bool> featTaken(features.size(), false);
+        std::vector<bool> feat_taken(features.size(), false);
         std::vector<Association> assoc;
         for (const Pair& pq : pairs) {
-            if (featTaken[pq.f] || predictions[pq.p].associated)
+            if (feat_taken[pq.f] || predictions[pq.p].associated)
                 continue;
-            featTaken[pq.f]              = true;
-            featureOutlier[pq.f]         = 0;
+            feat_taken[pq.f]             = true;
+            feature_outlier[pq.f]        = 0;
             predictions[pq.p].associated = true;
             predictions[pq.p].feature    = pq.f;
             assoc.push_back({pq.f, predictions[pq.p].landmark, pq.surprisal});
             // Robust evidence: log ratio of the inlier predictive density to the
             // clutter density (positive by the acceptance gate above).
-            score += -pq.surprisal - logClutter;
+            score += -pq.surprisal - log_clutter;
         }
         return assoc;
     }
 
-    void SideDisambiguator::updateCandidates(const std::vector<OutOfFieldFeature>& features,
-                                             const std::vector<bool>& featureUsed,
-                                             const Pose<double>& Tfc,
-                                             double t,
-                                             std::vector<char>& featureGrewTrack) {
-        featureGrewTrack.assign(features.size(), 0);
-        const Eigen::Vector3d rCFf = Tfc.translationVector;
-        const double cosGate       = std::cos(options.candGateAngle);
+    void SideDisambiguator::update_candidates(const std::vector<OutOfFieldFeature>& features,
+                                              const std::vector<bool>& feature_used,
+                                              const Pose<double>& Tfc,
+                                              double t,
+                                              std::vector<char>& feature_grew_track) {
+        feature_grew_track.assign(features.size(), 0);
+        const Eigen::Vector3d rCFf = Tfc.translation_vector;
+        const double cos_gate      = std::cos(options.cand_gate_angle);
 
         // Gated (feature, candidate) pairs ranked by descriptor distance, matched
         // greedily one-to-one. The geometric gate compares against the candidate's
@@ -291,107 +292,107 @@ namespace module::localisation::srif {
         };
         std::vector<Pair> pairs;
         for (std::size_t i = 0; i < features.size(); ++i) {
-            if (!features[i].outOfField || featureUsed[i])
+            if (!features[i].out_of_field || feature_used[i])
                 continue;
-            const Eigen::Vector3d uMeasF = Tfc.rotationMatrix * features[i].uPCc;
+            const Eigen::Vector3d u_meas_f = Tfc.rotation_matrix * features[i].uPCc;
             for (std::size_t c = 0; c < candidates_.size(); ++c) {
-                if (uMeasF.dot(candidates_[c].obs.back().uFf) < cosGate)
+                if (u_meas_f.dot(candidates_[c].obs.back().uFf) < cos_gate)
                     continue;
                 const int dist =
                     static_cast<int>(cv::norm(candidates_[c].descriptor, features[i].descriptor, cv::NORM_HAMMING));
-                if (dist > options.candMaxDescriptorDistance)
+                if (dist > options.cand_max_descriptor_distance)
                     continue;
                 pairs.push_back({dist, i, c});
             }
         }
         std::sort(pairs.begin(), pairs.end(), [](const Pair& a, const Pair& b) { return a.dist < b.dist; });
 
-        std::vector<bool> featMatched(features.size(), false);
-        std::vector<bool> candMatched(candidates_.size(), false);
+        std::vector<bool> feat_matched(features.size(), false);
+        std::vector<bool> cand_matched(candidates_.size(), false);
         for (const Pair& pq : pairs) {
-            if (featMatched[pq.f] || candMatched[pq.c])
+            if (feat_matched[pq.f] || cand_matched[pq.c])
                 continue;
-            featMatched[pq.f]      = true;
-            candMatched[pq.c]      = true;
-            featureGrewTrack[pq.f] = 1;
+            feat_matched[pq.f]       = true;
+            cand_matched[pq.c]       = true;
+            feature_grew_track[pq.f] = 1;
 
-            Candidate& cand              = candidates_[pq.c];
-            const Eigen::Vector3d uMeasF = Tfc.rotationMatrix * features[pq.f].uPCc;
-            if (cand.obs.size() >= static_cast<std::size_t>(options.obsWindow)) {
+            Candidate& cand                = candidates_[pq.c];
+            const Eigen::Vector3d u_meas_f = Tfc.rotation_matrix * features[pq.f].uPCc;
+            if (cand.obs.size() >= static_cast<std::size_t>(options.obs_window)) {
                 // Keep the oldest observation as the parallax/timespan anchor and
                 // roll the rest of the window.
                 cand.obs.erase(cand.obs.begin() + 1);
             }
-            cand.obs.push_back({rCFf, uMeasF, t});
+            cand.obs.push_back({rCFf, u_meas_f, t});
             cand.descriptor = features[pq.f].descriptor.clone();
-            cand.lastSeen   = t;
+            cand.last_seen  = t;
         }
 
         // Promote mature candidates: enough observations over enough time with
         // enough parallax to triangulate, and consistent with one static point.
-        std::vector<bool> candDrop(candidates_.size(), false);
+        std::vector<bool> cand_drop(candidates_.size(), false);
         for (std::size_t c = 0; c < candidates_.size(); ++c) {
             Candidate& cand = candidates_[c];
-            if (!candMatched[c]) {
-                candDrop[c] = t - cand.lastSeen > options.candMaxAge;
+            if (!cand_matched[c]) {
+                cand_drop[c] = t - cand.last_seen > options.cand_max_age;
                 continue;
             }
-            if (cand.obs.size() < static_cast<std::size_t>(options.minObs))
+            if (cand.obs.size() < static_cast<std::size_t>(options.min_obs))
                 continue;
-            if (cand.obs.back().t - cand.obs.front().t < options.minTimeSpan)
+            if (cand.obs.back().t - cand.obs.front().t < options.min_time_span)
                 continue;
-            stats_.promoteAttempts++;
+            stats_.promote_attempts++;
 
-            double maxParallax = 0.0;
+            double max_parallax = 0.0;
             for (std::size_t a = 0; a < cand.obs.size(); ++a)
                 for (std::size_t b2 = a + 1; b2 < cand.obs.size(); ++b2)
-                    maxParallax =
-                        std::max(maxParallax, std::acos(std::clamp(cand.obs[a].uFf.dot(cand.obs[b2].uFf), -1.0, 1.0)));
-            if (maxParallax < options.minParallax) {
+                    max_parallax =
+                        std::max(max_parallax, std::acos(std::clamp(cand.obs[a].uFf.dot(cand.obs[b2].uFf), -1.0, 1.0)));
+            if (max_parallax < options.min_parallax) {
                 // No usable depth. If the track is long, old and directionally
                 // tight, promote it as a bearing-only landmark: bearing alone
                 // discriminates the mirror. Jittery tracks are dropped as dynamic.
-                if (cand.obs.size() >= static_cast<std::size_t>(options.farPromoteObs)
-                    && cand.obs.back().t - cand.obs.front().t >= options.farPromoteTimeSpan) {
+                if (cand.obs.size() >= static_cast<std::size_t>(options.far_promote_obs)
+                    && cand.obs.back().t - cand.obs.front().t >= options.far_promote_time_span) {
                     Eigen::Vector3d rPFf;
                     Eigen::Matrix3d P;
-                    if (fitFar(cand.obs, rPFf, P) && isBackgroundPoint(rPFf)) {
-                        stats_.promotedFar++;
+                    if (fit_far(cand.obs, rPFf, P) && is_background_point(rPFf)) {
+                        stats_.promoted_far++;
                         Landmark lm;
                         lm.rPFf       = rPFf;
                         lm.P          = P;
                         lm.far        = true;
                         lm.descriptor = cand.descriptor.clone();
                         lm.hits       = static_cast<int>(cand.obs.size());
-                        lm.lastSeen   = t;
+                        lm.last_seen  = t;
                         lm.obs        = cand.obs;
                         landmarks_.push_back(std::move(lm));
                     }
                     else {
-                        stats_.farSpreadFail++;
+                        stats_.far_spread_fail++;
                     }
-                    candDrop[c] = true;
+                    cand_drop[c] = true;
                 }
                 else {
-                    stats_.parallaxWait++;
+                    stats_.parallax_wait++;
                 }
                 continue;  // Keep waiting for baseline
             }
 
             Eigen::Vector3d rPFf;
             Eigen::Matrix3d P;
-            double meanChi2     = 0.0;
-            const TriResult tri = triangulate(cand.obs, rPFf, P, meanChi2);
+            double mean_chi2    = 0.0;
+            const TriResult tri = triangulate(cand.obs, rPFf, P, mean_chi2);
             if (tri != TriResult::OK) {
                 if (tri == TriResult::GEOMETRY)
-                    stats_.triFailGeometry++;
+                    stats_.tri_fail_geometry++;
                 else if (tri == TriResult::RANGE)
-                    stats_.triFailRange++;
+                    stats_.tri_fail_range++;
                 else
-                    stats_.triFailChi2++;
+                    stats_.tri_fail_chi2++;
             }
-            else if (!isBackgroundPoint(rPFf)) {
-                stats_.backgroundFail++;
+            else if (!is_background_point(rPFf)) {
+                stats_.background_fail++;
             }
             else {
                 stats_.promoted++;
@@ -400,19 +401,19 @@ namespace module::localisation::srif {
                 lm.P          = P;
                 lm.descriptor = cand.descriptor.clone();
                 lm.hits       = static_cast<int>(cand.obs.size());
-                lm.lastSeen   = t;
+                lm.last_seen  = t;
                 lm.obs        = cand.obs;
                 landmarks_.push_back(std::move(lm));
             }
             // Either way the candidate is finished: promoted, or inconsistent with a
             // static background point despite sufficient parallax (dynamic object).
-            candDrop[c] = true;
+            cand_drop[c] = true;
         }
 
         // Apply drops, then spawn new candidates from the remaining unmatched features.
         std::size_t w = 0;
         for (std::size_t c = 0; c < candidates_.size(); ++c) {
-            if (candDrop[c])
+            if (cand_drop[c])
                 continue;
             if (w != c)
                 candidates_[w] = std::move(candidates_[c]);  // Guard the self-move
@@ -421,30 +422,30 @@ namespace module::localisation::srif {
         candidates_.resize(w);
 
         for (std::size_t i = 0; i < features.size(); ++i) {
-            if (!features[i].outOfField || featureUsed[i] || featMatched[i])
+            if (!features[i].out_of_field || feature_used[i] || feat_matched[i])
                 continue;
-            const Eigen::Vector3d uFf = Tfc.rotationMatrix * features[i].uPCc;
+            const Eigen::Vector3d uFf = Tfc.rotation_matrix * features[i].uPCc;
             // Overhead lighting grids are near-symmetric under the field's 180 deg
             // rotation; don't let high-elevation features into the map at all.
-            if (std::asin(std::clamp(uFf.z(), -1.0, 1.0)) > options.maxElevation)
+            if (std::asin(std::clamp(uFf.z(), -1.0, 1.0)) > options.max_elevation)
                 continue;
             Candidate cand;
             cand.descriptor = features[i].descriptor.clone();
             cand.obs.push_back({rCFf, uFf, t});
-            cand.lastSeen = t;
+            cand.last_seen = t;
             candidates_.push_back(std::move(cand));
         }
 
         // Cap the candidate pool. Established tracks (more observations) outrank
         // fresh single-observation spawns, so the cap churns the spawn pool rather
         // than evicting tracks that are accumulating parallax.
-        if (candidates_.size() > options.maxCandidates) {
+        if (candidates_.size() > options.max_candidates) {
             std::sort(candidates_.begin(), candidates_.end(), [](const Candidate& a, const Candidate& b) {
                 if (a.obs.size() != b.obs.size())
                     return a.obs.size() > b.obs.size();
-                return a.lastSeen > b.lastSeen;
+                return a.last_seen > b.last_seen;
             });
-            candidates_.resize(options.maxCandidates);
+            candidates_.resize(options.max_candidates);
         }
     }
 
@@ -452,68 +453,69 @@ namespace module::localisation::srif {
                                                               const cv::Mat& gray,
                                                               const Pose<double>& Tfc,
                                                               const Pose<double>& TfcMirror,
-                                                              double posStd,
-                                                              double yawStd,
-                                                              double yawRateAbs,
+                                                              double pos_std,
+                                                              double yaw_std,
+                                                              double yaw_rate_abs,
                                                               double heading) {
         FrameResult res;
 
         res.features                                   = detector_.detect(gray, Tfc);
         const std::vector<OutOfFieldFeature>& features = res.features;
-        res.nFeatures                                  = features.size();
-        res.featureStatus.assign(features.size(), FEATURE_ON_CARPET);
+        res.n_features                                 = features.size();
+        res.feature_status.assign(features.size(), FEATURE_ON_CARPET);
         for (std::size_t i = 0; i < features.size(); ++i) {
-            if (features[i].outOfField) {
-                res.featureStatus[i] = FEATURE_UNMATCHED;
-                res.nOutOfField++;
+            if (features[i].out_of_field) {
+                res.feature_status[i] = FEATURE_UNMATCHED;
+                res.n_out_of_field++;
             }
         }
 
         // Associate the same corners against the map under both side hypotheses.
-        std::vector<Prediction> predOwn, predMirror;
-        std::vector<char> outlierOwn, outlierMirror;
-        std::vector<Association> assocOwn = associate(features, Tfc, posStd, yawStd, res.scoreOwn, predOwn, outlierOwn);
-        std::vector<Association> assocMirror =
-            associate(features, TfcMirror, posStd, yawStd, res.scoreMirror, predMirror, outlierMirror);
+        std::vector<Prediction> pred_own, pred_mirror;
+        std::vector<char> outlier_own, outlier_mirror;
+        std::vector<Association> assoc_own =
+            associate(features, Tfc, pos_std, yaw_std, res.score_own, pred_own, outlier_own);
+        std::vector<Association> assoc_mirror =
+            associate(features, TfcMirror, pos_std, yaw_std, res.score_mirror, pred_mirror, outlier_mirror);
 
         // Landmarks predicted comfortably inside the image (and able to discriminate)
         // are what makes a frame worth scoring; the unassociated ones feed the
         // miss-streak pruning below.
-        std::vector<std::size_t> missOwn;
-        std::size_t visOwn = 0, visMirror = 0;
-        for (const Prediction& p : predOwn) {
-            if (p.ambiguous || !p.wellInside)
+        std::vector<std::size_t> miss_own;
+        std::size_t vis_own = 0, vis_mirror = 0;
+        for (const Prediction& p : pred_own) {
+            if (p.ambiguous || !p.well_inside)
                 continue;
-            visOwn++;
+            vis_own++;
             if (!p.associated)
-                missOwn.push_back(p.landmark);
+                miss_own.push_back(p.landmark);
         }
-        for (const Prediction& p : predMirror) {
-            if (!p.ambiguous && p.wellInside)
-                visMirror++;
+        for (const Prediction& p : pred_mirror) {
+            if (!p.ambiguous && p.well_inside)
+                vis_mirror++;
         }
-        res.nAssociated       = assocOwn.size();
-        res.nAssociatedMirror = assocMirror.size();
-        res.nVisibleOwn       = visOwn;
-        res.nVisibleMirror    = visMirror;
+        res.n_associated        = assoc_own.size();
+        res.n_associated_mirror = assoc_mirror.size();
+        res.n_visible_own       = vis_own;
+        res.n_visible_mirror    = vis_mirror;
 
         // Per-corner status for the visualiser, in order of increasing precedence:
         // a corner rejected under one pose but associated under the other reads as
         // associated. Mirror-only matches are exactly the wrong-side evidence the
         // LLR accumulates, so they get their own colour rather than hiding.
         for (std::size_t i = 0; i < features.size(); ++i) {
-            if (features[i].outOfField && (outlierOwn[i] || outlierMirror[i])) {
-                res.featureStatus[i] = FEATURE_OUTLIER;
+            if (features[i].out_of_field && (outlier_own[i] || outlier_mirror[i])) {
+                res.feature_status[i] = FEATURE_OUTLIER;
             }
         }
-        for (const Association& a : assocMirror) {
-            res.featureStatus[a.feature] = FEATURE_MIRROR;
+        for (const Association& a : assoc_mirror) {
+            res.feature_status[a.feature] = FEATURE_MIRROR;
         }
-        for (const Association& a : assocOwn) {
-            res.featureStatus[a.feature] = FEATURE_ASSOCIATED;
+        for (const Association& a : assoc_own) {
+            res.feature_status[a.feature] = FEATURE_ASSOCIATED;
         }
-        res.nOutlier = static_cast<std::size_t>(
-            std::count(res.featureStatus.begin(), res.featureStatus.end(), static_cast<int>(FEATURE_OUTLIER)));
+        res.n_outlier = static_cast<std::size_t>(
+            std::count(res.feature_status.begin(), res.feature_status.end(), static_cast<int>(FEATURE_OUTLIER)));
 
         // Projected map landmarks for the visualiser. Statuses are as they stand
         // after association; the maintenance pass below upgrades any that it culls.
@@ -521,27 +523,27 @@ namespace module::localisation::srif {
         // colour the whole map: stored there it survives the compaction below,
         // which a landmarks_-indexed side table would not.
         for (Landmark& lm : landmarks_) {
-            lm.lastStatus = LANDMARK_NOT_IN_VIEW;
+            lm.last_status = LANDMARK_NOT_IN_VIEW;
         }
-        std::vector<int> viewOfLandmark(landmarks_.size(), -1);
-        res.landmarkViews.reserve(predOwn.size());
-        for (const Prediction& p : predOwn) {
+        std::vector<int> view_of_landmark(landmarks_.size(), -1);
+        res.landmark_views.reserve(pred_own.size());
+        for (const Prediction& p : pred_own) {
             LandmarkView lv;
             lv.px  = p.px;
             lv.far = landmarks_[p.landmark].far;
             if (p.associated) {
-                lv.status  = LANDMARK_ASSOCIATED;
-                lv.matchPx = features[p.feature].px;
+                lv.status   = LANDMARK_ASSOCIATED;
+                lv.match_px = features[p.feature].px;
             }
             else if (p.ambiguous)
                 lv.status = LANDMARK_AMBIGUOUS;
-            else if (p.wellInside)
+            else if (p.well_inside)
                 lv.status = LANDMARK_MISSED;
             else
                 lv.status = LANDMARK_EDGE;
-            landmarks_[p.landmark].lastStatus = lv.status;
-            viewOfLandmark[p.landmark]        = static_cast<int>(res.landmarkViews.size());
-            res.landmarkViews.push_back(lv);
+            landmarks_[p.landmark].last_status = lv.status;
+            view_of_landmark[p.landmark]       = static_cast<int>(res.landmark_views.size());
+            res.landmark_views.push_back(lv);
         }
 
         // Accumulate the side evidence whenever the map could have discriminated
@@ -549,19 +551,20 @@ namespace module::localisation::srif {
         // view is trustworthy (not mid-turn: motion blur and a freshly-panned
         // viewpoint starve the true side of matches without saying anything about
         // which side is right).
-        const bool scoredFrame = visOwn + visMirror > 0 && yawRateAbs < options.maxYawRate;
-        if (scoredFrame) {
-            const double delta = std::clamp(res.scoreOwn - res.scoreMirror, -options.deltaClamp, options.deltaClamp);
-            res.sideDelta      = delta;
-            llr_               = std::clamp(options.forgetting * llr_ + delta, -options.llrClamp, options.llrClamp);
+        const bool scored_frame = vis_own + vis_mirror > 0 && yaw_rate_abs < options.max_yaw_rate;
+        if (scored_frame) {
+            const double delta =
+                std::clamp(res.score_own - res.score_mirror, -options.delta_clamp, options.delta_clamp);
+            res.side_delta = delta;
+            llr_           = std::clamp(options.forgetting * llr_ + delta, -options.llr_clamp, options.llr_clamp);
         }
         res.llr = llr_;
 
         // Deep doubt latches: only positive evidence (not forgetting-driven decay
         // towards zero) may re-arm map building on this side.
-        if (llr_ <= -options.flipThreshold)
+        if (llr_ <= -options.flip_threshold)
             doubt_ = true;
-        else if (llr_ >= options.rebuildLlr)
+        else if (llr_ >= options.rebuild_llr)
             doubt_ = false;
 
         // A flip needs sustained, substantive and DOMINANT mirror evidence: the LLR
@@ -570,18 +573,18 @@ namespace module::localisation::srif {
         // cannot flip a barely-covered map, and the mirror must clearly outnumber
         // the own side (a degraded own pose is "no decision", not mirror evidence).
         // Unscored frames leave the streak untouched.
-        if (scoredFrame) {
-            if (llr_ <= -options.flipThreshold && res.nAssociatedMirror >= options.minFlipAssoc
-                && static_cast<double>(res.nAssociatedMirror)
-                       >= options.flipDominance * static_cast<double>(res.nAssociated)
-                && static_cast<double>(visOwn) >= options.flipCoverage * static_cast<double>(visMirror)) {
-                flipStreak_++;
+        if (scored_frame) {
+            if (llr_ <= -options.flip_threshold && res.n_associated_mirror >= options.min_flip_assoc
+                && static_cast<double>(res.n_associated_mirror)
+                       >= options.flip_dominance * static_cast<double>(res.n_associated)
+                && static_cast<double>(vis_own) >= options.flip_coverage * static_cast<double>(vis_mirror)) {
+                flip_streak_++;
             }
-            else if (llr_ > -options.flipThreshold) {
-                flipStreak_ = 0;  // Side no longer in doubt: clear the streak
+            else if (llr_ > -options.flip_threshold) {
+                flip_streak_ = 0;  // Side no longer in doubt: clear the streak
             }
-            else if (flipStreak_ > 0) {
-                flipStreak_--;  // Still in doubt, frame unqualifying: leak, don't reset
+            else if (flip_streak_ > 0) {
+                flip_streak_--;  // Still in doubt, frame unqualifying: leak, don't reset
             }
 
             // Remember where the robot was pointing the last time the map actually
@@ -590,83 +593,86 @@ namespace module::localisation::srif {
             // any match at all: during a turn the association count decays through
             // small non-zero values, and taking the last of those as the reference
             // would measure the turn from halfway through it.
-            const bool ownConfirmed =
-                visOwn > 0
-                && res.nAssociated >= std::max(
-                       options.blindMatchMinAssoc,
-                       static_cast<std::size_t>(std::ceil(options.blindMatchFraction * static_cast<double>(visOwn))));
-            if (ownConfirmed) {
-                headingAtOwnMatch_ = heading;
-                haveOwnMatch_      = true;
+            const bool own_confirmed =
+                vis_own > 0
+                && res.n_associated >= std::max(options.blind_match_min_assoc,
+                                                static_cast<std::size_t>(std::ceil(options.blind_match_fraction
+                                                                                   * static_cast<double>(vis_own))));
+            if (own_confirmed) {
+                heading_at_own_match_ = heading;
+                have_own_match_       = true;
             }
 
             // Net heading change since then. A flip asserts a 180 deg discontinuity;
             // if the robot has already turned by about that much under its own
             // gyroscope, the mirror-looking view is what the turn predicts and the
             // out-of-field evidence cannot separate the two (see Options).
-            const double turn  = haveOwnMatch_ ? std::remainder(heading - headingAtOwnMatch_, 2.0 * M_PI) : 0.0;
-            res.turnSinceMatch = turn;
-            const bool turnExplainsMirror =
-                haveOwnMatch_ && std::abs(std::abs(turn) - M_PI) < options.blindTurnTolerance;
+            const double turn    = have_own_match_ ? std::remainder(heading - heading_at_own_match_, 2.0 * M_PI) : 0.0;
+            res.turn_since_match = turn;
+            const bool turn_explains_mirror =
+                have_own_match_ && std::abs(std::abs(turn) - M_PI) < options.blind_turn_tolerance;
 
             // Blind-own escape (see Options): near-clamp LLR, own essentially
             // blind, mirror matching real structure. Same leak/reset semantics.
-            if (llr_ <= -options.flipBlindLlr && visOwn >= options.flipBlindMinVisibleOwn
-                && res.nAssociated <= options.flipBlindOwnMax
-                && res.nAssociatedMirror >= std::max(options.flipBlindMinAssoc,
-                                                     static_cast<std::size_t>(std::ceil(
-                                                         options.flipDominance * static_cast<double>(res.nAssociated))))
-                && !turnExplainsMirror) {
-                blindStreak_++;
+            if (llr_ <= -options.flip_blind_llr && vis_own >= options.flip_blind_min_visible_own
+                && res.n_associated <= options.flip_blind_own_max
+                && res.n_associated_mirror
+                       >= std::max(options.flip_blind_min_assoc,
+                                   static_cast<std::size_t>(
+                                       std::ceil(options.flip_dominance * static_cast<double>(res.n_associated))))
+                && !turn_explains_mirror) {
+                blind_streak_++;
             }
-            else if (llr_ <= -options.flipBlindLlr && (turnExplainsMirror || visOwn < options.flipBlindMinVisibleOwn)) {
+            else if (llr_ <= -options.flip_blind_llr
+                     && (turn_explains_mirror || vis_own < options.flip_blind_min_visible_own)) {
                 // Refused because the comparison is not a comparison: hold the streak
                 // rather than leaking it, so a robot that turns back to mapped
                 // territory neither flips nor re-earns the evidence from scratch.
-                res.blindTurnBlocked = true;
+                res.blind_turn_blocked = true;
             }
-            else if (llr_ > -options.flipThreshold) {
-                blindStreak_ = 0;
+            else if (llr_ > -options.flip_threshold) {
+                blind_streak_ = 0;
             }
-            else if (blindStreak_ > 0) {
-                blindStreak_--;
+            else if (blind_streak_ > 0) {
+                blind_streak_--;
             }
 
-            res.flipRequested = flipStreak_ >= options.flipConsecutive || blindStreak_ >= options.flipBlindConsecutive;
+            res.flip_requested =
+                flip_streak_ >= options.flip_consecutive || blind_streak_ >= options.flip_blind_consecutive;
         }
 
         // Map maintenance. Frozen while the pose is uncertain, the side is in
         // doubt, or a flip just happened, so a wrong-side excursion cannot poison
         // the map.
-        const bool frozen = posStd > options.maxPosStd || llr_ < options.freezeLlr || doubt_ || res.flipRequested
-                            || t < mapFreezeUntil_;
-        res.mapFrozen = frozen;
+        const bool frozen = pos_std > options.max_pos_std || llr_ < options.freeze_llr || doubt_ || res.flip_requested
+                            || t < map_freeze_until_;
+        res.map_frozen = frozen;
         if (!frozen) {
-            std::vector<bool> landmarkDead(landmarks_.size(), false);
-            std::vector<bool> featureUsed(features.size(), false);
+            std::vector<bool> landmark_dead(landmarks_.size(), false);
+            std::vector<bool> feature_used(features.size(), false);
             // Flag a culled landmark in its view, if it has one this frame.
-            auto markCulled = [&](std::size_t idx, int status) {
-                if (viewOfLandmark[idx] >= 0)
-                    res.landmarkViews[viewOfLandmark[idx]].status = status;
+            auto mark_culled = [&](std::size_t idx, int status) {
+                if (view_of_landmark[idx] >= 0)
+                    res.landmark_views[view_of_landmark[idx]].status = status;
             };
 
             // Hits: extend the observation window and re-triangulate. A landmark
             // that stops fitting a static point (someone who stood still and then
             // moved) fails the consistency test and is culled.
-            for (const Association& a : assocOwn) {
-                featureUsed[a.feature] = true;
-                Landmark& lm           = landmarks_[a.landmark];
-                if (lm.obs.size() >= static_cast<std::size_t>(options.obsWindow)) {
+            for (const Association& a : assoc_own) {
+                feature_used[a.feature] = true;
+                Landmark& lm            = landmarks_[a.landmark];
+                if (lm.obs.size() >= static_cast<std::size_t>(options.obs_window)) {
                     // Keep the oldest observation as the parallax anchor.
                     lm.obs.erase(lm.obs.begin() + 1);
                 }
-                lm.obs.push_back({Tfc.translationVector, Tfc.rotationMatrix * features[a.feature].uPCc, t});
+                lm.obs.push_back({Tfc.translation_vector, Tfc.rotation_matrix * features[a.feature].uPCc, t});
 
                 Eigen::Vector3d rPFf;
                 Eigen::Matrix3d P;
-                double meanChi2     = 0.0;
-                const TriResult tri = triangulate(lm.obs, rPFf, P, meanChi2);
-                if (tri == TriResult::OK && isBackgroundPoint(rPFf)) {
+                double mean_chi2    = 0.0;
+                const TriResult tri = triangulate(lm.obs, rPFf, P, mean_chi2);
+                if (tri == TriResult::OK && is_background_point(rPFf)) {
                     // Full depth solution available (possibly upgrading a
                     // bearing-only landmark that finally accrued parallax).
                     if (lm.far)
@@ -676,45 +682,45 @@ namespace module::localisation::srif {
                     lm.P          = P;
                     lm.descriptor = features[a.feature].descriptor.clone();
                     lm.hits++;
-                    lm.missStreak = 0;
-                    lm.lastSeen   = t;
+                    lm.miss_streak = 0;
+                    lm.last_seen   = t;
                 }
                 else if (lm.far && tri != TriResult::CHI2) {
                     // Bearing-only landmark still without parallax: refit the
                     // bearing; a jittery window means a mover, so cull it.
-                    if (fitFar(lm.obs, rPFf, P) && isBackgroundPoint(rPFf)) {
+                    if (fit_far(lm.obs, rPFf, P) && is_background_point(rPFf)) {
                         lm.rPFf       = rPFf;
                         lm.P          = P;
                         lm.descriptor = features[a.feature].descriptor.clone();
                         lm.hits++;
-                        lm.missStreak = 0;
-                        lm.lastSeen   = t;
+                        lm.miss_streak = 0;
+                        lm.last_seen   = t;
                     }
                     else {
-                        landmarkDead[a.landmark] = true;
-                        markCulled(a.landmark, LANDMARK_CULLED_OUTLIER);
-                        stats_.landmarkCulledChi2++;
+                        landmark_dead[a.landmark] = true;
+                        mark_culled(a.landmark, LANDMARK_CULLED_OUTLIER);
+                        stats_.landmark_culled_chi2++;
                     }
                 }
                 else {
-                    landmarkDead[a.landmark] = true;
-                    markCulled(a.landmark, LANDMARK_CULLED_OUTLIER);
-                    stats_.landmarkCulledChi2++;
+                    landmark_dead[a.landmark] = true;
+                    mark_culled(a.landmark, LANDMARK_CULLED_OUTLIER);
+                    stats_.landmark_culled_chi2++;
                 }
             }
 
             // Misses: predicted comfortably inside the image but not re-observed.
-            for (std::size_t idx : missOwn) {
-                if (++landmarks_[idx].missStreak > options.maxMissStreak) {
-                    landmarkDead[idx] = true;
-                    markCulled(idx, LANDMARK_CULLED_MISSING);
-                    stats_.landmarkCulledMiss++;
+            for (std::size_t idx : miss_own) {
+                if (++landmarks_[idx].miss_streak > options.max_miss_streak) {
+                    landmark_dead[idx] = true;
+                    mark_culled(idx, LANDMARK_CULLED_MISSING);
+                    stats_.landmark_culled_miss++;
                 }
             }
 
             std::size_t w = 0;
             for (std::size_t j = 0; j < landmarks_.size(); ++j) {
-                if (landmarkDead[j])
+                if (landmark_dead[j])
                     continue;
                 if (w != j)
                     landmarks_[w] = std::move(landmarks_[j]);  // Guard the self-move
@@ -722,38 +728,38 @@ namespace module::localisation::srif {
             }
             landmarks_.resize(w);
 
-            std::vector<char> grewTrack;
-            updateCandidates(features, featureUsed, Tfc, t, grewTrack);
+            std::vector<char> grew_track;
+            update_candidates(features, feature_used, Tfc, t, grew_track);
             for (std::size_t i = 0; i < features.size(); ++i) {
-                if (grewTrack[i] && res.featureStatus[i] < FEATURE_CANDIDATE) {
-                    res.featureStatus[i] = FEATURE_CANDIDATE;
+                if (grew_track[i] && res.feature_status[i] < FEATURE_CANDIDATE) {
+                    res.feature_status[i] = FEATURE_CANDIDATE;
                 }
             }
 
             // Cap the map, keeping the landmarks that are earning their place:
             // re-observations discounted by how long ago they stopped arriving.
-            if (landmarks_.size() > options.maxLandmarks) {
-                const double halfLife = std::max(options.evictHalfLife, 1e-3);
-                auto capScore         = [&](const Landmark& lm) {
-                    return lm.hits / (1.0 + std::max(0.0, t - lm.lastSeen) / halfLife);
+            if (landmarks_.size() > options.max_landmarks) {
+                const double half_life = std::max(options.evict_half_life, 1e-3);
+                auto cap_score         = [&](const Landmark& lm) {
+                    return lm.hits / (1.0 + std::max(0.0, t - lm.last_seen) / half_life);
                 };
                 std::sort(landmarks_.begin(), landmarks_.end(), [&](const Landmark& a, const Landmark& b) {
-                    return capScore(a) > capScore(b);
+                    return cap_score(a) > cap_score(b);
                 });
-                landmarks_.resize(options.maxLandmarks);
+                landmarks_.resize(options.max_landmarks);
             }
         }
 
-        res.nLandmarks  = landmarks_.size();
-        res.nCandidates = candidates_.size();
+        res.n_landmarks  = landmarks_.size();
+        res.n_candidates = candidates_.size();
         return res;
     }
 
-    void SideDisambiguator::notifyFlipApplied(double t) {
-        llr_            = -llr_;
-        flipStreak_     = 0;
-        blindStreak_    = 0;
-        mapFreezeUntil_ = t + options.flipCooldown;
+    void SideDisambiguator::notify_flip_applied(double t) {
+        llr_              = -llr_;
+        flip_streak_      = 0;
+        blind_streak_     = 0;
+        map_freeze_until_ = t + options.flip_cooldown;
     }
 
 }  // namespace module::localisation::srif

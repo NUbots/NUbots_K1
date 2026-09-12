@@ -8,9 +8,9 @@
 
 namespace module::localisation::measurement {
 
-    double MeasurementQuaternionNorm::logLikelihood(const Eigen::VectorXd& x,
-                                                    const SystemEstimator& /*system*/,
-                                                    Eigen::VectorXd& g) const {
+    double MeasurementQuaternionNorm::log_likelihood(const Eigen::VectorXd& x,
+                                                     const SystemEstimator& /*system*/,
+                                                     Eigen::VectorXd& g) const {
         using autodiff::at;
         using autodiff::dual;
         using autodiff::gradient;
@@ -19,16 +19,16 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual> xdual = x.cast<dual>();
         dual fdual;
         auto func = [this](const Eigen::VectorX<dual>& xd) -> dual {
-            return this->template logLikelihoodImpl<dual>(xd);
+            return this->template log_likelihood_impl<dual>(xd);
         };
         g = gradient(func, wrt(xdual), at(xdual), fdual);
         return static_cast<double>(fdual);
     }
 
-    double MeasurementQuaternionNorm::logLikelihood(const Eigen::VectorXd& x,
-                                                    const SystemEstimator& /*system*/,
-                                                    Eigen::VectorXd& g,
-                                                    Eigen::MatrixXd& H) const {
+    double MeasurementQuaternionNorm::log_likelihood(const Eigen::VectorXd& x,
+                                                     const SystemEstimator& /*system*/,
+                                                     Eigen::VectorXd& g,
+                                                     Eigen::MatrixXd& H) const {
         using autodiff::at;
         using autodiff::dual2nd;
         using autodiff::hessian;
@@ -40,7 +40,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual2nd> xdual = x.cast<dual2nd>();
         dual2nd fdual;
         auto func = [this](const Eigen::VectorX<dual2nd>& xd) -> dual2nd {
-            return this->template logLikelihoodImpl<dual2nd>(xd);
+            return this->template log_likelihood_impl<dual2nd>(xd);
         };
         H = hessian(func, wrt(xdual), at(xdual), fdual, g);
         return static_cast<double>(fdual);

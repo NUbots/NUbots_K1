@@ -26,27 +26,28 @@ namespace module::localisation::measurement {
         : Measurement(time), map_(map), Tbc_(Tbc), options_(options) {
         // Exact Hessian is cheap for a 6-dim state and yields the exact
         // Laplace-approximation posterior sqrt information
-        updateMethod_ = UpdateMethod::NEWTONTRUSTEIG;
+        update_method_ = UpdateMethod::NEWTONTRUSTEIG;
 
         // Gather usable detections
         for (std::size_t i = 0; i < sample.detections.size(); ++i) {
             const Detection& det = sample.detections[i];
-            if (det.confidence < options_.minConfidence) {
+            if (det.confidence < options_.min_confidence) {
                 continue;
             }
             Eigen::Vector3d ray;
             LandmarkType type;
-            if (detectionRay(det, ray, type)) {
+            if (detection_ray(det, ray, type)) {
                 // Confidence sets how much of this detection's likelihood is the
                 // inlier Gaussian rather than flat clutter (see Options).
-                const double w = std::clamp(options_.inlierProbability * det.confidence / options_.confidenceReference,
-                                            1e-3,
-                                            options_.maxInlierProbability);
+                const double w =
+                    std::clamp(options_.inlier_probability * det.confidence / options_.confidence_reference,
+                               1e-3,
+                               options_.max_inlier_probability);
                 candidates_.push_back({ray, type, i, w});
             }
         }
 
-        assocKeys_ = associate(system.density.mean(), system.density.cov());
+        assoc_keys_ = associate(system.density.mean(), system.density.cov());
     }
 
     MeasurementFieldLandmarks::MeasurementFieldLandmarks(double time,
@@ -56,7 +57,7 @@ namespace module::localisation::measurement {
                                                          const SystemLocalisation& system)
         : MeasurementFieldLandmarks(time, sample, Tbc, map, system, Options{}) {}
 
-    bool MeasurementFieldLandmarks::detectionRay(const Detection& det, Eigen::Vector3d& ray, LandmarkType& type) {
+    bool MeasurementFieldLandmarks::detection_ray(const Detection& det, Eigen::Vector3d& ray, LandmarkType& type) {
         // Class names as the K1 YOLO model emits them (module/vision/Yolo/src/Yolo.hpp)
         if (det.name == "LCross") {
             type = LandmarkType::L_INTERSECTION;
@@ -88,34 +89,34 @@ namespace module::localisation::measurement {
     std::vector<std::pair<std::size_t, std::size_t>> MeasurementFieldLandmarks::associate(const Eigen::VectorXd& x,
                                                                                           const Eigen::MatrixXd& P) {
         std::vector<std::pair<std::size_t, std::size_t>> keys;
-        inlierWeight_.clear();
+        inlier_weight_.clear();
         if (candidates_.empty()) {
-            uMeas_.resize(3, 0);
+            u_meas_.resize(3, 0);
             rLFf_.resize(3, 0);
             return keys;
         }
 
         // Predicted ray for every mapped landmark at the given state (incl. camera mount bias)
-        Pose<double> Tbias(SystemLocalisation::cameraBiasRotation<double>(x), Eigen::Vector3d::Zero());
-        Pose<double> Tfc           = SystemLocalisation::fieldPose<double>(x) * Tbc_ * Tbias;
-        const Eigen::Matrix3d Rfc  = Tfc.rotationMatrix;
-        const Eigen::Vector3d rCFf = Tfc.translationVector;
+        Pose<double> Tbias(SystemLocalisation::camera_bias_rotation<double>(x), Eigen::Vector3d::Zero());
+        Pose<double> Tfc           = SystemLocalisation::field_pose<double>(x) * Tbc_ * Tbias;
+        const Eigen::Matrix3d Rfc  = Tfc.rotation_matrix;
+        const Eigen::Vector3d rCFf = Tfc.translation_vector;
 
         // Pose uncertainty inflating each predicted bearing. Bearings are compared in
         // {f}: the tangent-plane geometry and the yaw term are both natural there.
         const Eigen::Matrix3d Ppos = P.topLeftCorner<3, 3>();
         // Yaw is no longer a state element -- the attitude is a quaternion, so the
         // heading variance is a projection of its 4x4 block onto the field z axis.
-        const double yawVar = SystemLocalisation::yawVariance(x, P);
-        const double sigma2 = options_.sigmaAngular * options_.sigmaAngular;
-        // Pre-gate widened by the yaw uncertainty (see Options::gateYawScale): a
+        const double yaw_var = SystemLocalisation::yaw_variance(x, P);
+        const double sigma2  = options_.sigma_angular * options_.sigma_angular;
+        // Pre-gate widened by the yaw uncertainty (see Options::gate_yaw_scale): a
         // no-op while the belief is tight, and the only thing that lets a recovering
         // filter re-associate after a fall has turned the robot further than the
         // nominal gate.
-        const double gateAngle =
-            std::min(std::max(options_.gateAngle, options_.gateYawScale * std::sqrt(std::max(yawVar, 0.0))),
-                     options_.gateAngleMax);
-        const double cosGate = std::cos(gateAngle);
+        const double gate_angle =
+            std::min(std::max(options_.gate_angle, options_.gate_yaw_scale * std::sqrt(std::max(yaw_var, 0.0))),
+                     options_.gate_angle_max);
+        const double cos_gate = std::cos(gate_angle);
 
         // SNN: enumerate all (detection, landmark) pairs of matching type inside the
         // geometric pre-gate, score each by its surprisal relative to the clutter
@@ -130,11 +131,11 @@ namespace module::localisation::measurement {
         };
         std::vector<CandidatePair> pairs;
         for (std::size_t i = 0; i < candidates_.size(); ++i) {
-            const Eigen::Vector3d uMeasF = Rfc * candidates_[i].ray;
+            const Eigen::Vector3d u_meas_f = Rfc * candidates_[i].ray;
             // Crossover surprisal: w N(e; S) > (1 - w)/(4 pi). A weak detection has to
             // fit much better before it is worth associating at all, and ranks below a
             // confident one at equal residual, which is what stops the stealing.
-            const double w         = candidates_[i].inlierWeight;
+            const double w         = candidates_[i].inlier_weight;
             const double crossover = std::log(w) - std::log(1.0 - w) + std::log(4.0 * M_PI);
 
             const std::vector<Eigen::Vector3d>& lms = map_.landmarks(candidates_[i].type);
@@ -144,18 +145,18 @@ namespace module::localisation::measurement {
                 if (range < 1e-9) {
                     continue;
                 }
-                const Eigen::Vector3d uPredF = rel / range;
-                if (uMeasF.dot(uPredF) < cosGate) {
+                const Eigen::Vector3d u_pred_f = rel / range;
+                if (u_meas_f.dot(u_pred_f) < cos_gate) {
                     continue;  // Cheap geometric pre-gate: caps how far an association can reach
                 }
 
                 // Innovation covariance in the tangent plane: bearing noise + camera
                 // position uncertainty across the range + yaw uncertainty.
-                const Eigen::Matrix<double, 3, 2> T = tangentBasis(uPredF);
-                const Eigen::Vector2d a             = T.transpose() * Eigen::Vector3d::UnitZ().cross(uPredF);
+                const Eigen::Matrix<double, 3, 2> T = tangent_basis(u_pred_f);
+                const Eigen::Vector2d a             = T.transpose() * Eigen::Vector3d::UnitZ().cross(u_pred_f);
                 const Eigen::Matrix2d S             = Eigen::Matrix2d::Identity() * sigma2
-                                          + T.transpose() * Ppos * T / (range * range) + yawVar * a * a.transpose();
-                const Eigen::Vector2d e = T.transpose() * (uMeasF - uPredF);
+                                          + T.transpose() * Ppos * T / (range * range) + yaw_var * a * a.transpose();
+                const Eigen::Vector2d e = T.transpose() * (u_meas_f - u_pred_f);
                 const double surprisal =
                     0.5 * e.dot(S.inverse() * e) + 0.5 * std::log(S.determinant()) + std::log(2.0 * M_PI);
                 const double score = surprisal - crossover;
@@ -168,33 +169,33 @@ namespace module::localisation::measurement {
             return a.score < b.score;
         });
 
-        std::vector<bool> detUsed(candidates_.size(), false);
+        std::vector<bool> det_used(candidates_.size(), false);
         // Landmark usage tracked per type via flat key: type-major index
-        auto lmKey = [](LandmarkType type, std::size_t j) { return static_cast<std::size_t>(type) * 1000 + j; };
-        std::vector<std::size_t> usedLandmarks;
+        auto lm_key = [](LandmarkType type, std::size_t j) { return static_cast<std::size_t>(type) * 1000 + j; };
+        std::vector<std::size_t> used_landmarks;
         std::vector<const CandidatePair*> chosen;
         for (const CandidatePair& p : pairs) {
-            if (detUsed[p.det]) {
+            if (det_used[p.det]) {
                 continue;
             }
-            std::size_t key = lmKey(p.type, p.lm);
-            if (std::find(usedLandmarks.begin(), usedLandmarks.end(), key) != usedLandmarks.end()) {
+            std::size_t key = lm_key(p.type, p.lm);
+            if (std::find(used_landmarks.begin(), used_landmarks.end(), key) != used_landmarks.end()) {
                 continue;
             }
-            detUsed[p.det] = true;
-            usedLandmarks.push_back(key);
+            det_used[p.det] = true;
+            used_landmarks.push_back(key);
             chosen.push_back(&p);
         }
 
-        uMeas_.resize(3, static_cast<Eigen::Index>(chosen.size()));
+        u_meas_.resize(3, static_cast<Eigen::Index>(chosen.size()));
         rLFf_.resize(3, static_cast<Eigen::Index>(chosen.size()));
-        inlierWeight_.reserve(chosen.size());
+        inlier_weight_.reserve(chosen.size());
         for (std::size_t k = 0; k < chosen.size(); ++k) {
-            const CandidatePair& p                   = *chosen[k];
-            uMeas_.col(static_cast<Eigen::Index>(k)) = candidates_[p.det].ray;
-            rLFf_.col(static_cast<Eigen::Index>(k))  = map_.landmarks(p.type)[p.lm];
-            inlierWeight_.push_back(candidates_[p.det].inlierWeight);
-            keys.emplace_back(p.det, lmKey(p.type, p.lm));
+            const CandidatePair& p                    = *chosen[k];
+            u_meas_.col(static_cast<Eigen::Index>(k)) = candidates_[p.det].ray;
+            rLFf_.col(static_cast<Eigen::Index>(k))   = map_.landmarks(p.type)[p.lm];
+            inlier_weight_.push_back(candidates_[p.det].inlier_weight);
+            keys.emplace_back(p.det, lm_key(p.type, p.lm));
         }
         std::sort(keys.begin(), keys.end());
         return keys;
@@ -203,17 +204,18 @@ namespace module::localisation::measurement {
     Eigen::VectorXd MeasurementFieldLandmarks::simulate(const Eigen::VectorXd& x,
                                                         const SystemEstimator& /*system*/) const {
         // Stack predicted rays (noise-free measurement model)
-        Eigen::Matrix<double, 3, Eigen::Dynamic> uPred = predictRays<double>(x);
-        return Eigen::Map<Eigen::VectorXd>(uPred.data(), uPred.size());
+        Eigen::Matrix<double, 3, Eigen::Dynamic> u_pred = predict_rays<double>(x);
+        return Eigen::Map<Eigen::VectorXd>(u_pred.data(), u_pred.size());
     }
 
-    double MeasurementFieldLandmarks::logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
-        return logLikelihoodImpl<double>(x);
+    double MeasurementFieldLandmarks::log_likelihood(const Eigen::VectorXd& x,
+                                                     const SystemEstimator& /*system*/) const {
+        return log_likelihood_impl<double>(x);
     }
 
-    double MeasurementFieldLandmarks::logLikelihood(const Eigen::VectorXd& x,
-                                                    const SystemEstimator& /*system*/,
-                                                    Eigen::VectorXd& g) const {
+    double MeasurementFieldLandmarks::log_likelihood(const Eigen::VectorXd& x,
+                                                     const SystemEstimator& /*system*/,
+                                                     Eigen::VectorXd& g) const {
         using autodiff::at;
         using autodiff::dual;
         using autodiff::gradient;
@@ -222,16 +224,16 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual> xdual = x.cast<dual>();
         dual fdual;
         auto func = [this](const Eigen::VectorX<dual>& xd) -> dual {
-            return this->template logLikelihoodImpl<dual>(xd);
+            return this->template log_likelihood_impl<dual>(xd);
         };
         g = gradient(func, wrt(xdual), at(xdual), fdual);
         return static_cast<double>(fdual);
     }
 
-    double MeasurementFieldLandmarks::logLikelihood(const Eigen::VectorXd& x,
-                                                    const SystemEstimator& /*system*/,
-                                                    Eigen::VectorXd& g,
-                                                    Eigen::MatrixXd& H) const {
+    double MeasurementFieldLandmarks::log_likelihood(const Eigen::VectorXd& x,
+                                                     const SystemEstimator& /*system*/,
+                                                     Eigen::VectorXd& g,
+                                                     Eigen::MatrixXd& H) const {
         using autodiff::at;
         using autodiff::dual2nd;
         using autodiff::hessian;
@@ -243,7 +245,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual2nd> xdual = x.cast<dual2nd>();
         dual2nd fdual;
         auto func = [this](const Eigen::VectorX<dual2nd>& xd) -> dual2nd {
-            return this->template logLikelihoodImpl<dual2nd>(xd);
+            return this->template log_likelihood_impl<dual2nd>(xd);
         };
         H = hessian(func, wrt(xdual), at(xdual), fdual, g);
         return static_cast<double>(fdual);
@@ -258,24 +260,24 @@ namespace module::localisation::measurement {
         // association set changed, restore the prior and re-run. The starting
         // association is whatever was set for this density: the constructor's (single
         // hypothesis) or reassociate()'s (each mixture component, see process()).
-        for (int iteration = 0; iteration < maxAssociationIterations_; ++iteration) {
-            if (uMeas_.cols() == 0) {
+        for (int iteration = 0; iteration < max_association_iterations_; ++iteration) {
+            if (u_meas_.cols() == 0) {
                 system.density = prior;  // Nothing associated; leave the prior untouched
                 return;
             }
 
             Measurement::update(system);
 
-            if (iteration == maxAssociationIterations_ - 1) {
+            if (iteration == max_association_iterations_ - 1) {
                 break;  // Iteration budget exhausted
             }
 
-            std::vector<std::pair<std::size_t, std::size_t>> newKeys =
+            std::vector<std::pair<std::size_t, std::size_t>> new_keys =
                 associate(system.density.mean(), system.density.cov());
-            if (newKeys == assocKeys_) {
+            if (new_keys == assoc_keys_) {
                 break;  // Association converged (associate() rebuilt the same set)
             }
-            assocKeys_     = newKeys;
+            assoc_keys_    = new_keys;
             system.density = prior;
         }
     }

@@ -29,19 +29,19 @@ namespace module::localisation::srif {
      */
     struct FieldDimensions {
         // Values come from FieldDescription.yaml
-        double lineWidth;             ///< Width of field lines
-        double fieldLength;           ///< Touchline (sideline) length
-        double fieldWidth;            ///< Goal line (baseline) length
-        double goalDepth;             ///< Distance behind the goal line to the back of the net
-        double goalWidth;             ///< Distance between the inner edges of the goal posts
-        double goalAreaLength;        ///< Goal area (6-yard box) length, from the goal line
-        double goalAreaWidth;         ///< Goal area (6-yard box) width
-        double penaltyMarkDistance;   ///< Distance from the goal line to the penalty mark
-        double centreCircleDiameter;  ///< Diameter of the centre circle
-        double penaltyAreaLength;     ///< Penalty area (18-yard box) length, from the goal line
-        double penaltyAreaWidth;      ///< Penalty area (18-yard box) width
-        double goalpostWidth;         ///< Diameter of a (circular) goal post
-        double borderStripMinWidth;   ///< Minimum width of the border strip around the field
+        double line_width;              ///< Width of field lines
+        double field_length;            ///< Touchline (sideline) length
+        double field_width;             ///< Goal line (baseline) length
+        double goal_depth;              ///< Distance behind the goal line to the back of the net
+        double goal_width;              ///< Distance between the inner edges of the goal posts
+        double goal_area_length;        ///< Goal area (6-yard box) length, from the goal line
+        double goal_area_width;         ///< Goal area (6-yard box) width
+        double penalty_mark_distance;   ///< Distance from the goal line to the penalty mark
+        double centre_circle_diameter;  ///< Diameter of the centre circle
+        double penalty_area_length;     ///< Penalty area (18-yard box) length, from the goal line
+        double penalty_area_width;      ///< Penalty area (18-yard box) width
+        double goalpost_width;          ///< Diameter of a (circular) goal post
+        double border_strip_min_width;  ///< Minimum width of the border strip around the field
     };
 
     /**
@@ -97,10 +97,10 @@ namespace module::localisation::srif {
          * @return Squared distance to the nearest line centreline [m^2]
          */
         template <typename Scalar>
-        Scalar distanceSquaredToNearestLine(const Eigen::Vector2<Scalar>& p) const {
+        Scalar distance_squared_to_nearest_line(const Eigen::Vector2<Scalar>& p) const {
             using std::sqrt;
             Scalar best = Scalar(1e12);
-            for (const LineSegment& seg : lineSegments_) {
+            for (const LineSegment& seg : line_segments_) {
                 const Eigen::Vector2<Scalar> a  = seg.a.cast<Scalar>();
                 const Eigen::Vector2<Scalar> ab = (seg.b - seg.a).cast<Scalar>();
                 const double len2               = (seg.b - seg.a).squaredNorm();
@@ -113,7 +113,7 @@ namespace module::localisation::srif {
                 if (d2 < best)
                     best = d2;
             }
-            for (const Circle& c : lineCircles_) {
+            for (const Circle& c : line_circles_) {
                 const Eigen::Vector2<Scalar> pc = p - c.centre.cast<Scalar>();
                 Scalar n2                       = pc.squaredNorm();
                 if (n2 < Scalar(1e-12))
@@ -133,12 +133,12 @@ namespace module::localisation::srif {
         /// @brief Populate the landmarks and line primitives from #dims
         void build();
 
-        std::vector<Eigen::Vector3d> landmarksL_;         ///< L-intersection landmarks rLFf
-        std::vector<Eigen::Vector3d> landmarksT_;         ///< T-intersection landmarks rLFf
-        std::vector<Eigen::Vector3d> landmarksX_;         ///< X-intersection landmarks rLFf
-        std::vector<Eigen::Vector3d> landmarksGoalPost_;  ///< Goal post landmarks rLFf
-        std::vector<LineSegment> lineSegments_;           ///< Painted line segments
-        std::vector<Circle> lineCircles_;                 ///< Painted circles
+        std::vector<Eigen::Vector3d> landmarks_l_;          ///< L-intersection landmarks rLFf
+        std::vector<Eigen::Vector3d> landmarks_t_;          ///< T-intersection landmarks rLFf
+        std::vector<Eigen::Vector3d> landmarks_x_;          ///< X-intersection landmarks rLFf
+        std::vector<Eigen::Vector3d> landmarks_goal_post_;  ///< Goal post landmarks rLFf
+        std::vector<LineSegment> line_segments_;            ///< Painted line segments
+        std::vector<Circle> line_circles_;                  ///< Painted circles
     };
 }  // namespace module::localisation::srif
 

@@ -145,7 +145,7 @@ would tip the field lines off the plane in NUsight. This matches the `FieldLocal
 convention, and every consumer reasons about the field on the ground plane anyway.
 
 The reported `(x, y, yaw)` covariance takes yaw through row 2 of
-`SystemLocalisation::attitudeJacobian`, since yaw is a direction in the quaternion block rather than a
+`SystemLocalisation::attitude_jacobian`, since yaw is a direction in the quaternion block rather than a
 state element — that applies to its cross-covariance with position too.
 
 ## Usage
@@ -269,7 +269,7 @@ matches still hold is drift.
   landmarks, since distant background rarely accrues usable parallax), then scored against the pose and
   its mirror. Enabled by `use_side_disambiguator`; costs roughly 4 ms/frame, on its own reaction so it
   delays no landmark update. With the hypothesis bank on, each frame's evidence goes into the mixture
-  weights through `SystemLocalisation::addSideLogEvidence` and the correction happens smoothly as the
+  weights through `SystemLocalisation::add_side_log_evidence` and the correction happens smoothly as the
   representative changes; with it off, a sustained and decisive mirror preference flips the belief
   outright. Turning `use_side_disambiguator` off leaves the symmetry broken only at initialisation, by
   the own-half (+x) rule — which is false once play is under way.

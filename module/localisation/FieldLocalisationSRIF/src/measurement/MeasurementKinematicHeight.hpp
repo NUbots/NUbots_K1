@@ -36,14 +36,14 @@ namespace module::localisation::measurement {
         MeasurementKinematicHeight(double time, double height, double sigma = 0.02);
 
         virtual Eigen::VectorXd simulate(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g,
-                                     Eigen::MatrixXd& H) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g,
+                                      Eigen::MatrixXd& H) const override;
 
     protected:
         double y_;      ///< Measured torso height [m]

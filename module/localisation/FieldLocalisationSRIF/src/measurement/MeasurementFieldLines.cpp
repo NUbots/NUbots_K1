@@ -21,29 +21,29 @@ namespace module::localisation::measurement {
                                                  const SystemLocalisation& system,
                                                  const Options& options)
         : Measurement(time), map_(map), Tbc_(Tbc), options_(options) {
-        updateMethod_ = UpdateMethod::NEWTONTRUSTEIG;
+        update_method_ = UpdateMethod::NEWTONTRUSTEIG;
 
         // Select usable rays at the prior mean: downward-looking with a bounded
         // ground projection range, subsampled to the point budget. Fixing the
         // selection here keeps the term count of the cost constant during the
         // optimisation.
-        const Eigen::VectorXd xPrior = system.density.mean();
-        Pose<double> Tbias(SystemLocalisation::cameraBiasRotation<double>(xPrior), Eigen::Vector3d::Zero());
-        Pose<double> Tfc            = SystemLocalisation::fieldPose<double>(xPrior) * Tbc_ * Tbias;
-        const Eigen::Matrix3d& Rfc  = Tfc.rotationMatrix;
-        const Eigen::Vector3d& rCFf = Tfc.translationVector;
+        const Eigen::VectorXd x_prior = system.density.mean();
+        Pose<double> Tbias(SystemLocalisation::camera_bias_rotation<double>(x_prior), Eigen::Vector3d::Zero());
+        Pose<double> Tfc            = SystemLocalisation::field_pose<double>(x_prior) * Tbc_ * Tbias;
+        const Eigen::Matrix3d& Rfc  = Tfc.rotation_matrix;
+        const Eigen::Vector3d& rCFf = Tfc.translation_vector;
 
-        const Eigen::Index nAll = sample.rays.cols();
+        const Eigen::Index n_all = sample.rays.cols();
         std::vector<Eigen::Index> usable;
         std::vector<double> range;
-        usable.reserve(nAll);
-        for (Eigen::Index j = 0; j < nAll; ++j) {
+        usable.reserve(n_all);
+        for (Eigen::Index j = 0; j < n_all; ++j) {
             Eigen::Vector3d d = Rfc * sample.rays.col(j);
-            if (d.z() >= -options_.minDownward) {
+            if (d.z() >= -options_.min_downward) {
                 continue;  // Upward or grazing ray
             }
             double lambda = -rCFf.z() / d.z();
-            if (lambda <= 0 || lambda > options_.maxRange) {
+            if (lambda <= 0 || lambda > options_.max_range) {
                 continue;
             }
             usable.push_back(j);
@@ -51,12 +51,12 @@ namespace module::localisation::measurement {
         }
 
         const std::size_t stride =
-            std::max<std::size_t>(1, (usable.size() + options_.maxPoints - 1) / options_.maxPoints);
+            std::max<std::size_t>(1, (usable.size() + options_.max_points - 1) / options_.max_points);
         std::vector<Eigen::Index> selected;
-        std::vector<double> selectedRange;
+        std::vector<double> selected_range;
         for (std::size_t k = 0; k < usable.size(); k += stride) {
             selected.push_back(usable[k]);
-            selectedRange.push_back(range[k]);
+            selected_range.push_back(range[k]);
         }
 
         rays_.resize(3, static_cast<Eigen::Index>(selected.size()));
@@ -64,11 +64,11 @@ namespace module::localisation::measurement {
         for (std::size_t k = 0; k < selected.size(); ++k) {
             rays_.col(static_cast<Eigen::Index>(k)) = sample.rays.col(selected[k]);
             // Angular noise maps to ground distance noise ~ range * sigma_ang / sin(elevation)
-            Eigen::Vector3d d         = Rfc * sample.rays.col(selected[k]);
-            const double sinElevation = std::max(0.05, -d.z());
-            const double sigmaRange   = selectedRange[k] * options_.sigmaAngular / sinElevation;
+            Eigen::Vector3d d          = Rfc * sample.rays.col(selected[k]);
+            const double sin_elevation = std::max(0.05, -d.z());
+            const double sigma_range   = selected_range[k] * options_.sigma_angular / sin_elevation;
             sigma2_(static_cast<Eigen::Index>(k)) =
-                options_.sigmaDistance * options_.sigmaDistance + sigmaRange * sigmaRange;
+                options_.sigma_distance * options_.sigma_distance + sigma_range * sigma_range;
         }
     }
 
@@ -85,13 +85,13 @@ namespace module::localisation::measurement {
         return Eigen::VectorXd::Zero(rays_.cols());
     }
 
-    double MeasurementFieldLines::logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
-        return logLikelihoodImpl<double>(x);
+    double MeasurementFieldLines::log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
+        return log_likelihood_impl<double>(x);
     }
 
-    double MeasurementFieldLines::logLikelihood(const Eigen::VectorXd& x,
-                                                const SystemEstimator& /*system*/,
-                                                Eigen::VectorXd& g) const {
+    double MeasurementFieldLines::log_likelihood(const Eigen::VectorXd& x,
+                                                 const SystemEstimator& /*system*/,
+                                                 Eigen::VectorXd& g) const {
         using autodiff::at;
         using autodiff::dual;
         using autodiff::gradient;
@@ -100,16 +100,16 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual> xdual = x.cast<dual>();
         dual fdual;
         auto func = [this](const Eigen::VectorX<dual>& xd) -> dual {
-            return this->template logLikelihoodImpl<dual>(xd);
+            return this->template log_likelihood_impl<dual>(xd);
         };
         g = gradient(func, wrt(xdual), at(xdual), fdual);
         return static_cast<double>(fdual);
     }
 
-    double MeasurementFieldLines::logLikelihood(const Eigen::VectorXd& x,
-                                                const SystemEstimator& /*system*/,
-                                                Eigen::VectorXd& g,
-                                                Eigen::MatrixXd& H) const {
+    double MeasurementFieldLines::log_likelihood(const Eigen::VectorXd& x,
+                                                 const SystemEstimator& /*system*/,
+                                                 Eigen::VectorXd& g,
+                                                 Eigen::MatrixXd& H) const {
         using autodiff::at;
         using autodiff::dual2nd;
         using autodiff::hessian;
@@ -121,7 +121,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual2nd> xdual = x.cast<dual2nd>();
         dual2nd fdual;
         auto func = [this](const Eigen::VectorX<dual2nd>& xd) -> dual2nd {
-            return this->template logLikelihoodImpl<dual2nd>(xd);
+            return this->template log_likelihood_impl<dual2nd>(xd);
         };
         H = hessian(func, wrt(xdual), at(xdual), fdual, g);
         return static_cast<double>(fdual);

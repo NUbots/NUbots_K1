@@ -73,7 +73,7 @@ namespace utility::gaussian_filtering::measurement {
          * @param system The system estimator.
          * @return The log-likelihood value.
          */
-        virtual double logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const = 0;
+        virtual double log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const = 0;
 
         /**
          * @brief Calculate the log-likelihood and its gradient.
@@ -82,9 +82,9 @@ namespace utility::gaussian_filtering::measurement {
          * @param g Output parameter for the gradient.
          * @return The log-likelihood value.
          */
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g) const = 0;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g) const = 0;
 
         /**
          * @brief Calculate the log-likelihood, its gradient, and Hessian.
@@ -94,10 +94,10 @@ namespace utility::gaussian_filtering::measurement {
          * @param H Output parameter for the Hessian.
          * @return The log-likelihood value.
          */
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g,
-                                     Eigen::MatrixXd& H) const = 0;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g,
+                                      Eigen::MatrixXd& H) const = 0;
 
 
         /**
@@ -108,8 +108,8 @@ namespace utility::gaussian_filtering::measurement {
          * the posterior sqrt information matrix. Useful for hypothesis weighting and
          * update health monitoring. NaN until update() has run.
          */
-        double logEvidence() const {
-            return logEvidence_;
+        double log_evidence() const {
+            return log_evidence_;
         }
 
         /**
@@ -129,7 +129,7 @@ namespace utility::gaussian_filtering::measurement {
          * @param system The system estimator.
          * @return The cost value.
          */
-        double costJointDensity(const Eigen::VectorXd& x, const SystemEstimator& system) const;
+        double cost_joint_density(const Eigen::VectorXd& x, const SystemEstimator& system) const;
 
         /**
          * @brief Calculate the cost of the joint density and its gradient.
@@ -138,7 +138,7 @@ namespace utility::gaussian_filtering::measurement {
          * @param g Output parameter for the gradient.
          * @return The cost value.
          */
-        double costJointDensity(const Eigen::VectorXd& x, const SystemEstimator& system, Eigen::VectorXd& g) const;
+        double cost_joint_density(const Eigen::VectorXd& x, const SystemEstimator& system, Eigen::VectorXd& g) const;
 
         /**
          * @brief Calculate the cost of the joint density, its gradient, and Hessian.
@@ -148,10 +148,10 @@ namespace utility::gaussian_filtering::measurement {
          * @param H Output parameter for the Hessian.
          * @return The cost value.
          */
-        double costJointDensity(const Eigen::VectorXd& x,
-                                const SystemEstimator& system,
-                                Eigen::VectorXd& g,
-                                Eigen::MatrixXd& H) const;
+        double cost_joint_density(const Eigen::VectorXd& x,
+                                  const SystemEstimator& system,
+                                  Eigen::VectorXd& g,
+                                  Eigen::MatrixXd& H) const;
 
         /**
          * @brief Update the system based on this measurement.
@@ -172,9 +172,10 @@ namespace utility::gaussian_filtering::measurement {
             LEVENBERGMARQUARDT
         };
 
-        UpdateMethod updateMethod_;  ///< The method used for updating the system.
+        UpdateMethod update_method_;  ///< The method used for updating the system.
 
-        double logEvidence_ = std::numeric_limits<double>::quiet_NaN();  ///< Laplace log evidence from the last update.
+        double log_evidence_ =
+            std::numeric_limits<double>::quiet_NaN();  ///< Laplace log evidence from the last update.
     };
 
 }  // namespace utility::gaussian_filtering::measurement

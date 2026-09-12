@@ -19,20 +19,20 @@ namespace module::localisation::measurement {
 
     MeasurementGyroscope::MeasurementGyroscope(double time, const Eigen::Vector3d& gyroscope, double sigma)
         : Measurement(time), y_(gyroscope), sigma_(sigma) {
-        updateMethod_ = UpdateMethod::NEWTONTRUSTEIG;
+        update_method_ = UpdateMethod::NEWTONTRUSTEIG;
     }
 
     Eigen::VectorXd MeasurementGyroscope::simulate(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
-        return x.segment<3>(SystemLocalisation::iOmega) + x.segment<3>(SystemLocalisation::iGyroBias);
+        return x.segment<3>(SystemLocalisation::i_omega) + x.segment<3>(SystemLocalisation::i_gyro_bias);
     }
 
-    double MeasurementGyroscope::logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
-        return logLikelihoodImpl<double>(x);
+    double MeasurementGyroscope::log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
+        return log_likelihood_impl<double>(x);
     }
 
-    double MeasurementGyroscope::logLikelihood(const Eigen::VectorXd& x,
-                                               const SystemEstimator& /*system*/,
-                                               Eigen::VectorXd& g) const {
+    double MeasurementGyroscope::log_likelihood(const Eigen::VectorXd& x,
+                                                const SystemEstimator& /*system*/,
+                                                Eigen::VectorXd& g) const {
         using autodiff::at;
         using autodiff::dual;
         using autodiff::gradient;
@@ -41,16 +41,16 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual> xdual = x.cast<dual>();
         dual fdual;
         auto func = [this](const Eigen::VectorX<dual>& xd) -> dual {
-            return this->template logLikelihoodImpl<dual>(xd);
+            return this->template log_likelihood_impl<dual>(xd);
         };
         g = gradient(func, wrt(xdual), at(xdual), fdual);
         return static_cast<double>(fdual);
     }
 
-    double MeasurementGyroscope::logLikelihood(const Eigen::VectorXd& x,
-                                               const SystemEstimator& /*system*/,
-                                               Eigen::VectorXd& g,
-                                               Eigen::MatrixXd& H) const {
+    double MeasurementGyroscope::log_likelihood(const Eigen::VectorXd& x,
+                                                const SystemEstimator& /*system*/,
+                                                Eigen::VectorXd& g,
+                                                Eigen::MatrixXd& H) const {
         using autodiff::at;
         using autodiff::dual2nd;
         using autodiff::hessian;
@@ -62,7 +62,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual2nd> xdual = x.cast<dual2nd>();
         dual2nd fdual;
         auto func = [this](const Eigen::VectorX<dual2nd>& xd) -> dual2nd {
-            return this->template logLikelihoodImpl<dual2nd>(xd);
+            return this->template log_likelihood_impl<dual2nd>(xd);
         };
         H = hessian(func, wrt(xdual), at(xdual), fdual, g);
         return static_cast<double>(fdual);
@@ -74,21 +74,21 @@ namespace module::localisation::measurement {
 
     MeasurementBodyVelocity::MeasurementBodyVelocity(double time, const Eigen::Vector3d& velocity, double sigma)
         : Measurement(time), y_(velocity), sigma_(sigma) {
-        updateMethod_ = UpdateMethod::NEWTONTRUSTEIG;
+        update_method_ = UpdateMethod::NEWTONTRUSTEIG;
     }
 
     Eigen::VectorXd MeasurementBodyVelocity::simulate(const Eigen::VectorXd& x,
                                                       const SystemEstimator& /*system*/) const {
-        return x.segment<3>(SystemLocalisation::iVel);
+        return x.segment<3>(SystemLocalisation::i_vel);
     }
 
-    double MeasurementBodyVelocity::logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
-        return logLikelihoodImpl<double>(x);
+    double MeasurementBodyVelocity::log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const {
+        return log_likelihood_impl<double>(x);
     }
 
-    double MeasurementBodyVelocity::logLikelihood(const Eigen::VectorXd& x,
-                                                  const SystemEstimator& /*system*/,
-                                                  Eigen::VectorXd& g) const {
+    double MeasurementBodyVelocity::log_likelihood(const Eigen::VectorXd& x,
+                                                   const SystemEstimator& /*system*/,
+                                                   Eigen::VectorXd& g) const {
         using autodiff::at;
         using autodiff::dual;
         using autodiff::gradient;
@@ -97,16 +97,16 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual> xdual = x.cast<dual>();
         dual fdual;
         auto func = [this](const Eigen::VectorX<dual>& xd) -> dual {
-            return this->template logLikelihoodImpl<dual>(xd);
+            return this->template log_likelihood_impl<dual>(xd);
         };
         g = gradient(func, wrt(xdual), at(xdual), fdual);
         return static_cast<double>(fdual);
     }
 
-    double MeasurementBodyVelocity::logLikelihood(const Eigen::VectorXd& x,
-                                                  const SystemEstimator& /*system*/,
-                                                  Eigen::VectorXd& g,
-                                                  Eigen::MatrixXd& H) const {
+    double MeasurementBodyVelocity::log_likelihood(const Eigen::VectorXd& x,
+                                                   const SystemEstimator& /*system*/,
+                                                   Eigen::VectorXd& g,
+                                                   Eigen::MatrixXd& H) const {
         using autodiff::at;
         using autodiff::dual2nd;
         using autodiff::hessian;
@@ -118,7 +118,7 @@ namespace module::localisation::measurement {
         Eigen::VectorX<dual2nd> xdual = x.cast<dual2nd>();
         dual2nd fdual;
         auto func = [this](const Eigen::VectorX<dual2nd>& xd) -> dual2nd {
-            return this->template logLikelihoodImpl<dual2nd>(xd);
+            return this->template log_likelihood_impl<dual2nd>(xd);
         };
         H = hessian(func, wrt(xdual), at(xdual), fdual, g);
         return static_cast<double>(fdual);

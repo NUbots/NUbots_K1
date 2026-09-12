@@ -29,7 +29,7 @@
 #define UTILITY_GAUSSIAN_FILTERING_ROTATION_HPP
 
 #include <Eigen/Core>
-#include <Eigen/Geometry>  // tangentBasis uses cross products
+#include <Eigen/Geometry>  // tangent_basis uses cross products
 #include <autodiff/forward/dual.hpp>
 #include <autodiff/forward/dual/eigen.hpp>
 
@@ -177,7 +177,7 @@ namespace utility::gaussian_filtering {
     }
 
     /**
-     * @brief Quaternion kinematics matrix: qdot = 0.5*quatXi(q)*omega_body.
+     * @brief Quaternion kinematics matrix: qdot = 0.5*quat_Xi(q)*omega_body.
      *
      * Follows from qdot = 0.5*q (x) (0, omega_b), the body-rate form matching
      * Rdot = R*hatSO3(omega_b) for R = quat2rot(q). Unlike the equivalent
@@ -190,7 +190,7 @@ namespace utility::gaussian_filtering {
      * @return The 4x3 kinematics matrix Xi(q).
      */
     template <typename Derived>
-    Eigen::Matrix<typename Derived::Scalar, 4, 3> quatXi(const Eigen::MatrixBase<Derived>& q) {
+    Eigen::Matrix<typename Derived::Scalar, 4, 3> quat_Xi(const Eigen::MatrixBase<Derived>& q) {
         using Scalar    = typename Derived::Scalar;
         const Scalar& w = q(0);
         const Scalar& x = q(1);
@@ -245,7 +245,7 @@ namespace utility::gaussian_filtering {
      * @param u Unit vector
      * @return 3x2 matrix whose columns are orthonormal and perpendicular to u
      */
-    inline Eigen::Matrix<double, 3, 2> tangentBasis(const Eigen::Vector3d& u) {
+    inline Eigen::Matrix<double, 3, 2> tangent_basis(const Eigen::Vector3d& u) {
         Eigen::Vector3d t1 = u.cross(Eigen::Vector3d::UnitZ());
         if (t1.squaredNorm() < 1e-8) {
             t1 = u.cross(Eigen::Vector3d::UnitX());

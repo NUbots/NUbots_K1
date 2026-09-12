@@ -45,32 +45,32 @@ namespace utility::gaussian_filtering::system {
         // [ x] ~ N^{-1}([ eta ], [ Lambda,          0 ])
         // [dw]         ([   0 ]  [      0, LambdaQ/dt ])
 
-        auto pdw  = processNoiseDensity(dt);  // p(dw(idxQ)[k])
-        auto pxdw = density * pdw;            // p(x[k], dw(idxQ)[k]) = p(x[k])*p(dw(idxQ)[k])
+        auto pdw  = process_noise_density(dt);  // p(dw(idx_q)[k])
+        auto pxdw = density * pdw;              // p(x[k], dw(idx_q)[k]) = p(x[k])*p(dw(idx_q)[k])
 
-        // Phi maps [ x[k]; dw(idxQ)[k] ] to x[k+1]
-        auto Phi = [&](const Eigen::VectorXd& xdw, Eigen::MatrixXd& J) { return RK4SDEHelper(xdw, dt, J); };
+        // Phi maps [ x[k]; dw(idx_q)[k] ] to x[k+1]
+        auto Phi = [&](const Eigen::VectorXd& xdw, Eigen::MatrixXd& J) { return rk4_sde_helper(xdw, dt, J); };
 
-        // Map p(x[k], dw(idxQ)[k]) to p(x[k+1])
-        density = pxdw.affineTransform(Phi);
+        // Map p(x[k], dw(idx_q)[k]) to p(x[k+1])
+        density = pxdw.affine_transform(Phi);
 
         time_ = time;
     }
 
-    Eigen::VectorXd SystemEstimator::dynamicsEst(double t, const Eigen::VectorXd& x, Eigen::MatrixXd& J) const {
+    Eigen::VectorXd SystemEstimator::dynamics_est(double t, const Eigen::VectorXd& x, Eigen::MatrixXd& J) const {
         Eigen::VectorXd u = input(t, x);
         return dynamics(t, x, u, J);
     }
 
     // Evaluate F(X) from dX = F(X)*dt + dW
-    Eigen::MatrixXd SystemEstimator::augmentedDynamicsEst(double t, const Eigen::MatrixXd& X) const {
+    Eigen::MatrixXd SystemEstimator::augmented_dynamics_est(double t, const Eigen::MatrixXd& X) const {
         assert(X.size() > 0);
         int nx = X.rows();
         assert(X.cols() == 2 * nx + 1);
 
         Eigen::VectorXd x = X.col(0);
         Eigen::MatrixXd J;
-        Eigen::VectorXd f = dynamicsEst(t, x, J);
+        Eigen::VectorXd f = dynamics_est(t, x, J);
         assert(f.rows() == nx);
         assert(J.rows() == nx);
         assert(J.cols() == nx);
@@ -80,23 +80,23 @@ namespace utility::gaussian_filtering::system {
         return dX;
     }
 
-    // Map [x[k]; dw(idxQ)[k]] to x[k+1] using RK4
-    Eigen::VectorXd SystemEstimator::RK4SDEHelper(const Eigen::VectorXd& xdw, double dt, Eigen::MatrixXd& J) const {
-        const std::vector<Eigen::Index>& idxQ = processNoiseIndex();
+    // Map [x[k]; dw(idx_q)[k]] to x[k+1] using RK4
+    Eigen::VectorXd SystemEstimator::rk4_sde_helper(const Eigen::VectorXd& xdw, double dt, Eigen::MatrixXd& J) const {
+        const std::vector<Eigen::Index>& idx_q = process_noise_index();
 
-        const std::size_t nq = idxQ.size();
+        const std::size_t nq = idx_q.size();
         const std::size_t nx = xdw.size() - nq;
 
         Eigen::VectorXd x(nx), dw(nx);
         x = xdw.head(nx);
         dw.setZero();
-        dw(idxQ) = xdw.tail(nq);
+        dw(idx_q) = xdw.tail(nq);
 
         // Let \Delta t == n \delta t.
         // Determine minimum of substeps required such that \delta t <= \delta t_{max}
-        int nSubsteps = std::max(1, static_cast<int>(std::ceil(dt / dtMaxEst)));
-        dt            = dt / nSubsteps;  // \Delta t = n \delta t
-        dw            = dw / nSubsteps;  // \Delta w = n \delta w
+        int n_substeps = std::max(1, static_cast<int>(std::ceil(dt / dt_max_est)));
+        dt             = dt / n_substeps;  // \Delta t = n \delta t
+        dw             = dw / n_substeps;  // \Delta w = n \delta w
 
         typedef Eigen::MatrixXd Matrix;
 
@@ -107,22 +107,22 @@ namespace utility::gaussian_filtering::system {
         dW << dw, Matrix::Zero(nx, nx), Matrix::Identity(nx, nx);
 
         double t = time_;
-        for (int j = 0; j < nSubsteps; ++j) {
+        for (int j = 0; j < n_substeps; ++j) {
             Matrix F1, F2, F3, F4;
-            F1 = augmentedDynamicsEst(t, X);
-            F2 = augmentedDynamicsEst(t + dt / 2, X + (F1 * dt + dW) / 2);
-            F3 = augmentedDynamicsEst(t + dt / 2, X + (F2 * dt + dW) / 2);
-            F4 = augmentedDynamicsEst(t + dt, X + F3 * dt + dW);
+            F1 = augmented_dynamics_est(t, X);
+            F2 = augmented_dynamics_est(t + dt / 2, X + (F1 * dt + dW) / 2);
+            F3 = augmented_dynamics_est(t + dt / 2, X + (F2 * dt + dW) / 2);
+            F4 = augmented_dynamics_est(t + dt, X + F3 * dt + dW);
             X  = X + (F1 + 2 * F2 + 2 * F3 + F4) * dt / 6 + dW;
             t  = t + dt;
         }
 
         // X[k+1] = [ x[k+1], dx[k+1]/dx[k], dx[k+1]/dw[k] ]
         J.resize(nx, nx + nq);
-        J << X.middleCols(1, nx), X.middleCols(nx + 1, nx)(Eigen::all, idxQ) / nSubsteps;
+        J << X.middleCols(1, nx), X.middleCols(nx + 1, nx)(Eigen::all, idx_q) / n_substeps;
         // Since \Delta w = n \delta w, then
         // \frac{\partial \mathbf{x}}{\partial \Delta\mathbf{w}} = \frac{\partial \mathbf{x}}{\partial
-        // \delta\mathbf{w}} \frac{1}{n} therefore we divide Jdw by nSubsteps.
+        // \delta\mathbf{w}} \frac{1}{n} therefore we divide Jdw by n_substeps.
         return X.col(0);
     }
 

@@ -52,10 +52,10 @@ namespace utility::gaussian_filtering::funcmin {
      * @see Moré, J.J. and D.C. Sorensen, "Computing a Trust Region Step",
      *      SIAM Journal on Scientific and Statistical Computing, Vol. 3, pp. 553-572, 1983.
      */
-    int trsEig(const Eigen::MatrixXd& H, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p);
+    int trs_eig(const Eigen::MatrixXd& H, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p);
 
     /**
-     * @brief As trsEig above, but with H already eigendecomposed as H = Q*diag(v)*Q.'.
+     * @brief As trs_eig above, but with H already eigendecomposed as H = Q*diag(v)*Q.'.
      *
      * @param Q Eigenvectors of H
      * @param v Eigenvalues of H
@@ -64,11 +64,11 @@ namespace utility::gaussian_filtering::funcmin {
      * @param[out] p Solution vector
      * @return 0 on success, non-zero on failure
      */
-    int trsEig(const Eigen::MatrixXd& Q,
-               const Eigen::VectorXd& v,
-               const Eigen::VectorXd& g,
-               double D,
-               Eigen::VectorXd& p);
+    int trs_eig(const Eigen::MatrixXd& Q,
+                const Eigen::VectorXd& v,
+                const Eigen::VectorXd& g,
+                double D,
+                Eigen::VectorXd& p);
 
 
     /**
@@ -81,7 +81,7 @@ namespace utility::gaussian_filtering::funcmin {
      * @param[out] p Solution vector
      * @return 0 on success, non-zero on failure
      */
-    int trsSqrt(const Eigen::MatrixXd& Xi, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p);
+    int trs_sqrt(const Eigen::MatrixXd& Xi, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p);
 
     /**
      * @brief Trust-region subproblem for sparse H = Pi*Xi.'*Xi*Pi.': minimise
@@ -94,11 +94,11 @@ namespace utility::gaussian_filtering::funcmin {
      * @param[out] p Solution vector
      * @return 0 on success, non-zero on failure
      */
-    int trsSqrtSparse(const Eigen::SparseMatrix<double>& Xi,
-                      const Eigen::PermutationMatrix<Eigen::Dynamic>& Pi,
-                      const Eigen::VectorXd& g,
-                      double D,
-                      Eigen::VectorXd& p);
+    int trs_sqrt_sparse(const Eigen::SparseMatrix<double>& Xi,
+                        const Eigen::PermutationMatrix<Eigen::Dynamic>& Pi,
+                        const Eigen::VectorXd& g,
+                        double D,
+                        Eigen::VectorXd& p);
 
     /**
      * @brief Trust-region subproblem for H = inv(S.'*S): minimise 0.5*p.'*inv(S.'*S)*p + g.'*p
@@ -110,14 +110,14 @@ namespace utility::gaussian_filtering::funcmin {
      * @param[out] p Solution vector
      * @return 0 on success, non-zero on failure
      */
-    int trsSqrtInv(const Eigen::MatrixXd& S, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p);
+    int trs_sqrt_inv(const Eigen::MatrixXd& S, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p);
 
     /**
      * @brief Minimise f(x) by trust-region Newton, returning the Hessian as the
-     * eigendecomposition H = Q*diag(v)*Q.' that trsEig needs each iteration.
+     * eigendecomposition H = Q*diag(v)*Q.' that trs_eig needs each iteration.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient and Hessian
+     * @param cost_func Cost function that returns f(x) and computes gradient and Hessian
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[out] Q Eigenvectors of the Hessian at the optimal solution
@@ -125,7 +125,11 @@ namespace utility::gaussian_filtering::funcmin {
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int NewtonTrustEig(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& Q, Eigen::VectorXd& v) {
+    int newton_trust_eig(Func cost_func,
+                         Eigen::VectorXd& x,
+                         Eigen::VectorXd& g,
+                         Eigen::MatrixXd& Q,
+                         Eigen::VectorXd& v) {
         typedef double Scalar;
         typedef Eigen::VectorXd Vector;
         typedef Eigen::MatrixXd Matrix;
@@ -143,7 +147,7 @@ namespace utility::gaussian_filtering::funcmin {
         Matrix Hn(x.size(), x.size());
 
         // Evaluate initial cost, gradient and Hessian
-        Scalar f = costFunc(x, g, H);
+        Scalar f = cost_func(x, g, H);
         if (!std::isfinite(f) || !g.allFinite() || !H.allFinite())  // if any nan, -inf or +inf
         {
             NUClear::log<NUClear::LogLevel::WARN>("Initial point is not in domain of cost function");
@@ -151,17 +155,17 @@ namespace utility::gaussian_filtering::funcmin {
         }
 
         // Eigendecomposition of initial Hessian
-        Eigen::SelfAdjointEigenSolver<Matrix> eigenH(H);
-        v = eigenH.eigenvalues();
-        Q = eigenH.eigenvectors();
+        Eigen::SelfAdjointEigenSolver<Matrix> eigen_H(H);
+        v = eigen_H.eigenvalues();
+        Q = eigen_H.eigenvectors();
 
         Scalar Delta = 1e0;  // Initial trust-region radius
 
-        const int maxIterations = 5000;
-        for (int i = 0; i < maxIterations; ++i) {
+        const int max_iterations = 5000;
+        for (int i = 0; i < max_iterations; ++i) {
             // Solve trust-region subproblem
             Vector p;
-            trsEig(Q, v, g, Delta, p);  // minimise 0.5*p.'*H*p + g.'*p subject to ||p|| <= Delta
+            trs_eig(Q, v, g, Delta, p);  // minimise 0.5*p.'*H*p + g.'*p subject to ||p|| <= Delta
 
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p
@@ -175,11 +179,11 @@ namespace utility::gaussian_filtering::funcmin {
             }
 
             // Evaluate cost, gradient and Hessian for trial step
-            xn               = x + p;
-            Scalar fn        = costFunc(xn, gn, Hn);
-            bool outOfDomain = !std::isfinite(fn) || !gn.allFinite() || !Hn.allFinite();  // if any nan, -inf or +inf
+            xn                 = x + p;
+            Scalar fn          = cost_func(xn, gn, Hn);
+            bool out_of_domain = !std::isfinite(fn) || !gn.allFinite() || !Hn.allFinite();  // if any nan, -inf or +inf
             Scalar rho;
-            if (outOfDomain) {
+            if (out_of_domain) {
                 rho = -1;  // Force trust region reduction and reject step
             }
             else {
@@ -204,9 +208,9 @@ namespace utility::gaussian_filtering::funcmin {
                 H = Hn;
 
                 // Eigendecomposition of accepted Hessian
-                Eigen::SelfAdjointEigenSolver<Matrix> eigenH_(H);
-                v = eigenH_.eigenvalues();
-                Q = eigenH_.eigenvectors();
+                Eigen::SelfAdjointEigenSolver<Matrix> eigen_H_(H);
+                v = eigen_H_.eigenvalues();
+                Q = eigen_H_.eigenvectors();
             }
         }
         NUClear::log<NUClear::LogLevel::WARN>("Maximum number of iterations reached");
@@ -217,17 +221,17 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by trust-region Newton, returning the Hessian.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient and Hessian
+     * @param cost_func Cost function that returns f(x) and computes gradient and Hessian
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[out] H Hessian matrix at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int NewtonTrust(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
+    int newton_trust(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
         Eigen::MatrixXd Q(x.size(), x.size());
         Eigen::VectorXd v(x.size());
-        int retval = NewtonTrustEig(costFunc, x, g, Q, v);
+        int retval = newton_trust_eig(cost_func, x, g, Q, v);
         H          = Q * v.asDiagonal() * Q.transpose();
         return retval;
     }
@@ -236,29 +240,29 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by trust-region Newton, returning the gradient.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient and Hessian
+     * @param cost_func Cost function that returns f(x) and computes gradient and Hessian
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int NewtonTrust(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g) {
+    int newton_trust(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g) {
         Eigen::MatrixXd H(x.size(), x.size());
-        return NewtonTrust(costFunc, x, g, H);
+        return newton_trust(cost_func, x, g, H);
     }
 
     /**
      * @brief Minimise f(x) by trust-region Newton.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient and Hessian
+     * @param cost_func Cost function that returns f(x) and computes gradient and Hessian
      * @param[in,out] x  Initial guess on input, optimal solution on output
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int NewtonTrust(Func costFunc, Eigen::VectorXd& x) {
+    int newton_trust(Func cost_func, Eigen::VectorXd& x) {
         Eigen::VectorXd g(x.size());
-        return NewtonTrust(costFunc, x, g);
+        return newton_trust(cost_func, x, g);
     }
 
     /**
@@ -278,7 +282,7 @@ namespace utility::gaussian_filtering::funcmin {
      * built up from symmetric rank-1 updates rather than supplied by the cost function.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[out] Q Eigenvectors of the Hessian at the optimal solution
@@ -286,7 +290,7 @@ namespace utility::gaussian_filtering::funcmin {
      * @return int 0 on success, non-zero on failure
      */
     template <typename Func>
-    int SR1TrustEig(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& Q, Eigen::VectorXd& v) {
+    int sr1_trust_eig(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& Q, Eigen::VectorXd& v) {
         typedef double Scalar;
         typedef Eigen::VectorXd Vector;
         typedef Eigen::MatrixXd Matrix;
@@ -303,7 +307,7 @@ namespace utility::gaussian_filtering::funcmin {
         Vector gn(x.size());
 
         // Evaluate initial cost and gradient
-        Scalar f = costFunc(x, g);
+        Scalar f = cost_func(x, g);
         if (!std::isfinite(f) || !g.allFinite())  // if any nan, -inf or +inf
         {
             NUClear::log<NUClear::LogLevel::WARN>("Initial point is not in domain of cost function");
@@ -315,11 +319,11 @@ namespace utility::gaussian_filtering::funcmin {
 
         Scalar Delta = 1e0;  // Initial trust-region radius
 
-        const int maxIterations = 5000;
-        for (int i = 0; i < maxIterations; ++i) {
+        const int max_iterations = 5000;
+        for (int i = 0; i < max_iterations; ++i) {
             // Solve trust-region subproblem
             Vector p;
-            trsEig(Q, v, g, Delta, p);  // minimise 0.5*p.'*H*p + g.'*p subject to ||p|| <= Delta
+            trs_eig(Q, v, g, Delta, p);  // minimise 0.5*p.'*H*p + g.'*p subject to ||p|| <= Delta
 
             Scalar pg       = p.dot(g);
             Scalar LambdaSq = -pg;  // The Newton decrement squared is g.'*inv(H)*g = p.'*H*p
@@ -333,13 +337,13 @@ namespace utility::gaussian_filtering::funcmin {
             }
 
             // Evaluate cost and gradient for trial step
-            xn               = x + p;
-            Scalar fn        = costFunc(xn, gn);
-            bool outOfDomain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
-            Vector y         = gn - g;
+            xn                 = x + p;
+            Scalar fn          = cost_func(xn, gn);
+            bool out_of_domain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
+            Vector y           = gn - g;
 
             Scalar rho;
-            if (outOfDomain) {
+            if (out_of_domain) {
                 rho = -1;  // Force trust region reduction and reject step
             }
             else {
@@ -365,7 +369,7 @@ namespace utility::gaussian_filtering::funcmin {
 
             // Update Hessian approximation
             const Scalar sqrteps = std::sqrt(std::numeric_limits<Scalar>::epsilon());
-            if (!outOfDomain) {
+            if (!out_of_domain) {
                 Vector w  = y - H * p;
                 Scalar pw = p.dot(w);
                 if (std::fabs(pw) > sqrteps * p.norm() * w.norm()) {
@@ -374,9 +378,9 @@ namespace utility::gaussian_filtering::funcmin {
                     H        = H + s * (u * u.transpose());
 
                     // Eigendecomposition of updated Hessian
-                    Eigen::SelfAdjointEigenSolver<Matrix> eigenH(H);
-                    v = eigenH.eigenvalues();
-                    Q = eigenH.eigenvectors();
+                    Eigen::SelfAdjointEigenSolver<Matrix> eigen_H(H);
+                    v = eigen_H.eigenvalues();
+                    Q = eigen_H.eigenvectors();
                     // We should do a rank-one update of Q and v instead of a full eigendecomposition using, e.g.,
                     // [1] Bunch, J.R., Nielsen, C.P. and Sorensen, D.C., 1978. Rank-one modification of the symmetric
                     // eigenproblem. Numerische Mathematik, 31(1), pp.31-48.
@@ -391,19 +395,19 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by trust-region SR1, returning the Hessian.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[out] H Hessian matrix at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int SR1Trust(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
+    int sr1_trust(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
         Eigen::MatrixXd Q(x.size(), x.size());
         Eigen::VectorXd v(x.size());
         Q.setIdentity();
         v.fill(1.0);
-        int retval = SR1TrustEig(costFunc, x, g, Q, v);
+        int retval = sr1_trust_eig(cost_func, x, g, Q, v);
         H          = Q * v.asDiagonal() * Q.transpose();
         return retval;
     }
@@ -412,29 +416,29 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by trust-region SR1, returning the gradient.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int SR1Trust(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g) {
+    int sr1_trust(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g) {
         Eigen::MatrixXd H(x.size(), x.size());
-        return SR1Trust(costFunc, x, g, H);
+        return sr1_trust(cost_func, x, g, H);
     }
 
     /**
      * @brief Minimise f(x) by trust-region SR1.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int SR1Trust(Func costFunc, Eigen::VectorXd& x) {
+    int sr1_trust(Func cost_func, Eigen::VectorXd& x) {
         Eigen::VectorXd g(x.size());
-        return SR1Trust(costFunc, x, g);
+        return sr1_trust(cost_func, x, g);
     }
 
     /**
@@ -442,14 +446,14 @@ namespace utility::gaussian_filtering::funcmin {
      * H = Xi.'*Xi so it stays positive semidefinite under rounding.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[in,out] Xi Square-root of the Hessian matrix (upper triangular)
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrustSqrt(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& Xi) {
+    int bfgs_trust_sqrt(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& Xi) {
         typedef double Scalar;
         typedef Eigen::VectorXd Vector;
         typedef Eigen::MatrixXd Matrix;
@@ -463,7 +467,7 @@ namespace utility::gaussian_filtering::funcmin {
         Vector gn(x.size());
 
         // Evaluate initial cost and gradient
-        Scalar f = costFunc(x, g);
+        Scalar f = cost_func(x, g);
         if (!std::isfinite(f) || !g.allFinite())  // if any nan, -inf or +inf
         {
             NUClear::log<NUClear::LogLevel::WARN>("Initial point is not in domain of cost function");
@@ -472,11 +476,11 @@ namespace utility::gaussian_filtering::funcmin {
 
         Scalar Delta = 10e0;  // Initial trust-region radius
 
-        const int maxIterations = 5000;
-        for (int i = 0; i < maxIterations; ++i) {
+        const int max_iterations = 5000;
+        for (int i = 0; i < max_iterations; ++i) {
             // Solve trust-region subproblem
             Vector p;
-            trsSqrt(Xi, g, Delta, p);  // minimise 0.5*p.'*Xi.'*Xi*p + g.'*p subject to ||Xi*p|| <= Delta
+            trs_sqrt(Xi, g, Delta, p);  // minimise 0.5*p.'*Xi.'*Xi*p + g.'*p subject to ||Xi*p|| <= Delta
             Vector z = Xi * p;
 
             Scalar pg       = p.dot(g);
@@ -491,13 +495,13 @@ namespace utility::gaussian_filtering::funcmin {
             }
 
             // Evaluate cost and gradient for trial step
-            xn               = x + p;
-            Scalar fn        = costFunc(xn, gn);
-            bool outOfDomain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
-            Vector y         = gn - g;
+            xn                 = x + p;
+            Scalar fn          = cost_func(xn, gn);
+            bool out_of_domain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
+            Vector y           = gn - g;
 
             Scalar rho;
-            if (outOfDomain) {
+            if (out_of_domain) {
                 rho = -1;  // Force trust region reduction and reject step
             }
             else {
@@ -524,7 +528,7 @@ namespace utility::gaussian_filtering::funcmin {
 
             // Update Hessian approximation
             const Scalar sqrteps = std::sqrt(std::numeric_limits<Scalar>::epsilon());
-            if (!outOfDomain) {
+            if (!out_of_domain) {
                 Scalar py = p.dot(y);
                 if (py > sqrteps * y.norm() * p.norm()) {
                     // Form
@@ -548,17 +552,17 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by trust-region BFGS, returning the Hessian.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[out] H Hessian matrix at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrust(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
+    int bfgs_trust(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
         Eigen::MatrixXd Xi(x.size(), x.size());
         Xi.setIdentity();
-        int retval = BFGSTrustSqrt(costFunc, x, g, Xi);
+        int retval = bfgs_trust_sqrt(cost_func, x, g, Xi);
         H          = Xi.transpose() * Xi;
         return retval;
     }
@@ -567,29 +571,29 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by trust-region BFGS, returning the gradient.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrust(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g) {
+    int bfgs_trust(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g) {
         Eigen::MatrixXd H(x.size(), x.size());
-        return BFGSTrust(costFunc, x, g, H);
+        return bfgs_trust(cost_func, x, g, H);
     }
 
     /**
      * @brief Minimise f(x) by trust-region BFGS.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrust(Func costFunc, Eigen::VectorXd& x) {
+    int bfgs_trust(Func cost_func, Eigen::VectorXd& x) {
         Eigen::VectorXd g(x.size());
-        return BFGSTrust(costFunc, x, g);
+        return bfgs_trust(cost_func, x, g);
     }
 
     /**
@@ -597,7 +601,7 @@ namespace utility::gaussian_filtering::funcmin {
      * H = Pi*Xi.'*Xi*Pi.', where Pi is a fill-reducing permutation.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[in,out] Xi Sparse square-root of the Hessian matrix (upper triangular)
@@ -605,11 +609,11 @@ namespace utility::gaussian_filtering::funcmin {
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrustSqrtSparse(Func costFunc,
-                            Eigen::VectorXd& x,
-                            Eigen::VectorXd& g,
-                            Eigen::SparseMatrix<double>& Xi,
-                            Eigen::PermutationMatrix<Eigen::Dynamic>& Pi) {
+    int bfgs_trust_sqrt_sparse(Func cost_func,
+                               Eigen::VectorXd& x,
+                               Eigen::VectorXd& g,
+                               Eigen::SparseMatrix<double>& Xi,
+                               Eigen::PermutationMatrix<Eigen::Dynamic>& Pi) {
         typedef double Scalar;
         typedef Eigen::VectorXd Vector;
         // typedef Eigen::MatrixXd Matrix;
@@ -623,7 +627,7 @@ namespace utility::gaussian_filtering::funcmin {
         Vector gn(x.size());
 
         // Evaluate initial cost and gradient
-        Scalar f = costFunc(x, g);
+        Scalar f = cost_func(x, g);
         if (!std::isfinite(f) || !g.allFinite())  // if any nan, -inf or +inf
         {
             NUClear::log<NUClear::LogLevel::WARN>("Initial point is not in domain of cost function");
@@ -632,15 +636,15 @@ namespace utility::gaussian_filtering::funcmin {
 
         Scalar Delta = 10e0;  // Initial trust-region radius
 
-        const int maxIterations = 5000;
-        for (int i = 0; i < maxIterations; ++i) {
+        const int max_iterations = 5000;
+        for (int i = 0; i < max_iterations; ++i) {
             // Solve trust-region subproblem
             Vector p;
-            trsSqrtSparse(Xi,
-                          Pi,
-                          g,
-                          Delta,
-                          p);  // minimise 0.5*p.'*Pi*Xi.'*Xi*Pi.'*p + g.'*p subject to ||Xi*Pi.'*p|| <= Delta
+            trs_sqrt_sparse(Xi,
+                            Pi,
+                            g,
+                            Delta,
+                            p);  // minimise 0.5*p.'*Pi*Xi.'*Xi*Pi.'*p + g.'*p subject to ||Xi*Pi.'*p|| <= Delta
             Vector z = Xi * Pi.transpose() * p;  // Xi*Pi.'*p
 
             Scalar pg       = p.dot(g);
@@ -655,13 +659,13 @@ namespace utility::gaussian_filtering::funcmin {
             }
 
             // Evaluate cost and gradient for trial step
-            xn               = x + p;
-            Scalar fn        = costFunc(xn, gn);
-            bool outOfDomain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
-            Vector y         = gn - g;
+            xn                 = x + p;
+            Scalar fn          = cost_func(xn, gn);
+            bool out_of_domain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
+            Vector y           = gn - g;
 
             Scalar rho;
-            if (outOfDomain) {
+            if (out_of_domain) {
                 rho = -1;  // Force trust region reduction and reject step
             }
             else {
@@ -688,7 +692,7 @@ namespace utility::gaussian_filtering::funcmin {
 
             // Update Hessian approximation
             const Scalar sqrteps = std::sqrt(std::numeric_limits<Scalar>::epsilon());
-            if (!outOfDomain) {
+            if (!out_of_domain) {
                 Scalar py = p.dot(y);
                 if (py > sqrteps * y.norm() * p.norm()) {
                     Eigen::SparseQR<Eigen::SparseMatrix<Scalar>, Eigen::COLAMDOrdering<int>> spqr_solver;
@@ -735,19 +739,19 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by sparse trust-region BFGS, returning a dense Hessian.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[out] H Hessian matrix at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrustSparse(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
+    int bfgs_trust_sparse(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
         Eigen::SparseMatrix<double> Xi(x.size(), x.size());
         Xi.setIdentity();
         Eigen::PermutationMatrix<Eigen::Dynamic> Pi(x.size());
         Pi.setIdentity();
-        int retval = BFGSTrustSqrtSparse(costFunc, x, g, Xi, Pi);
+        int retval = bfgs_trust_sqrt_sparse(cost_func, x, g, Xi, Pi);
         H          = Pi * (Xi.transpose() * Xi) * Pi.transpose();
         return retval;
     }
@@ -756,29 +760,29 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by sparse trust-region BFGS, returning the gradient.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrustSparse(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g) {
+    int bfgs_trust_sparse(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g) {
         Eigen::MatrixXd H(x.size(), x.size());
-        return BFGSTrustSparse(costFunc, x, g, H);
+        return bfgs_trust_sparse(cost_func, x, g, H);
     }
 
     /**
      * @brief Minimise f(x) by sparse trust-region BFGS.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrustSparse(Func costFunc, Eigen::VectorXd& x) {
+    int bfgs_trust_sparse(Func cost_func, Eigen::VectorXd& x) {
         Eigen::VectorXd g(x.size());
-        return BFGSTrustSparse(costFunc, x, g);
+        return bfgs_trust_sparse(cost_func, x, g);
     }
 
     /**
@@ -786,14 +790,14 @@ namespace utility::gaussian_filtering::funcmin {
      * form inv(H) = S.'*S.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[in,out] S Square-root of the inverse Hessian matrix (upper triangular)
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrustSqrtInv(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& S) {
+    int bfgs_trust_sqrt_inv(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& S) {
         typedef double Scalar;
         typedef Eigen::VectorXd Vector;
         typedef Eigen::MatrixXd Matrix;
@@ -807,7 +811,7 @@ namespace utility::gaussian_filtering::funcmin {
         Vector gn(x.size());
 
         // Evaluate initial cost and gradient
-        Scalar f = costFunc(x, g);
+        Scalar f = cost_func(x, g);
         if (!std::isfinite(f) || !g.allFinite())  // if any nan, -inf or +inf
         {
             NUClear::log<NUClear::LogLevel::WARN>("Initial point is not in domain of cost function");
@@ -816,11 +820,11 @@ namespace utility::gaussian_filtering::funcmin {
 
         Scalar Delta = 10e0;  // Initial trust-region radius
 
-        const int maxIterations = 5000;
-        for (int i = 0; i < maxIterations; ++i) {
+        const int max_iterations = 5000;
+        for (int i = 0; i < max_iterations; ++i) {
             // Solve trust-region subproblem
             Vector p;
-            trsSqrtInv(S, g, Delta, p);  // minimise 0.5*p.'*inv(S.'*S)*p + g.'*p subject to ||inv(S.')*p|| <= Delta
+            trs_sqrt_inv(S, g, Delta, p);  // minimise 0.5*p.'*inv(S.'*S)*p + g.'*p subject to ||inv(S.')*p|| <= Delta
             // Solve S.'*z = p for z
             Vector z = S.triangularView<Eigen::Upper>().transpose().solve(p);
 
@@ -836,13 +840,13 @@ namespace utility::gaussian_filtering::funcmin {
             }
 
             // Evaluate cost and gradient for trial step
-            xn               = x + p;
-            Scalar fn        = costFunc(xn, gn);
-            bool outOfDomain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
-            Vector y         = gn - g;
+            xn                 = x + p;
+            Scalar fn          = cost_func(xn, gn);
+            bool out_of_domain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
+            Vector y           = gn - g;
 
             Scalar rho;
-            if (outOfDomain) {
+            if (out_of_domain) {
                 rho = -1;  // Force trust region reduction and reject step
             }
             else {
@@ -869,7 +873,7 @@ namespace utility::gaussian_filtering::funcmin {
 
             // Update Hessian approximation
             const Scalar sqrteps = std::sqrt(std::numeric_limits<Scalar>::epsilon());
-            if (!outOfDomain) {
+            if (!out_of_domain) {
                 Scalar py = p.dot(y);
                 if (py > sqrteps * y.norm() * p.norm()) {
                     // Form
@@ -892,17 +896,17 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by inverse-form trust-region BFGS, returning the Hessian.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[out] H Hessian matrix at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrustInv(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
+    int bfgs_trust_inv(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
         Eigen::MatrixXd S(x.size(), x.size());
         S.setIdentity();
-        int retval = BFGSTrustSqrtInv(costFunc, x, g, S);
+        int retval = bfgs_trust_sqrt_inv(cost_func, x, g, S);
         Eigen::MatrixXd Xi =
             S.triangularView<Eigen::Upper>().transpose().solve(Eigen::MatrixXd::Identity(x.size(), x.size()));
         Eigen::HouseholderQR<Eigen::Ref<Eigen::MatrixXd>> qr(Xi);  // In-place QR decomposition
@@ -915,29 +919,29 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by inverse-form trust-region BFGS, returning the gradient.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrustInv(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g) {
+    int bfgs_trust_inv(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g) {
         Eigen::MatrixXd H(x.size(), x.size());
-        return BFGSTrustInv(costFunc, x, g, H);
+        return bfgs_trust_inv(cost_func, x, g, H);
     }
 
     /**
      * @brief Minimise f(x) by inverse-form trust-region BFGS.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSTrustInv(Func costFunc, Eigen::VectorXd& x) {
+    int bfgs_trust_inv(Func cost_func, Eigen::VectorXd& x) {
         Eigen::VectorXd g(x.size());
-        return BFGSTrustInv(costFunc, x, g);
+        return bfgs_trust_inv(cost_func, x, g);
     }
 
     /**
@@ -945,14 +949,14 @@ namespace utility::gaussian_filtering::funcmin {
      * factor lambda takes the place of the trust-region radius.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[in,out] Xi Square-root of the Hessian matrix (upper triangular)
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSLMSqrt(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& Xi) {
+    int bfgs_lm_sqrt(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& Xi) {
         typedef double Scalar;
         typedef Eigen::VectorX<Scalar> Vector;
         typedef Eigen::MatrixX<Scalar> Matrix;
@@ -966,7 +970,7 @@ namespace utility::gaussian_filtering::funcmin {
         Vector gn(x.size());
 
         // Evaluate initial cost and gradient
-        Scalar f = costFunc(x, g);
+        Scalar f = cost_func(x, g);
         if (!std::isfinite(f) || !g.allFinite())  // if any nan, -inf or +inf
         {
             NUClear::log<NUClear::LogLevel::WARN>("Initial point is not in domain of cost function");
@@ -981,8 +985,8 @@ namespace utility::gaussian_filtering::funcmin {
         // Scalar nu = 2.0;
         // Scalar alpha = 0.00;         // 0: robust, 1: fast
 
-        const int maxIterations = 5000;
-        for (int i = 0; i < maxIterations; ++i) {
+        const int max_iterations = 5000;
+        for (int i = 0; i < max_iterations; ++i) {
             // Solve the secular equation (Xi.'*Xi + lambda*I)*p = -g for p
             Matrix XiI(Xi.rows() + Xi.cols(), Xi.cols());
             XiI << Xi, std::sqrt(lambda) * Matrix::Identity(Xi.cols(), Xi.cols());
@@ -1002,7 +1006,7 @@ namespace utility::gaussian_filtering::funcmin {
             //     XiI.topRows(Xi.cols()).triangularView<Eigen::Upper>().transpose().solve(g)
             // );
 
-            // trsSqrt(Xi, g, Delta, p);   // minimise 0.5*p.'*Xi.'*Xi*p + g.'*p subject to ||Xi*p|| <= Delta
+            // trs_sqrt(Xi, g, Delta, p);   // minimise 0.5*p.'*Xi.'*Xi*p + g.'*p subject to ||Xi*p|| <= Delta
             Vector z = Xi * p;
 
             Scalar pg = p.dot(g);
@@ -1019,13 +1023,13 @@ namespace utility::gaussian_filtering::funcmin {
             }
 
             // Evaluate cost and gradient for trial step
-            xn               = x + p;
-            Scalar fn        = costFunc(xn, gn);
-            bool outOfDomain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
-            Vector y         = gn - g;
+            xn                 = x + p;
+            Scalar fn          = cost_func(xn, gn);
+            bool out_of_domain = !std::isfinite(fn) || !gn.allFinite();  // if any nan, -inf or +inf
+            Vector y           = gn - g;
 
             Scalar rho;
-            if (outOfDomain) {
+            if (out_of_domain) {
                 rho = -1;  // Force trust region reduction and reject step
             }
             else {
@@ -1052,7 +1056,7 @@ namespace utility::gaussian_filtering::funcmin {
 
             // Update Hessian approximation
             const Scalar sqrteps = std::sqrt(std::numeric_limits<Scalar>::epsilon());
-            if (!outOfDomain) {
+            if (!out_of_domain) {
                 Scalar py = p.dot(y);
                 if (py > sqrteps * y.norm() * p.norm()) {
                     // Form
@@ -1076,17 +1080,17 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by Levenberg-Marquardt BFGS, returning the Hessian.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @param[out] H Hessian matrix at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSLM(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
+    int BFGSLM(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
         Eigen::MatrixXd Xi(x.size(), x.size());
         Xi.setIdentity();
-        int retval = BFGSLMSqrt(costFunc, x, g, Xi);
+        int retval = bfgs_lm_sqrt(cost_func, x, g, Xi);
         H          = Xi.transpose() * Xi;
         return retval;
     }
@@ -1095,29 +1099,29 @@ namespace utility::gaussian_filtering::funcmin {
      * @brief Minimise f(x) by Levenberg-Marquardt BFGS, returning the gradient.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @param[out] g Gradient vector at the optimal solution
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSLM(Func costFunc, Eigen::VectorXd& x, Eigen::VectorXd& g) {
+    int BFGSLM(Func cost_func, Eigen::VectorXd& x, Eigen::VectorXd& g) {
         Eigen::MatrixXd H(x.size(), x.size());
-        return BFGSLM(costFunc, x, g, H);
+        return BFGSLM(cost_func, x, g, H);
     }
 
     /**
      * @brief Minimise f(x) by Levenberg-Marquardt BFGS.
      *
      * @tparam Func Type of the cost function
-     * @param costFunc Cost function that returns f(x) and computes gradient
+     * @param cost_func Cost function that returns f(x) and computes gradient
      * @param[in,out] x Initial guess on input, optimal solution on output
      * @return 0 on success, non-zero on failure
      */
     template <typename Func>
-    int BFGSLM(Func costFunc, Eigen::VectorXd& x) {
+    int BFGSLM(Func cost_func, Eigen::VectorXd& x) {
         Eigen::VectorXd g(x.size());
-        return BFGSLM(costFunc, x, g);
+        return BFGSLM(cost_func, x, g);
     }
 
 

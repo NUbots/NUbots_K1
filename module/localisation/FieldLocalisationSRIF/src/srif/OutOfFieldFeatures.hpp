@@ -9,7 +9,7 @@
  * the field landmarks lack.
  *
  * This module extracts those features from a camera frame:
- *  - FAST corners on the grayscale image (strongest maxFeatures kept),
+ *  - FAST corners on the grayscale image (strongest max_features kept),
  *  - an ORB descriptor per corner (oriented BRIEF, matchable across frames),
  *  - a unit ray in the camera frame {c} per corner (utility::vision::unproject_pixel),
  *  - an out-of-field classification given the estimated camera pose in {f}:
@@ -43,11 +43,11 @@ namespace module::localisation::srif {
      * @brief One detected corner feature, with its camera ray and classification.
      */
     struct OutOfFieldFeature {
-        Eigen::Vector2d px;       ///< Pixel position (x right, y down)
-        Eigen::Vector3d uPCc;     ///< Unit ray in the camera frame {c}
-        cv::Mat descriptor;       ///< 1x32 CV_8U ORB descriptor (row view into the detection batch)
-        float response  = 0.0f;   ///< FAST corner response
-        bool outOfField = false;  ///< True if the ray looks beyond the field carpet
+        Eigen::Vector2d px;         ///< Pixel position (x right, y down)
+        Eigen::Vector3d uPCc;       ///< Unit ray in the camera frame {c}
+        cv::Mat descriptor;         ///< 1x32 CV_8U ORB descriptor (row view into the detection batch)
+        float response    = 0.0f;   ///< FAST corner response
+        bool out_of_field = false;  ///< True if the ray looks beyond the field carpet
     };
 
     /**
@@ -59,11 +59,11 @@ namespace module::localisation::srif {
          * @brief Detection and classification options.
          */
         struct Options {
-            int fastThreshold     = 25;    ///< FAST intensity threshold (with non-max suppression)
-            int maxFeatures       = 300;   ///< Keep at most this many strongest corners
-            int imageBorder       = 20;    ///< Reject corners within this many pixels of the image edge
-            double fieldMargin    = 0.30;  ///< Extra margin beyond the border strip still counted as carpet [m]
-            double horizonMarginZ = 0.02;  ///< Rays with field-frame z >= -margin count as at/above the horizon
+            int fast_threshold      = 25;    ///< FAST intensity threshold (with non-max suppression)
+            int max_features        = 300;   ///< Keep at most this many strongest corners
+            int image_border        = 20;    ///< Reject corners within this many pixels of the image edge
+            double field_margin     = 0.30;  ///< Extra margin beyond the border strip still counted as carpet [m]
+            double horizon_margin_z = 0.02;  ///< Rays with field-frame z >= -margin count as at/above the horizon
         };
 
         /**
@@ -97,15 +97,15 @@ namespace module::localisation::srif {
          * @param Tfc Camera pose in {f}
          * @return True if the ray looks beyond the field carpet (or at/above the horizon)
          */
-        bool isOutOfField(const Eigen::Vector3d& uPCc, const Pose<double>& Tfc) const;
+        bool is_out_of_field(const Eigen::Vector3d& uPCc, const Pose<double>& Tfc) const;
 
         Options options;
 
     private:
         message::input::Image::Lens lens_;  ///< Width-normalised lens calibration
         Eigen::Vector2d dimensions_;        ///< Image dimensions in pixels {width, height}
-        double halfCarpetLength_;           ///< Field half-length + border strip + margin [m]
-        double halfCarpetWidth_;            ///< Field half-width + border strip + margin [m]
+        double half_carpet_length_;         ///< Field half-length + border strip + margin [m]
+        double half_carpet_width_;          ///< Field half-width + border strip + margin [m]
         cv::Ptr<cv::ORB> orb_;              ///< Descriptor extractor (compute only; detection is FAST)
     };
 }  // namespace module::localisation::srif

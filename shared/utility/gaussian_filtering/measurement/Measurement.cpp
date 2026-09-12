@@ -36,43 +36,43 @@
 
 namespace utility::gaussian_filtering::measurement {
 
-    Measurement::Measurement(double time) : Event(time), updateMethod_(UpdateMethod::BFGSTRUSTSQRT) {}
+    Measurement::Measurement(double time) : Event(time), update_method_(UpdateMethod::BFGSTRUSTSQRT) {}
 
     Measurement::~Measurement() = default;
 
-    double Measurement::costJointDensity(const Eigen::VectorXd& x, const SystemEstimator& system) const {
+    double Measurement::cost_joint_density(const Eigen::VectorXd& x, const SystemEstimator& system) const {
         double logprior = system.density.log(x);
-        double loglik   = logLikelihood(x, system);
+        double loglik   = log_likelihood(x, system);
         return -(logprior + loglik);
     }
 
-    double Measurement::costJointDensity(const Eigen::VectorXd& x,
-                                         const SystemEstimator& system,
-                                         Eigen::VectorXd& g) const {
-        Eigen::VectorXd logpriorGrad(x.size());
-        double logprior = system.density.log(x, logpriorGrad);
+    double Measurement::cost_joint_density(const Eigen::VectorXd& x,
+                                           const SystemEstimator& system,
+                                           Eigen::VectorXd& g) const {
+        Eigen::VectorXd logprior_grad(x.size());
+        double logprior = system.density.log(x, logprior_grad);
 
-        Eigen::VectorXd loglikGrad(x.size());
-        double loglik = logLikelihood(x, system, loglikGrad);
+        Eigen::VectorXd loglik_grad(x.size());
+        double loglik = log_likelihood(x, system, loglik_grad);
 
-        g = -(logpriorGrad + loglikGrad);
+        g = -(logprior_grad + loglik_grad);
         return -(logprior + loglik);
     }
 
-    double Measurement::costJointDensity(const Eigen::VectorXd& x,
-                                         const SystemEstimator& system,
-                                         Eigen::VectorXd& g,
-                                         Eigen::MatrixXd& H) const {
-        Eigen::VectorXd logpriorGrad(x.size());
-        Eigen::MatrixXd logpriorHess(x.size(), x.size());
-        double logprior = system.density.log(x, logpriorGrad, logpriorHess);
+    double Measurement::cost_joint_density(const Eigen::VectorXd& x,
+                                           const SystemEstimator& system,
+                                           Eigen::VectorXd& g,
+                                           Eigen::MatrixXd& H) const {
+        Eigen::VectorXd logprior_grad(x.size());
+        Eigen::MatrixXd logprior_hess(x.size(), x.size());
+        double logprior = system.density.log(x, logprior_grad, logprior_hess);
 
-        Eigen::VectorXd loglikGrad(x.size());
-        Eigen::MatrixXd loglikHess(x.size(), x.size());
-        double loglik = logLikelihood(x, system, loglikGrad, loglikHess);
+        Eigen::VectorXd loglik_grad(x.size());
+        Eigen::MatrixXd loglik_hess(x.size(), x.size());
+        double loglik = log_likelihood(x, system, loglik_grad, loglik_hess);
 
-        g = -(logpriorGrad + loglikGrad);
-        H = -(logpriorHess + loglikHess);
+        g = -(logprior_grad + loglik_grad);
+        H = -(logprior_hess + loglik_hess);
         return -(logprior + loglik);
     }
 
@@ -85,28 +85,28 @@ namespace utility::gaussian_filtering::measurement {
         // Second-order iterated update
         Eigen::VectorXd g(nx);
         Eigen::VectorXd x  = system.density.mean();  // Set initial decision variable to prior mean
-        Eigen::MatrixXd Xi = system.density.sqrtInfoMat();
+        Eigen::MatrixXd Xi = system.density.sqrt_info_mat();
 
-        switch (updateMethod_) {
+        switch (update_method_) {
             case UpdateMethod::BFGSTRUSTSQRT: {
-                // Create cost function with prototype V = costFunc(x, g)
-                auto costFunc = [&](const Eigen::VectorXd& x, Eigen::VectorXd& g) {
-                    return costJointDensity(x, system, g);
+                // Create cost function with prototype V = cost_func(x, g)
+                auto cost_func = [&](const Eigen::VectorXd& x, Eigen::VectorXd& g) {
+                    return cost_joint_density(x, system, g);
                 };
 
                 // Minimise cost
-                [[maybe_unused]] int ret = funcmin::BFGSTrustSqrt(costFunc, x, g, Xi);
+                [[maybe_unused]] int ret = funcmin::bfgs_trust_sqrt(cost_func, x, g, Xi);
                 assert(ret == 0);
                 break;
             }
             case UpdateMethod::BFGSLMSQRT: {
-                // Create cost function with prototype V = costFunc(x, g)
-                auto costFunc = [&](const Eigen::VectorXd& x, Eigen::VectorXd& g) {
-                    return costJointDensity(x, system, g);
+                // Create cost function with prototype V = cost_func(x, g)
+                auto cost_func = [&](const Eigen::VectorXd& x, Eigen::VectorXd& g) {
+                    return cost_joint_density(x, system, g);
                 };
 
                 // Minimise cost
-                [[maybe_unused]] int ret = funcmin::BFGSLMSqrt(costFunc, x, g, Xi);
+                [[maybe_unused]] int ret = funcmin::bfgs_lm_sqrt(cost_func, x, g, Xi);
                 assert(ret == 0);
                 break;
             }
@@ -128,13 +128,13 @@ namespace utility::gaussian_filtering::measurement {
                 //                initialised landmarks to force the Hessian and hence
                 //                posterior sqrt information matrix to be approximated correctly.
 
-                // Create cost function with prototype V = costFunc(x, g)
-                auto costFunc = [&](const Eigen::VectorXd& x, Eigen::VectorXd& g) {
-                    return costJointDensity(x, system, g);
+                // Create cost function with prototype V = cost_func(x, g)
+                auto cost_func = [&](const Eigen::VectorXd& x, Eigen::VectorXd& g) {
+                    return cost_joint_density(x, system, g);
                 };
 
                 // Minimise cost
-                [[maybe_unused]] int ret = funcmin::SR1TrustEig(costFunc, x, g, Q, v);
+                [[maybe_unused]] int ret = funcmin::sr1_trust_eig(cost_func, x, g, Q, v);
                 assert(ret == 0);
 
                 // Post-calculate posterior square-root information matrix from Hessian eigendecomposition
@@ -144,15 +144,15 @@ namespace utility::gaussian_filtering::measurement {
                 break;
             }
             case UpdateMethod::NEWTONTRUSTEIG: {
-                // Create cost function with prototype V = costFunc(x, g, H)
-                auto costFunc = [&](const Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
-                    return costJointDensity(x, system, g, H);
+                // Create cost function with prototype V = cost_func(x, g, H)
+                auto cost_func = [&](const Eigen::VectorXd& x, Eigen::VectorXd& g, Eigen::MatrixXd& H) {
+                    return cost_joint_density(x, system, g, H);
                 };
 
                 // Minimise cost
                 Eigen::MatrixXd Q(nx, nx);
                 Eigen::VectorXd v(nx);
-                [[maybe_unused]] int ret = funcmin::NewtonTrustEig(costFunc, x, g, Q, v);
+                [[maybe_unused]] int ret = funcmin::newton_trust_eig(cost_func, x, g, Q, v);
                 assert(ret == 0);
 
                 // Post-calculate posterior square-root information matrix from Hessian eigendecomposition
@@ -171,11 +171,11 @@ namespace utility::gaussian_filtering::measurement {
         // log p(y) = log p(y, x*) - log pp(x* | y)
         //         ~= -V(x*) + (n/2) log(2 pi) - sum(log|diag(Xi)|)
         // Where V is the optimum cost and Xi the posterior sqrt-info.
-        const double V        = costJointDensity(mu, system);
-        const double logDetXi = Xi.diagonal().array().abs().log().sum();
-        logEvidence_          = -V + 0.5 * nx * std::log(2.0 * M_PI) - logDetXi;
+        const double V          = cost_joint_density(mu, system);
+        const double log_det_Xi = Xi.diagonal().array().abs().log().sum();
+        log_evidence_           = -V + 0.5 * nx * std::log(2.0 * M_PI) - log_det_Xi;
 
-        system.density = gaussian::GaussianInfo<double>::fromSqrtInfo(Xi * mu, Xi);
+        system.density = gaussian::GaussianInfo<double>::from_sqrt_info(Xi * mu, Xi);
     }
 
 }  // namespace utility::gaussian_filtering::measurement

@@ -69,7 +69,7 @@ namespace utility::gaussian_filtering::system {
          * @param J Output parameter for the Jacobian matrix.
          * @return The computed dynamics (state derivative).
          */
-        virtual Eigen::VectorXd dynamicsEst(double t, const Eigen::VectorXd& x, Eigen::MatrixXd& J) const;
+        virtual Eigen::VectorXd dynamics_est(double t, const Eigen::VectorXd& x, Eigen::MatrixXd& J) const;
 
     protected:
         /**
@@ -78,7 +78,7 @@ namespace utility::gaussian_filtering::system {
          * @param X The augmented state matrix.
          * @return Eigen::MatrixXd The augmented dynamics.
          */
-        Eigen::MatrixXd augmentedDynamicsEst(double t, const Eigen::MatrixXd& X) const;
+        Eigen::MatrixXd augmented_dynamics_est(double t, const Eigen::MatrixXd& X) const;
 
         /**
          * @brief Helper function for Runge-Kutta 4th order method for SDEs.
@@ -87,22 +87,22 @@ namespace utility::gaussian_filtering::system {
          * @param J Output parameter for the Jacobian matrix.
          * @return The updated state vector.
          */
-        Eigen::VectorXd RK4SDEHelper(const Eigen::VectorXd& xdw, double dt, Eigen::MatrixXd& J) const;
+        Eigen::VectorXd rk4_sde_helper(const Eigen::VectorXd& xdw, double dt, Eigen::MatrixXd& J) const;
 
         /**
          * @brief Compute the process noise density.
          * @param dt The time step.
          * @return The process noise density.
          */
-        virtual gaussian::GaussianInfo<double> processNoiseDensity(double dt) const = 0;
+        virtual gaussian::GaussianInfo<double> process_noise_density(double dt) const = 0;
 
         /**
          * @brief Get the indices of state variables affected by process noise.
          * @return The indices of affected state variables.
          */
-        virtual std::vector<Eigen::Index> processNoiseIndex() const = 0;
+        virtual std::vector<Eigen::Index> process_noise_index() const = 0;
 
-        double dtMaxEst = 1e-2;  ///< Maximum time step for process model prediction
+        double dt_max_est = 1e-2;  ///< Maximum time step for process model prediction
     };
 
 }  // namespace utility::gaussian_filtering::system

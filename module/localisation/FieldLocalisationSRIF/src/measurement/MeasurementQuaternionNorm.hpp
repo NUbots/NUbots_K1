@@ -37,7 +37,7 @@ namespace module::localisation::measurement {
      * dominate the Newton step, and because the radial direction is orthogonal to
      * the three attitude directions, tightening or loosening it does not move the
      * attitude estimate -- only how far off the sphere the mean is allowed to drift
-     * between the renormalisations in SystemLocalisation::normaliseQuaternion.
+     * between the renormalisations in SystemLocalisation::normalise_quaternion.
      */
     class MeasurementQuaternionNorm : public Measurement {
     public:
@@ -47,30 +47,30 @@ namespace module::localisation::measurement {
          * @param sigma Std dev on |q| (dimensionless)
          */
         explicit MeasurementQuaternionNorm(double time, double sigma = 1e-3) : Measurement(time), sigma_(sigma) {
-            updateMethod_ = UpdateMethod::NEWTONTRUSTEIG;
+            update_method_ = UpdateMethod::NEWTONTRUSTEIG;
         }
 
         virtual Eigen::VectorXd simulate(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const override {
-            return Eigen::VectorXd::Constant(1, x.segment<4>(srif::SystemLocalisation::iQuat).norm());
+            return Eigen::VectorXd::Constant(1, x.segment<4>(srif::SystemLocalisation::i_quat).norm());
         }
 
-        virtual double logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const override {
-            return logLikelihoodImpl<double>(x);
+        virtual double log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& /*system*/) const override {
+            return log_likelihood_impl<double>(x);
         }
 
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g,
-                                     Eigen::MatrixXd& H) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g,
+                                      Eigen::MatrixXd& H) const override;
 
         /// @brief Templated log-likelihood for autodiff.
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
             using std::sqrt;
-            const Eigen::Vector4<Scalar> q = x.segment(srif::SystemLocalisation::iQuat, 4);
+            const Eigen::Vector4<Scalar> q = x.segment(srif::SystemLocalisation::i_quat, 4);
             const Scalar n                 = sqrt(q(0) * q(0) + q(1) * q(1) + q(2) * q(2) + q(3) * q(3));
             const Scalar e                 = n - Scalar(1);
             const double sigma2            = sigma_ * sigma_;

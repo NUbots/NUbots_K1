@@ -45,20 +45,20 @@ namespace utility::gaussian_filtering {
         using Matrix3 = Eigen::Matrix3<Scalar>;
         using Vector3 = Eigen::Vector3<Scalar>;
 
-        Matrix3 rotationMatrix;     ///< Rab, rotating a vector from frame {b} to frame {a}
-        Vector3 translationVector;  ///< rBAa, the origin of {b} relative to {a}, expressed in {a}
+        Matrix3 rotation_matrix;     ///< Rab, rotating a vector from frame {b} to frame {a}
+        Vector3 translation_vector;  ///< rBAa, the origin of {b} relative to {a}, expressed in {a}
 
         /**
          * @brief Default constructor: identity rotation, zero translation.
          */
-        Pose() : rotationMatrix(Matrix3::Identity()), translationVector(Vector3::Zero()) {}
+        Pose() : rotation_matrix(Matrix3::Identity()), translation_vector(Vector3::Zero()) {}
 
         /**
          * @brief Constructor from a rotation matrix and translation vector
          * @param R Rotation matrix
          * @param t Translation vector
          */
-        Pose(const Matrix3& R, const Vector3& t) : rotationMatrix(R), translationVector(t) {}
+        Pose(const Matrix3& R, const Vector3& t) : rotation_matrix(R), translation_vector(t) {}
 
         /**
          * @brief Copy constructor with scalar type conversion, for switching between
@@ -69,8 +69,8 @@ namespace utility::gaussian_filtering {
          */
         template <typename OtherScalar>
         Pose(const Pose<OtherScalar>& T)
-            : rotationMatrix(T.rotationMatrix.template cast<Scalar>())
-            , translationVector(T.translationVector.template cast<Scalar>()) {}
+            : rotation_matrix(T.rotation_matrix.template cast<Scalar>())
+            , translation_vector(T.translation_vector.template cast<Scalar>()) {}
 
         /**
          * @brief Compose two transforms: Tac = Tab * Tbc.
@@ -80,8 +80,8 @@ namespace utility::gaussian_filtering {
          */
         Pose operator*(const Pose& other) const {
             Pose result;
-            result.rotationMatrix    = rotationMatrix * other.rotationMatrix;
-            result.translationVector = rotationMatrix * other.translationVector + translationVector;
+            result.rotation_matrix    = rotation_matrix * other.rotation_matrix;
+            result.translation_vector = rotation_matrix * other.translation_vector + translation_vector;
             return result;
         }
 
@@ -92,7 +92,7 @@ namespace utility::gaussian_filtering {
          * @return The transformed point
          */
         Vector3 operator*(const Vector3& r) const {
-            return rotationMatrix * r + translationVector;
+            return rotation_matrix * r + translation_vector;
         }
 
         /**
@@ -103,8 +103,8 @@ namespace utility::gaussian_filtering {
          */
         Pose inverse() const {
             Pose result;
-            result.rotationMatrix    = rotationMatrix.transpose();
-            result.translationVector = -result.rotationMatrix * translationVector;
+            result.rotation_matrix    = rotation_matrix.transpose();
+            result.translation_vector = -result.rotation_matrix * translation_vector;
             return result;
         }
     };

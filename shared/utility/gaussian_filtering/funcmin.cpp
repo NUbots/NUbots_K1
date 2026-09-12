@@ -38,7 +38,7 @@
 
 namespace utility::gaussian_filtering::funcmin {
 
-    int trsEig(const Eigen::MatrixXd& H, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p) {
+    int trs_eig(const Eigen::MatrixXd& H, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p) {
         assert(g.cols() == 1);
         assert(H.rows() == H.cols());
         assert(H.rows() == g.rows());
@@ -48,18 +48,18 @@ namespace utility::gaussian_filtering::funcmin {
         typedef Eigen::VectorXd Vector;
         typedef Eigen::MatrixXd Matrix;
 
-        Eigen::SelfAdjointEigenSolver<Matrix> eigenH(H);
-        const Vector& v = eigenH.eigenvalues();
-        const Matrix& Q = eigenH.eigenvectors();
+        Eigen::SelfAdjointEigenSolver<Matrix> eigen_H(H);
+        const Vector& v = eigen_H.eigenvalues();
+        const Matrix& Q = eigen_H.eigenvectors();
 
-        return trsEig(Q, v, g, D, p);
+        return trs_eig(Q, v, g, D, p);
     }
 
-    int trsEig(const Eigen::MatrixXd& Q,
-               const Eigen::VectorXd& v,
-               const Eigen::VectorXd& g,
-               double D,
-               Eigen::VectorXd& p) {
+    int trs_eig(const Eigen::MatrixXd& Q,
+                const Eigen::VectorXd& v,
+                const Eigen::VectorXd& g,
+                double D,
+                Eigen::VectorXd& p) {
         assert(g.cols() == 1);
         assert(v.cols() == 1);
         assert(Q.rows() == Q.cols());
@@ -73,9 +73,9 @@ namespace utility::gaussian_filtering::funcmin {
         typedef Eigen::MatrixXd Matrix;
         typedef Vector::Index Index;
 
-        const Scalar eps        = std::numeric_limits<Scalar>::epsilon();
-        const Scalar sqrteps    = std::sqrt(eps);
-        const int maxIterations = 20;
+        const Scalar eps         = std::numeric_limits<Scalar>::epsilon();
+        const Scalar sqrteps     = std::sqrt(eps);
+        const int max_iterations = 20;
 
         Scalar l1 = v.minCoeff();  // Leftmost eigenvalue
         Vector a  = Q.transpose() * g;
@@ -90,24 +90,24 @@ namespace utility::gaussian_filtering::funcmin {
         p           = -Q * a.cwiseQuotient(vlam);
 
         if (l1 < 0 || p.norm() > D || std::fabs(lam * (p.norm() - D)) > sqrteps) {
-            bool isHardCase = std::fabs(a(0)) < eps && l1 < 0;
-            if (isHardCase) {
-                std::vector<Index> idxValid;
+            bool is_hard_case = std::fabs(a(0)) < eps && l1 < 0;
+            if (is_hard_case) {
+                std::vector<Index> idx_valid;
                 for (Index i = 0; i < v.size(); ++i)
                     if (std::fabs(v(i) - l1) > sqrteps)
-                        idxValid.push_back(i);
+                        idx_valid.push_back(i);
 
-                Vector scaledValid(idxValid.size());
-                Matrix QValid(v.size(), idxValid.size());
-                for (std::size_t i = 0; i < idxValid.size(); ++i) {
-                    Index idx      = idxValid[i];
-                    scaledValid(i) = a(idx) / (v(idx) - l1);
-                    QValid.col(i)  = Q.col(idx);
+                Vector scaled_valid(idx_valid.size());
+                Matrix QValid(v.size(), idx_valid.size());
+                for (std::size_t i = 0; i < idx_valid.size(); ++i) {
+                    Index idx       = idx_valid[i];
+                    scaled_valid(i) = a(idx) / (v(idx) - l1);
+                    QValid.col(i)   = Q.col(idx);
                 }
-                Scalar t = std::sqrt(D * D - scaledValid.squaredNorm());
+                Scalar t = std::sqrt(D * D - scaled_valid.squaredNorm());
                 Vector pvec(v.size());
-                if (idxValid.size() > 0)
-                    pvec = QValid * scaledValid;
+                if (idx_valid.size() > 0)
+                    pvec = QValid * scaled_valid;
                 else
                     pvec.setZero();
 
@@ -120,7 +120,7 @@ namespace utility::gaussian_filtering::funcmin {
             }
             else {
                 int k;
-                for (k = 0; k < maxIterations; ++k) {
+                for (k = 0; k < max_iterations; ++k) {
                     Vector pp     = -a.cwiseQuotient(vlam);
                     Vector dp     = a.cwiseQuotient(vlam.cwiseAbs2());
                     Scalar ppnorm = pp.norm();
@@ -137,7 +137,7 @@ namespace utility::gaussian_filtering::funcmin {
                 }
 
                 p = -Q * a.cwiseQuotient(vlam);
-                if (k >= maxIterations)
+                if (k >= max_iterations)
                     return 1;
             }
         }
@@ -145,7 +145,7 @@ namespace utility::gaussian_filtering::funcmin {
         return 0;
     }
 
-    int trsSqrt(const Eigen::MatrixXd& Xi, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p) {
+    int trs_sqrt(const Eigen::MatrixXd& Xi, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p) {
         assert(g.cols() == 1);
         assert(Xi.rows() == Xi.cols());
         assert(Xi.rows() == g.rows());
@@ -163,11 +163,11 @@ namespace utility::gaussian_filtering::funcmin {
         return 0;
     }
 
-    int trsSqrtSparse(const Eigen::SparseMatrix<double>& Xi,
-                      const Eigen::PermutationMatrix<Eigen::Dynamic>& Pi,
-                      const Eigen::VectorXd& g,
-                      double D,
-                      Eigen::VectorXd& p) {
+    int trs_sqrt_sparse(const Eigen::SparseMatrix<double>& Xi,
+                        const Eigen::PermutationMatrix<Eigen::Dynamic>& Pi,
+                        const Eigen::VectorXd& g,
+                        double D,
+                        Eigen::VectorXd& p) {
         assert(g.cols() == 1);
         assert(Xi.rows() == Xi.cols());
         assert(Xi.rows() == g.rows());
@@ -188,7 +188,7 @@ namespace utility::gaussian_filtering::funcmin {
         return 0;
     }
 
-    int trsSqrtInv(const Eigen::MatrixXd& S, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p) {
+    int trs_sqrt_inv(const Eigen::MatrixXd& S, const Eigen::VectorXd& g, double D, Eigen::VectorXd& p) {
         assert(g.cols() == 1);
         assert(S.rows() == S.cols());
         assert(S.rows() == g.rows());

@@ -24,19 +24,19 @@ namespace module::localisation::srif {
      */
     inline FieldDimensions field_dimensions(const message::support::FieldDescription& fd) {
         FieldDimensions dims;
-        dims.lineWidth            = fd.dimensions.line_width;
-        dims.fieldLength          = fd.dimensions.field_length;
-        dims.fieldWidth           = fd.dimensions.field_width;
-        dims.goalDepth            = fd.dimensions.goal_depth;
-        dims.goalWidth            = fd.dimensions.goal_width;
-        dims.goalAreaLength       = fd.dimensions.goal_area_length;
-        dims.goalAreaWidth        = fd.dimensions.goal_area_width;
-        dims.penaltyMarkDistance  = fd.dimensions.penalty_mark_distance;
-        dims.centreCircleDiameter = fd.dimensions.center_circle_diameter;
-        dims.penaltyAreaLength    = fd.dimensions.penalty_area_length;
-        dims.penaltyAreaWidth     = fd.dimensions.penalty_area_width;
-        dims.goalpostWidth        = fd.dimensions.goalpost_width;
-        dims.borderStripMinWidth  = fd.dimensions.border_strip_min_width;
+        dims.line_width             = fd.dimensions.line_width;
+        dims.field_length           = fd.dimensions.field_length;
+        dims.field_width            = fd.dimensions.field_width;
+        dims.goal_depth             = fd.dimensions.goal_depth;
+        dims.goal_width             = fd.dimensions.goal_width;
+        dims.goal_area_length       = fd.dimensions.goal_area_length;
+        dims.goal_area_width        = fd.dimensions.goal_area_width;
+        dims.penalty_mark_distance  = fd.dimensions.penalty_mark_distance;
+        dims.centre_circle_diameter = fd.dimensions.center_circle_diameter;
+        dims.penalty_area_length    = fd.dimensions.penalty_area_length;
+        dims.penalty_area_width     = fd.dimensions.penalty_area_width;
+        dims.goalpost_width         = fd.dimensions.goalpost_width;
+        dims.border_strip_min_width = fd.dimensions.border_strip_min_width;
         return dims;
     }
 

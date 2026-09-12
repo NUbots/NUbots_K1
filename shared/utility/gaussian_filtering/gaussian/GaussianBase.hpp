@@ -65,7 +65,7 @@ namespace utility::gaussian_filtering::gaussian {
          * @brief Returns the square root of the covariance matrix.
          * @return The square root of the covariance matrix.
          */
-        virtual Eigen::MatrixX<Scalar> sqrtCov() const = 0;
+        virtual Eigen::MatrixX<Scalar> sqrt_cov() const = 0;
 
         /**
          * @brief Returns the covariance matrix.
@@ -77,7 +77,7 @@ namespace utility::gaussian_filtering::gaussian {
          * @brief Returns the square root of the information matrix.
          * @return The square root of the information matrix.
          */
-        virtual Eigen::MatrixX<Scalar> sqrtInfoMat() const = 0;
+        virtual Eigen::MatrixX<Scalar> sqrt_info_mat() const = 0;
     };
 
 }  // namespace utility::gaussian_filtering::gaussian

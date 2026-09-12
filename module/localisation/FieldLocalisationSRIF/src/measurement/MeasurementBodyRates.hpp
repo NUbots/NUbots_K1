@@ -51,21 +51,21 @@ namespace module::localisation::measurement {
         MeasurementGyroscope(double time, const Eigen::Vector3d& gyroscope, double sigma = 0.02);
 
         virtual Eigen::VectorXd simulate(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g,
-                                     Eigen::MatrixXd& H) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g,
+                                      Eigen::MatrixXd& H) const override;
 
         /// @brief Templated log-likelihood for autodiff.
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
             const Eigen::Vector3<Scalar> yhat =
-                Eigen::Vector3<Scalar>(x.segment(srif::SystemLocalisation::iOmega, 3))
-                + Eigen::Vector3<Scalar>(x.segment(srif::SystemLocalisation::iGyroBias, 3));
+                Eigen::Vector3<Scalar>(x.segment(srif::SystemLocalisation::i_omega, 3))
+                + Eigen::Vector3<Scalar>(x.segment(srif::SystemLocalisation::i_gyro_bias, 3));
             const Eigen::Vector3<Scalar> e = y_.cast<Scalar>() - yhat;
             const double sigma2            = sigma_ * sigma_;
             return Scalar(-1.5 * std::log(2.0 * M_PI * sigma2)) - Scalar(0.5) * e.squaredNorm() / Scalar(sigma2);
@@ -99,20 +99,20 @@ namespace module::localisation::measurement {
         }
 
         virtual Eigen::VectorXd simulate(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g,
-                                     Eigen::MatrixXd& H) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g,
+                                      Eigen::MatrixXd& H) const override;
 
         /// @brief Templated log-likelihood for autodiff.
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
             const Eigen::Vector3<Scalar> e =
-                y_.cast<Scalar>() - Eigen::Vector3<Scalar>(x.segment(srif::SystemLocalisation::iVel, 3));
+                y_.cast<Scalar>() - Eigen::Vector3<Scalar>(x.segment(srif::SystemLocalisation::i_vel, 3));
             const double sigma2 = sigma_ * sigma_;
             return Scalar(-1.5 * std::log(2.0 * M_PI * sigma2)) - Scalar(0.5) * e.squaredNorm() / Scalar(sigma2);
         }

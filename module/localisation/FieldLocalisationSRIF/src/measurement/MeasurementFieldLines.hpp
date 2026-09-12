@@ -56,13 +56,13 @@ namespace module::localisation::measurement {
          * @brief Noise and selection options.
          */
         struct Options {
-            double sigmaDistance     = 0.25;  ///< Base line-distance noise std dev [m]
-            double sigmaAngular      = 0.02;  ///< Ray angular noise mapped to ground range [rad]
-            double inlierProbability = 0.55;  ///< Mixture weight of the inlier component
-            double clutterArea       = 40.0;  ///< Clutter uniform density area [m^2]
-            std::size_t maxPoints    = 20;    ///< Subsample cap on line points per update
-            double maxRange          = 2.5;   ///< Maximum ground projection range at the prior [m]
-            double minDownward       = 0.05;  ///< Minimum downward ray component at the prior
+            double sigma_distance     = 0.25;  ///< Base line-distance noise std dev [m]
+            double sigma_angular      = 0.02;  ///< Ray angular noise mapped to ground range [rad]
+            double inlier_probability = 0.55;  ///< Mixture weight of the inlier component
+            double clutter_area       = 40.0;  ///< Clutter uniform density area [m^2]
+            std::size_t max_points    = 20;    ///< Subsample cap on line points per update
+            double max_range          = 2.5;   ///< Maximum ground projection range at the prior [m]
+            double min_downward       = 0.05;  ///< Minimum downward ray component at the prior
         };
 
         /**
@@ -91,22 +91,22 @@ namespace module::localisation::measurement {
                               const SystemLocalisation& system);
 
         virtual Eigen::VectorXd simulate(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g,
-                                     Eigen::MatrixXd& H) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g,
+                                      Eigen::MatrixXd& H) const override;
 
         /**
          * @brief Templated log-likelihood for autodiff.
          */
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const;
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const;
 
-        std::size_t numPoints() const {
+        std::size_t num_points() const {
             return static_cast<std::size_t>(rays_.cols());
         }
 
@@ -121,7 +121,7 @@ namespace module::localisation::measurement {
     };
 
     template <typename Scalar>
-    Scalar MeasurementFieldLines::logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
+    Scalar MeasurementFieldLines::log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
         using std::exp, std::log;
 
         const Eigen::Index n = rays_.cols();
@@ -131,15 +131,15 @@ namespace module::localisation::measurement {
 
         // Camera pose in field frame with mount-bias correction:
         // Tfc = Tfb(x) * Tbc * R(deltaC)
-        Pose<Scalar> Tbias(SystemLocalisation::cameraBiasRotation(x), Eigen::Vector3<Scalar>::Zero());
-        Pose<Scalar> Tfc                  = SystemLocalisation::fieldPose(x) * Pose<Scalar>(Tbc_) * Tbias;
-        const Eigen::Matrix3<Scalar> Rfc  = Tfc.rotationMatrix;
-        const Eigen::Vector3<Scalar> rCFf = Tfc.translationVector;
+        Pose<Scalar> Tbias(SystemLocalisation::camera_bias_rotation(x), Eigen::Vector3<Scalar>::Zero());
+        Pose<Scalar> Tfc                  = SystemLocalisation::field_pose(x) * Pose<Scalar>(Tbc_) * Tbias;
+        const Eigen::Matrix3<Scalar> Rfc  = Tfc.rotation_matrix;
+        const Eigen::Vector3<Scalar> rCFf = Tfc.translation_vector;
 
-        const double logInlierWeight = std::log(options_.inlierProbability);
-        const double logClutter      = std::log(1.0 - options_.inlierProbability) - std::log(options_.clutterArea);
+        const double log_inlier_weight = std::log(options_.inlier_probability);
+        const double log_clutter       = std::log(1.0 - options_.inlier_probability) - std::log(options_.clutter_area);
 
-        Scalar logLik = Scalar(0);
+        Scalar log_lik = Scalar(0);
         for (Eigen::Index j = 0; j < n; ++j) {
             // Intersect the ray with the field ground plane z = 0
             Eigen::Vector3<Scalar> d = Rfc * rays_.col(j).cast<Scalar>();
@@ -150,19 +150,19 @@ namespace module::localisation::measurement {
             Scalar lambda = -rCFf.z() / dz;
             Eigen::Vector2<Scalar> p(rCFf.x() + lambda * d.x(), rCFf.y() + lambda * d.y());
 
-            Scalar d2 = map_.distanceSquaredToNearestLine(p);
+            Scalar d2 = map_.distance_squared_to_nearest_line(p);
 
             const double s2 = sigma2_(j);
-            Scalar a        = Scalar(logInlierWeight - 0.5 * std::log(2.0 * M_PI * s2)) - Scalar(0.5) * d2 / Scalar(s2);
-            Scalar b        = Scalar(logClutter);
+            Scalar a = Scalar(log_inlier_weight - 0.5 * std::log(2.0 * M_PI * s2)) - Scalar(0.5) * d2 / Scalar(s2);
+            Scalar b = Scalar(log_clutter);
             if (a > b) {
-                logLik += a + log(Scalar(1) + exp(b - a));
+                log_lik += a + log(Scalar(1) + exp(b - a));
             }
             else {
-                logLik += b + log(Scalar(1) + exp(a - b));
+                log_lik += b + log(Scalar(1) + exp(a - b));
             }
         }
-        return logLik;
+        return log_lik;
     }
 }  // namespace module::localisation::measurement
 

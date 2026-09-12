@@ -16,8 +16,8 @@ namespace module::localisation::srif {
         : options(opts)
         , lens_(lens)
         , dimensions_(dimensions)
-        , halfCarpetLength_(dims.fieldLength / 2 + dims.borderStripMinWidth + opts.fieldMargin)
-        , halfCarpetWidth_(dims.fieldWidth / 2 + dims.borderStripMinWidth + opts.fieldMargin)
+        , half_carpet_length_(dims.field_length / 2 + dims.border_strip_min_width + opts.field_margin)
+        , half_carpet_width_(dims.field_width / 2 + dims.border_strip_min_width + opts.field_margin)
         , orb_(cv::ORB::create()) {}
 
     OutOfFieldDetector::OutOfFieldDetector(const message::input::Image::Lens& lens,
@@ -25,14 +25,14 @@ namespace module::localisation::srif {
                                            const FieldDimensions& dims)
         : OutOfFieldDetector(lens, dimensions, dims, Options{}) {}
 
-    bool OutOfFieldDetector::isOutOfField(const Eigen::Vector3d& uPCc, const Pose<double>& Tfc) const {
+    bool OutOfFieldDetector::is_out_of_field(const Eigen::Vector3d& uPCc, const Pose<double>& Tfc) const {
         // Ray direction in the field frame and camera position above the ground plane.
-        const Eigen::Vector3d uFf  = Tfc.rotationMatrix * uPCc;
-        const Eigen::Vector3d rCFf = Tfc.translationVector;
+        const Eigen::Vector3d uFf  = Tfc.rotation_matrix * uPCc;
+        const Eigen::Vector3d rCFf = Tfc.translation_vector;
 
         // At or above the horizon: the ray never reaches the carpet, so whatever it
         // sees is background scenery.
-        if (uFf.z() >= -options.horizonMarginZ) {
+        if (uFf.z() >= -options.horizon_margin_z) {
             return true;
         }
 
@@ -40,26 +40,26 @@ namespace module::localisation::srif {
         // extent (field + border strip + margin).
         const double t          = -rCFf.z() / uFf.z();
         const Eigen::Vector3d g = rCFf + t * uFf;
-        return std::abs(g.x()) > halfCarpetLength_ || std::abs(g.y()) > halfCarpetWidth_;
+        return std::abs(g.x()) > half_carpet_length_ || std::abs(g.y()) > half_carpet_width_;
     }
 
     std::vector<OutOfFieldFeature> OutOfFieldDetector::detect(const cv::Mat& gray, const Pose<double>& Tfc) const {
         assert(gray.type() == CV_8UC1);
 
         std::vector<cv::KeyPoint> keypoints;
-        cv::FAST(gray, keypoints, options.fastThreshold, /*nonmaxSuppression*/ true);
+        cv::FAST(gray, keypoints, options.fast_threshold, /*nonmaxSuppression*/ true);
 
         // Reject corners near the image edge (unreliable unprojection and no room
-        // for the descriptor patch), then keep the strongest maxFeatures.
-        const double b = options.imageBorder;
+        // for the descriptor patch), then keep the strongest max_features.
+        const double b = options.image_border;
         std::erase_if(keypoints, [&](const cv::KeyPoint& kp) {
             return kp.pt.x < b || kp.pt.x >= gray.cols - b || kp.pt.y < b || kp.pt.y >= gray.rows - b;
         });
         std::sort(keypoints.begin(), keypoints.end(), [](const cv::KeyPoint& a, const cv::KeyPoint& c) {
             return a.response > c.response;
         });
-        if (keypoints.size() > static_cast<std::size_t>(options.maxFeatures)) {
-            keypoints.resize(options.maxFeatures);
+        if (keypoints.size() > static_cast<std::size_t>(options.max_features)) {
+            keypoints.resize(options.max_features);
         }
 
         // Oriented BRIEF descriptors at the surviving corners. ORB::compute may drop
@@ -72,11 +72,11 @@ namespace module::localisation::srif {
         features.reserve(keypoints.size());
         for (std::size_t i = 0; i < keypoints.size(); ++i) {
             OutOfFieldFeature f;
-            f.px         = Eigen::Vector2d(keypoints[i].pt.x, keypoints[i].pt.y);
-            f.uPCc       = utility::vision::unproject_pixel(f.px, lens_, dimensions_);
-            f.descriptor = descriptors.row(static_cast<int>(i));
-            f.response   = keypoints[i].response;
-            f.outOfField = isOutOfField(f.uPCc, Tfc);
+            f.px           = Eigen::Vector2d(keypoints[i].pt.x, keypoints[i].pt.y);
+            f.uPCc         = utility::vision::unproject_pixel(f.px, lens_, dimensions_);
+            f.descriptor   = descriptors.row(static_cast<int>(i));
+            f.response     = keypoints[i].response;
+            f.out_of_field = is_out_of_field(f.uPCc, Tfc);
             features.push_back(std::move(f));
         }
         return features;

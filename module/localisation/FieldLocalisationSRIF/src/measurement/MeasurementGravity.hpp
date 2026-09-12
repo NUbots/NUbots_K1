@@ -43,20 +43,20 @@ namespace module::localisation::measurement {
         MeasurementGravity(double time, const Eigen::Vector3d& accelerometer, double sigma = 1.0);
 
         virtual Eigen::VectorXd simulate(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g) const override;
-        virtual double logLikelihood(const Eigen::VectorXd& x,
-                                     const SystemEstimator& system,
-                                     Eigen::VectorXd& g,
-                                     Eigen::MatrixXd& H) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x, const SystemEstimator& system) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g) const override;
+        virtual double log_likelihood(const Eigen::VectorXd& x,
+                                      const SystemEstimator& system,
+                                      Eigen::VectorXd& g,
+                                      Eigen::MatrixXd& H) const override;
 
         /**
          * @brief Templated log-likelihood for autodiff.
          */
         template <typename Scalar>
-        Scalar logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const;
+        Scalar log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const;
 
     protected:
         Eigen::Vector3d y_;  ///< Measured specific force in torso frame [m/s^2]
@@ -66,8 +66,8 @@ namespace module::localisation::measurement {
     };
 
     template <typename Scalar>
-    Scalar MeasurementGravity::logLikelihoodImpl(const Eigen::VectorX<Scalar>& x) const {
-        const Eigen::Vector4<Scalar> q   = x.segment(srif::SystemLocalisation::iQuat, 4);
+    Scalar MeasurementGravity::log_likelihood_impl(const Eigen::VectorX<Scalar>& x) const {
+        const Eigen::Vector4<Scalar> q   = x.segment(srif::SystemLocalisation::i_quat, 4);
         const Eigen::Matrix3<Scalar> Rfb = quat2rot(q);
 
         Eigen::Vector3<Scalar> gf(Scalar(0), Scalar(0), Scalar(gravity_));
