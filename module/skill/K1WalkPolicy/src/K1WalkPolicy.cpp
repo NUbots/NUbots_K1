@@ -152,12 +152,14 @@ namespace module::skill {
             mode->mode = K1Mode::CUSTOM;
             emit(std::move(mode));
             emit(std::make_unique<WalkState>(WalkState::State::STOPPED, Eigen::Vector3d::Zero()));
-            last_walk_state = int(WalkState::State::STOPPED);
+            last_walk_state   = int(WalkState::State::STOPPED);
+            last_walk_command = Eigen::Vector3d::Zero();
         });
 
         on<Stop<WalkTask>>().then([this] {
             emit(std::make_unique<WalkState>(WalkState::State::STOPPED, Eigen::Vector3d::Zero()));
-            last_walk_state = int(WalkState::State::STOPPED);
+            last_walk_state   = int(WalkState::State::STOPPED);
+            last_walk_command = Eigen::Vector3d::Zero();
         });
 
         // 50 Hz inference loop, matching the training control rate (ctrl_dt = 0.02 s). The
@@ -399,9 +401,12 @@ namespace module::skill {
                         << " cmd_q=[" << cmd_q_stream.str() << ']';
                     log<DEBUG>(out.str());
                 }
-                if (int(state) != last_walk_state) {
+                // Re-emit on a command change too: velocity_target is what Overview and
+                // RobotCommunication report as the walk command.
+                if (int(state) != last_walk_state || cmd != last_walk_command) {
                     emit(std::make_unique<WalkState>(state, cmd));
-                    last_walk_state = int(state);
+                    last_walk_state   = int(state);
+                    last_walk_command = cmd;
                 }
             });
     }
