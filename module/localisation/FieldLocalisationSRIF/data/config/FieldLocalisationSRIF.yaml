@@ -12,7 +12,7 @@ use_hypothesis_bank: false
 # Out-of-field side disambiguation: scores the current pose against its 180 deg mirror using
 # background scenery. Costs roughly 4 ms per camera frame.
 # TODO: confirm timing, and the interaction with use_hypothesis_bank.
-use_side_disambiguator: true
+use_side_disambiguator: false
 
 # Accelerometer gravity-direction measurement of torso roll/pitch.
 # TODO: compare on/off and remove if unneeded.
@@ -31,7 +31,7 @@ gyroscope_sigma: 0.02 # [rad/s] per axis
 #   HTW_DIFFERENCE - finite difference of consecutive Sensors.Htw. Available on every platform.
 #   SENSORS_VTW    - Sensors.vTw rotated into the torso frame. For platforms whose odometry is a
 #                    real state estimator.
-odometry_velocity_source: HTW_DIFFERENCE
+odometry_velocity_source: SENSORS_VTW
 
 odometry_velocity_sigma: 0.15 # body linear velocity [m/s] per axis; size it for the source above
 gravity_sigma: 1.0 # accelerometer gravity-direction noise [m/s^2] (TODO: why so large?)
