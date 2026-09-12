@@ -47,6 +47,7 @@ type LocalisationViewProps = {
 const FieldDimensionOptions = [
   { label: "Lab", value: "lab" },
   { label: "Robocup (Small)", value: "robocup_small" },
+  { label: "Robocup (Middle)", value: "robocup_middle" },
   { label: "Robocup (Large)", value: "robocup_large" },
   { label: "Robocup (5v5)", value: "robocup_5v5" },
 ];

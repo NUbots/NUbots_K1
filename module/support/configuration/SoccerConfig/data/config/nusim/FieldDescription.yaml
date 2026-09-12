@@ -1,14 +1,19 @@
 # NUSim's field, merged over ../FieldDescription.yaml for roles run with hostname nusim (see
-# tools/utility/dockerise/run.py). Values measured from NUSim's scene,
-# mujoco/models/k1/k1_scene_robocup.xml. Only the values that differ from the default are set.
+# tools/utility/dockerise/run.py). Only the values that differ from the default are set.
+#
+# field_type must match the scene NUSim was launched with:
+#   nusim_kidsize - the default scene, mujoco/models/k1/k1_scene_robocup.xml (`./b run sim/soccer`)
+#   middle        - the 2026 HSL M-Field, mujoco/models/k1/k1_scene_robocup_middle.xml
+#                   (`./b run sim/soccer --model models/k1/k1_scene_robocup_middle.xml`)
 
 BallRadius: 0.0785
 LineWidth: 0.05
 
-field_type: nusim
+field_type: nusim_kidsize
 
 presets:
-  nusim:
+  # RoboCup KidSize (pre-2026 rules) as built by NUSim's default scene, measured from it
+  nusim_kidsize:
     FieldLength: 9.0
     FieldWidth: 6.0
     GoalDepth: 0.6 # NUSim's goals have no net; the kid-size value

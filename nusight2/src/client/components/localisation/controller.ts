@@ -189,6 +189,28 @@ export class LocalisationController {
           borderStripMinWidth: 1.0,
         });
         break;
+      // RoboCup 2026 Humanoid Soccer League M-Field (Middle Division). The rules give ranges for the
+      // goal; these match NUSim's M-Field scene and the middle preset in FieldDescription.yaml.
+      case "robocup_middle":
+        model.field.dimensions = new FieldDimensions({
+          lineWidth: 0.05,
+          markWidth: 0.1,
+          fieldLength: 14.0,
+          fieldWidth: 9.0,
+          goalDepth: 0.7,
+          goalWidth: 2.5,
+          goalAreaLength: 1.0,
+          goalAreaWidth: 4.0,
+          penaltyAreaLength: 3.0,
+          penaltyAreaWidth: 6.0,
+          goalCrossbarHeight: 1.75,
+          goalPostDiameter: 0.1,
+          goalNetHeight: 1.8,
+          penaltyMarkDistance: 2.0,
+          centerCircleDiameter: 3.0,
+          borderStripMinWidth: 1.0,
+        });
+        break;
       case "robocup_large":
         model.field.dimensions = new FieldDimensions({
           lineWidth: 0.06,
