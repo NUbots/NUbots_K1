@@ -1,7 +1,7 @@
 import { action } from "mobx";
 import * as THREE from "three";
 
-import { FieldDimensions } from "../../../shared/field/dimensions";
+import { FIELD_PRESETS, FieldDimensions } from "../../../shared/field/dimensions";
 import { Vector3 } from "../../../shared/math/vector3";
 
 import { KeyCode } from "./keycodes";
@@ -147,113 +147,13 @@ export class LocalisationController {
 
   @action
   setFieldDimensions(field_type: string, model: LocalisationModel) {
-    model.field.fieldType = field_type;
-    switch (field_type) {
-      case "lab":
-        model.field.dimensions = new FieldDimensions({
-          lineWidth: 0.05,
-          markWidth: 0.1,
-          fieldLength: 6.8,
-          fieldWidth: 5.0,
-          goalDepth: 0.4,
-          goalWidth: 1.95,
-          goalAreaLength: 1.05,
-          goalAreaWidth: 2.62,
-          penaltyAreaLength: 1.55,
-          penaltyAreaWidth: 4.05,
-          goalCrossbarHeight: 0.55,
-          goalPostDiameter: 0.1,
-          goalNetHeight: 1.0,
-          penaltyMarkDistance: 1.27,
-          centerCircleDiameter: 1.5,
-          borderStripMinWidth: 0.38,
-        });
-        break;
-      case "robocup_small":
-        model.field.dimensions = new FieldDimensions({
-          lineWidth: 0.06,
-          markWidth: 0.1,
-          fieldLength: 9.0,
-          fieldWidth: 6.0,
-          goalDepth: 0.58,
-          goalWidth: 2.575,
-          goalAreaLength: 0.9,
-          goalAreaWidth: 2.9,
-          penaltyAreaLength: 1.9,
-          penaltyAreaWidth: 3.9,
-          goalCrossbarHeight: 1.2,
-          goalPostDiameter: 0.1,
-          goalNetHeight: 1.2,
-          penaltyMarkDistance: 1.47,
-          centerCircleDiameter: 1.5,
-          borderStripMinWidth: 1.0,
-        });
-        break;
-      // RoboCup 2026 Humanoid Soccer League M-Field (Middle Division). The rules give ranges for the
-      // goal; these match NUSim's M-Field scene and the middle preset in FieldDescription.yaml.
-      case "robocup_middle":
-        model.field.dimensions = new FieldDimensions({
-          lineWidth: 0.05,
-          markWidth: 0.1,
-          fieldLength: 14.0,
-          fieldWidth: 9.0,
-          goalDepth: 0.7,
-          goalWidth: 2.5,
-          goalAreaLength: 1.0,
-          goalAreaWidth: 4.0,
-          penaltyAreaLength: 3.0,
-          penaltyAreaWidth: 6.0,
-          goalCrossbarHeight: 1.75,
-          goalPostDiameter: 0.1,
-          goalNetHeight: 1.8,
-          penaltyMarkDistance: 2.0,
-          centerCircleDiameter: 3.0,
-          borderStripMinWidth: 1.0,
-        });
-        break;
-      case "robocup_large":
-        model.field.dimensions = new FieldDimensions({
-          lineWidth: 0.06,
-          markWidth: 0.1,
-          fieldLength: 9.0,
-          fieldWidth: 6.0,
-          goalDepth: 0.5,
-          goalWidth: 1.8,
-          goalAreaLength: 0.9,
-          goalAreaWidth: 2.9,
-          penaltyAreaLength: 1.9,
-          penaltyAreaWidth: 3.9,
-          goalCrossbarHeight: 1.2,
-          goalPostDiameter: 0.1,
-          goalNetHeight: 1.2,
-          penaltyMarkDistance: 1.47,
-          centerCircleDiameter: 1.5,
-          borderStripMinWidth: 1.0,
-        });
-        break;
-      case "robocup_5v5":
-        model.field.dimensions = new FieldDimensions({
-          lineWidth: 0.06,
-          markWidth: 0.1,
-          fieldLength: 22.0,
-          fieldWidth: 14.0,
-          goalDepth: 0.6,
-          goalWidth: 2.6,
-          goalAreaLength: 2.0,
-          goalAreaWidth: 5.0,
-          penaltyAreaLength: 5.0,
-          penaltyAreaWidth: 8.0,
-          goalCrossbarHeight: 1.25,
-          goalPostDiameter: 0.1,
-          goalNetHeight: 1.2,
-          penaltyMarkDistance: 3.5,
-          centerCircleDiameter: 4,
-          borderStripMinWidth: 1.0,
-        });
-        break;
-      default:
-        console.error("Unknown field dimension");
+    const preset = FIELD_PRESETS[field_type];
+    if (!preset) {
+      console.error("Unknown field dimension");
+      return;
     }
+    model.field.fieldType = field_type;
+    model.field.dimensions = new FieldDimensions(preset);
   }
 
   private updatePosition(model: LocalisationModel) {

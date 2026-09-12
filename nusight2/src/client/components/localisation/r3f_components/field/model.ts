@@ -1,6 +1,6 @@
 import { observable } from "mobx";
 
-import { FieldDimensions } from "../../../../../shared/field/dimensions";
+import { FIELD_PRESETS, FieldDimensions } from "../../../../../shared/field/dimensions";
 
 export class FieldModel {
   @observable dimensions: FieldDimensions;
@@ -21,10 +21,10 @@ export class FieldModel {
 
   static of() {
     return new FieldModel({
-      dimensions: FieldDimensions.of(),
+      dimensions: new FieldDimensions(FIELD_PRESETS.lab),
       fieldColor: "#00cc00",
       lineColor: "#ffffff",
-      fieldType: "robocup_small",
+      fieldType: "lab",
       blueGoalColor: "#0000ff",
       yellowGoalColor: "#ffff00",
     });
