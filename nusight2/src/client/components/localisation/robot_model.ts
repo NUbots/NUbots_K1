@@ -186,7 +186,8 @@ export class LocalisationRobotModel {
   // fields on this model, which store world-space data and expose field-space via a computed).
   @observable desiredSupportPosition?: Vector2;
   @observable associationLines?: Line[];
-  @observable covariance: Matrix3; // Covariance of the localisation (x, y, theta) estimate
+  // Covariance of the localisation (x, y, theta) estimate; undefined until a Field message arrives
+  @observable covariance?: Matrix3;
   @observable maxAlignRadius: number;
   @observable minAlignRadius: number;
   @observable angleToFinalHeading: number;
@@ -267,7 +268,7 @@ export class LocalisationRobotModel {
     purpose: string;
     desiredSupportPosition?: Vector2;
     associationLines?: Line[];
-    covariance: Matrix3;
+    covariance?: Matrix3;
     maxAlignRadius: number;
     minAlignRadius: number;
     angleToFinalHeading: number;
@@ -346,7 +347,6 @@ export class LocalisationRobotModel {
       robots: [],
       purpose: "",
       associationLines: [],
-      covariance: Matrix3.of(),
       maxAlignRadius: 0,
       minAlignRadius: 0,
       angleToFinalHeading: 0,

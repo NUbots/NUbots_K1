@@ -577,7 +577,7 @@ const RobotComponents: React.FC<RobotRenderProps> = observer(({ robot, model }) 
 
       {model.fieldLinePointsVisible && <FieldPoints points={robot.rPFf} color={"blue"} size={0.02} />}
       {model.particlesVisible && <FieldPoints points={robot.particles} color={"blue"} size={0.02} />}
-      {model.uncertaintyVisible && (
+      {model.uncertaintyVisible && robot.covariance && (
         <UncertaintyEllipse position={robot.Hft.decompose().translation} covariance={robot.covariance} />
       )}
 

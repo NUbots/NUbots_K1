@@ -57,24 +57,25 @@ namespace module::localisation::measurement {
         : MeasurementFieldLandmarks(time, sample, Tbc, map, system, Options{}) {}
 
     bool MeasurementFieldLandmarks::detectionRay(const Detection& det, Eigen::Vector3d& ray, LandmarkType& type) {
-        if (det.name == "L-intersection") {
+        // Class names as the K1 YOLO model emits them (module/vision/Yolo/src/Yolo.hpp)
+        if (det.name == "LCross") {
             type = LandmarkType::L_INTERSECTION;
             ray  = det.corners.rowwise().sum();  // Bounding box centre
         }
-        else if (det.name == "T-intersection") {
+        else if (det.name == "TCross") {
             type = LandmarkType::T_INTERSECTION;
             ray  = det.corners.rowwise().sum();
         }
-        else if (det.name == "X-intersection") {
+        else if (det.name == "XCross") {
             type = LandmarkType::X_INTERSECTION;
             ray  = det.corners.rowwise().sum();
         }
-        else if (det.name == "goal post") {
+        else if (det.name == "Goalpost") {
             type = LandmarkType::GOAL_POST;
             ray  = det.corners.col(2) + det.corners.col(3);  // Bottom-centre (post base): BR + BL
         }
         else {
-            return false;  // ball, robot, etc. are not mapped landmarks
+            return false;  // ball, robot, penalty point, etc. are not mapped landmarks
         }
 
         if (!ray.allFinite() || ray.norm() < 1e-12) {
