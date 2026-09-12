@@ -1,4 +1,4 @@
-log_level: DEBUG
+log_level: INFO
 
 # The settings for each camera. Keys must match Image.name as published by the camera
 # module (K1Camera.yaml `name:` — "Left Camera" / "Right Camera").

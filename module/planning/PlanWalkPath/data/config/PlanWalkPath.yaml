@@ -1,5 +1,5 @@
 # Controls the minimum log level that NUClear log will display
-log_level: DEBUG
+log_level: INFO
 
 # Maximum velocity command per axis [vx (m/s), vy (m/s), vtheta (rad/s)]
 # vx capped at 0.8: the deployed walk policy serves 0.62 m/s at a 0.8 command and stalls
