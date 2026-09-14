@@ -214,42 +214,6 @@ RUN install-from-source https://github.com/uxlfoundation/oneTBB/archive/refs/tag
     -DTBB_TEST:BOOL='OFF' \
     -DTBB_BENCH:BOOL='OFF'
 
-# Clone OpenVINO repository
-RUN git clone https://github.com/openvinotoolkit/openvino.git --branch 2024.6.0 && \
-    cd openvino && \
-    git submodule update --init --recursive
-
-# Build OpenVINO
-WORKDIR /openvino
-RUN mkdir build && cd build && \
-    cmake .. -DBUILD_TESTING:BOOL='OFF' \
-    -DCMAKE_BUILD_TYPE:STRING='Release' \
-    -DCMAKE_TOOLCHAIN_FILE=${prefix}/toolchain.cmake \
-    -DENABLE_AVX512F:BOOL='OFF' \
-    -DENABLE_PYTHON:BOOL='OFF' \
-    -DENABLE_CLANG_FORMAT:BOOL='OFF' \
-    -DENABLE_NCC_STYLE:BOOL='OFF' \
-    -DENABLE_SYSTEM_PUGIXML:BOOL='ON' \
-    -DENABLE_INTEL_NPU:BOOL='OFF' \
-    -DENABLE_SYSTEM_TBB:BOOL='ON' \
-    -DENABLE_SYSTEM_OPENCL:BOOL='ON' \
-    -DENABLE_SYSTEM_PROTOBUF:BOOL='OFF' \
-    -DENABLE_SYSTEM_FLATBUFFERS:BOOL='OFF' \
-    -DENABLE_INTEL_GPU:BOOL='OFF' \
-    -DENABLE_INTEL_CPU:BOOL='ON' \
-    -DENABLE_ARM_COMPUTE_CMAKE:BOOL='OFF' \
-    -DARM_COMPUTE_SCONS_JOBS="$(nproc)" \
-    -DENABLE_CPPLINT:BOOL='OFF' \
-    -DCMAKE_CXX_STANDARD='17' \
-    -Wno-dev \
-    -GNinja && \
-    ninja -j$(nproc) && ninja -j$(nproc) install
-
-# Move OpenVino libraries to our library path
-RUN ARCH=$([ "${platform}" = "orinnx" ] && echo "aarch64" || echo "intel64") && \
-    LIB_PATH=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/usr/local/lib" || echo "/usr/local/lib") && \
-    cp /openvino/bin/${ARCH}/Release/* ${LIB_PATH}/ -r
-
 # CUDA Toolkit
 COPY usr/local/bin/install-cuda.sh /usr/local/bin/install-cuda.sh
 RUN /usr/local/bin/install-cuda.sh ${platform}
@@ -276,6 +240,17 @@ RUN install-package -p ${platform} \
     libnvinfer-plugin-dev \
     libnvinfer-lean-dev \
     libnvinfer-vc-plugin-dev
+
+
+# ONNXRuntime
+RUN . /root/.dep_env && \
+    if [ "${platform}" = "generic" ]; then \
+        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-x64-1.30.0.tgz; \
+    else \
+        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-aarch64-1.30.0.tgz; \
+    fi && \
+    wget -nv https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/${ONNXRUNTIME_ARCHIVE} -O - \
+    | tar --extract --gzip --strip-components=1 --directory ${DEP_PREFIX} --file -
 
 # Eigen3
 RUN install-from-source https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz \
