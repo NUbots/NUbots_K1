@@ -8,13 +8,11 @@ The classes for the model are from COCO (https://docs.ultralytics.com/datasets/d
 
 Confidence thresholds for each class can be specified in the config.
 
-Inference can be ran on either the CPU or GPU using OpenVino (https://github.com/openvinotoolkit/openvino).
+Inference is run on CPU using ONNX Runtime (https://onnxruntime.ai/).
 
 ## Usage
 
 Include this module to detect balls, goals, robots and field line intersections in images.
-
-To run with GPU device in docker you need to include the following flags `./b run {binary} --gpus all`
 
 ## Consumes
 
@@ -26,6 +24,6 @@ To run with GPU device in docker you need to include the following flags `./b ru
 
 ## Dependencies
 
-- [OpenVino](https://github.com/openvinotoolkit/openvino)
+- [ONNX Runtime](https://onnxruntime.ai/)
 - [Eigen Linear Algebra Library](https://eigen.tuxfamily.org/index.php)
 - [OpenCV](https://opencv.org/)

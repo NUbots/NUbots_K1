@@ -194,7 +194,7 @@ RUN if [ "${platform}" != "generic" ]; then \
     -DBUILD_SHARED_LIBS=OFF; \
     fi
 
-# OpenVino - Dependencies
+# Build dependencies
 RUN install-package opencl-c-headers \
     shellcheck \
     scons \
@@ -249,8 +249,9 @@ RUN . /root/.dep_env && \
     else \
         ONNXRUNTIME_ARCHIVE=onnxruntime-linux-aarch64-1.30.0.tgz; \
     fi && \
-    wget -nv https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/${ONNXRUNTIME_ARCHIVE} -O - \
-    | tar --extract --gzip --strip-components=1 --directory ${DEP_PREFIX} --file -
+    install-from-source https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/${ONNXRUNTIME_ARCHIVE} \
+        --prefix ${DEP_PREFIX} \
+        --no-toolchain
 
 # Eigen3
 RUN install-from-source https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz \

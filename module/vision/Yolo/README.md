@@ -14,15 +14,13 @@ Confidence thresholds for each class can be specified in the config.
 
 Penalty point detections have no dedicated message type yet, so they are only emitted as a `message::vision::BoundingBox` for visualisation/debugging in NUsight.
 
-Inference can be ran on either the CPU or GPU using OpenVino (https://github.com/openvinotoolkit/openvino).
+Inference is run on CPU using ONNX Runtime (https://onnxruntime.ai/).
 
 ## Usage
 
 Include this module to detect balls, goals, robots, field line intersections and penalty points in images.
 
 If the GreenHorizon is included in the program, balls, field line intersections and robots outside of the GreenHorizon will be discarded. Penalty point bounding boxes are not filtered by the GreenHorizon.
-
-To run with GPU device in docker you need to include the following flags `./b run {binary} --gpus all`
 
 ## Consumes
 
@@ -38,6 +36,6 @@ To run with GPU device in docker you need to include the following flags `./b ru
 
 ## Dependencies
 
-- [OpenVino](https://github.com/openvinotoolkit/openvino)
+- [ONNX Runtime](https://onnxruntime.ai/)
 - [Eigen Linear Algebra Library](https://eigen.tuxfamily.org/index.php)
 - [OpenCV](https://opencv.org/)
