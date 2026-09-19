@@ -1,0 +1,36 @@
+log_level: INFO
+
+# Validates localisation::BallLocalisation against NUSim ground truth. The robot stands still and looks
+# at the ball while NUSim rolls it at the robot from a seeded random schedule. Every UKF estimate and
+# every raw vision detection is compared with the ground truth in the robot frame {r}, which is
+# immune to odometry drift. See README.md.
+
+# Seconds after startup before the first shot, to let field localisation converge and the robot
+# stand up
+start_delay: 20
+
+# Shot schedule (all in the robot frame {r} at the moment of the command)
+seed: 1
+shots: 30
+settle_time: 2.0 # s the ball rests in place before each kick (the estimate converges on it)
+roll_time: 3.0 # s recorded after each kick
+start_distance: [2.0, 5.0] # m in front of the robot
+start_lateral: [-1.5, 1.5] # m
+target_lateral: [-1.2, 1.2] # m: where the path crosses the robot's frontal plane (x = 0)
+speed: [1.0, 4.0] # m/s
+
+# Effective-latency search: the lag (s) at which the estimate best matches the delayed ground truth
+lag_search: [0.0, 1.0, 0.02] # [min, max, step]; a sluggish filter can lag well past 0.5 s
+
+# CSVs (samples, detections, per-shot summary) are written here, timestamped per run. The repository
+# is mounted at /home/nubots/NUbots in the container, so this lands in the host checkout.
+output_dir: "/home/nubots/NUbots/recordings/ball_localisation_benchmark"
+
+# Stop the binary once every shot is done (for batch runs)
+shutdown_when_done: true
+
+# Director tasks that keep the robot standing and looking at the ball
+tasks:
+  stand_still_priority: 1
+  look_at_ball_priority: 2
+  look_around_priority: 1
