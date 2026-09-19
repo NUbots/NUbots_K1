@@ -67,6 +67,21 @@ namespace module::localisation {
         double seconds(const NUClear::clock::duration& d) {
             return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
         }
+
+        /// Rolling resistance on the mean state over dt: the ball slows at a constant rate until it stops. The UKF's
+        /// constant-velocity step has already moved the position by v * dt, so only the difference is corrected.
+        BallModel<double>::StateVec decelerate(BallModel<double>::StateVec state,
+                                               const double deceleration,
+                                               const double dt) {
+            const double speed = state.vBw.norm();
+            if (deceleration <= 0.0 || speed < 1e-6 || dt <= 0.0) {
+                return state;
+            }
+            const Eigen::Vector2d v_end = state.vBw * std::max(0.0, 1.0 - deceleration * dt / speed);
+            state.rBWw += 0.5 * (v_end - state.vBw) * dt;
+            state.vBw = v_end;
+            return state;
+        }
     }  // namespace
 
     BallLocalisation::BallLocalisation(std::unique_ptr<NUClear::Environment> environment)
@@ -83,16 +98,17 @@ namespace module::localisation {
             cfg.ukf.acceleration_noise      = config["ukf"]["noise"]["process"]["acceleration"].as<double>();
             cfg.ukf.rolling_deceleration    = config["motion"]["rolling_deceleration"].as<double>();
             ukf.model.acceleration_noise    = cfg.ukf.acceleration_noise;
-            ukf.model.rolling_deceleration  = cfg.ukf.rolling_deceleration;
             cfg.ukf.initial_covariance.rBWw = config["ukf"]["initial"]["covariance"]["position"].as<Expression>();
             cfg.ukf.initial_covariance.vBw  = config["ukf"]["initial"]["covariance"]["velocity"].as<Expression>();
 
             // Association
-            cfg.association.gate              = config["association"]["gate"].as<double>();
-            cfg.association.max_ball_speed    = config["association"]["max_ball_speed"].as<double>();
-            cfg.association.kick_velocity_std = config["association"]["kick_velocity_std"].as<double>();
-            cfg.association.confirm_radius    = config["association"]["confirm_radius"].as<double>();
-            cfg.association.reacquire_after   = config["association"]["reacquire_after"].as<double>();
+            cfg.association.gate                = config["association"]["gate"].as<double>();
+            cfg.association.max_ball_speed      = config["association"]["max_ball_speed"].as<double>();
+            cfg.association.kick_velocity_std   = config["association"]["kick_velocity_std"].as<double>();
+            cfg.association.confirm_radius      = config["association"]["confirm_radius"].as<double>();
+            cfg.association.reacquire_after     = config["association"]["reacquire_after"].as<double>();
+            cfg.association.manoeuvre_smoothing = config["association"]["manoeuvre_smoothing"].as<double>();
+            cfg.association.manoeuvre_threshold = config["association"]["manoeuvre_threshold"].as<double>();
 
             // Set configuration for robot to robot communication balls
             cfg.use_r2r_balls            = config["use_r2r_balls"].as<bool>();
@@ -140,6 +156,10 @@ namespace module::localisation {
                     const double dt = seconds(image_time - filter_time);
                     if (dt > 0.0) {
                         ukf.time(dt);
+                        ukf.set_state(
+                            decelerate(BallModel<double>::StateVec(ukf.get_state()), cfg.ukf.rolling_deceleration, dt)
+                                .getStateVec(),
+                            ukf.get_covariance());
                         filter_time = image_time;
                     }
                     const BallModel<double>::StateVec state(ukf.get_state());
@@ -172,6 +192,22 @@ namespace module::localisation {
                     }
 
                     if (inside != nullptr) {
+                        // A kick that stays inside the gate still shows as innovations that keep pointing the
+                        // same way. Under a steady ball the running average stays near zero (its covariance is
+                        // about a/(2-a) of S), so a large normalised average means the ball is accelerating.
+                        const Eigen::Vector2d innovation = inside->rBWw - state.rBWw;
+                        const Eigen::Matrix2d S = P + Eigen::Matrix2d::Identity() * std::pow(inside->sigma, 2);
+                        const double a          = cfg.association.manoeuvre_smoothing;
+                        innovation_bias         = (1.0 - a) * innovation_bias + a * innovation;
+                        const double drift      = innovation_bias.dot(S.ldlt().solve(innovation_bias));
+                        if (drift > cfg.association.manoeuvre_threshold) {
+                            BallModel<double>::StateMat covariance = ukf.get_covariance();
+                            covariance.block<2, 2>(BallModel<double>::StateVec::VX, BallModel<double>::StateVec::VX) +=
+                                Eigen::Matrix2d::Identity() * std::pow(cfg.association.kick_velocity_std, 2);
+                            ukf.set_state(state.getStateVec(), covariance);
+                            innovation_bias.setZero();
+                            log<DEBUG>("Ball manoeuvre detected");
+                        }
                         accepted = *inside;
                     }
                     else if (kick != nullptr) {
@@ -183,6 +219,7 @@ namespace module::localisation {
                         covariance.topLeftCorner<2, 2>() +=
                             Eigen::Matrix2d::Identity() * (kick->rBWw - state.rBWw).squaredNorm();
                         ukf.set_state(state.getStateVec(), covariance);
+                        innovation_bias.setZero();
                         accepted = *kick;
                         log<DEBUG>("Ball kick detected, innovation", (kick->rBWw - state.rBWw).norm(), "m");
                     }
@@ -234,7 +271,10 @@ namespace module::localisation {
                 // Publish the ball where it is now: predict the image-time estimate over vision's latency
                 const BallModel<double>::StateVec state(ukf.get_state());
                 const double latency = std::clamp(seconds(NUClear::clock::now() - image_time), 0.0, 0.5);
-                const BallModel<double>::StateVec now_state(ukf.model.time(state, latency));
+                const BallModel<double>::StateVec now_state =
+                    decelerate(BallModel<double>::StateVec(ukf.model.time(state, latency)),
+                               cfg.ukf.rolling_deceleration,
+                               latency);
 
                 auto ball                 = std::make_unique<Ball>();
                 ball->rBWw                = Eigen::Vector3d(now_state.rBWw.x(), now_state.rBWw.y(), fd.ball_radius);
@@ -305,6 +345,7 @@ namespace module::localisation {
         tracking         = true;
         filter_time      = time;
         last_accept_time = time;
+        innovation_bias.setZero();
     }
 
     bool BallLocalisation::confirmed(const Candidate& candidate, const NUClear::clock::time_point& time) const {
