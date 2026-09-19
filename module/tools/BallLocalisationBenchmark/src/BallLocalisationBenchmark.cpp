@@ -321,8 +321,10 @@ namespace module::tools {
 
         // Every raw vision detection against the ground truth at its image time: separates detector
         // error from filter error, and measures the vision pipeline's latency
-        on<Trigger<VisionBalls>, With<Sensors>, Sync<BallLocalisationBenchmark>>().then(
-            [this](const VisionBalls& balls, const Sensors& sensors) {
+        on<Trigger<VisionBalls>, With<Sensors>, Optional<With<FieldDescription>>, Sync<BallLocalisationBenchmark>>()
+            .then([this](const VisionBalls& balls,
+                         const Sensors& sensors,
+                         const std::shared_ptr<const FieldDescription>& fd) {
                 if (phase != Phase::SETTLING && phase != Phase::ROLLING) {
                     return;
                 }
@@ -346,16 +348,24 @@ namespace module::tools {
                         best = std::min(best, (r - gt->first).norm());
                     }
                     if (detections_csv) {
+                        // Two independent ranges to the detection: along the ray to the field plane, and from
+                        // its apparent size (radius is the cosine of the angular half-width). They agree for a
+                        // real ball on the ground but not for nearby or flat things that merely look round.
+                        const double proj_range = b.measurements[0].rBCc.norm();
+                        const double size_range = fd != nullptr && b.radius > 0.0 && b.radius < 1.0
+                                                      ? fd->ball_radius / std::sqrt(1.0 - b.radius * b.radius)
+                                                      : std::nan("");
                         detections_csv << shot.id << ',' << (rolling ? "roll" : "settle") << ','
                                        << seconds(now - shot.placed) << ','
                                        << (rolling ? seconds(image_time - shot.kicked) : std::nan("")) << ',' << latency
                                        << ',' << r.x() << ',' << r.y() << ',';
                         if (gt) {
-                            detections_csv << gt->first.x() << ',' << gt->first.y() << '\n';
+                            detections_csv << gt->first.x() << ',' << gt->first.y();
                         }
                         else {
-                            detections_csv << ",\n";
+                            detections_csv << ',';
                         }
+                        detections_csv << ',' << proj_range << ',' << size_range << '\n';
                     }
                 }
                 if (rolling && std::isfinite(best)) {
@@ -379,7 +389,7 @@ namespace module::tools {
         detections_csv.open(dir / "detections.csv");
         summary_csv.open(dir / "summary.csv");
         samples_csv << "shot,phase,t_shot,t_kick,est_x,est_y,est_vx,est_vy,gt_x,gt_y,gt_vx,gt_vy,confidence\n";
-        detections_csv << "shot,phase,t_shot,t_kick,latency,det_x,det_y,gt_x,gt_y\n";
+        detections_csv << "shot,phase,t_shot,t_kick,latency,det_x,det_y,gt_x,gt_y,proj_range,size_range\n";
         summary_csv << "shot,start_x,start_y,target_y,speed,n_estimates,n_detections,estimate_rate_hz,"
                        "detection_rate_hz,pos_rmse,pos_max,vel_rmse,speed_rmse,velocity_response_s,best_lag_s,"
                        "pos_rmse_at_best_lag,detection_pos_rmse,vision_latency_median_s\n";
