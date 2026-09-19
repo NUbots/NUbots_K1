@@ -27,6 +27,7 @@ tasks:
   # Skill: run the ONNX kick policy directly, bypassing the approach chain (isolation
   # test only). 0 = use the real FindBall -> WalkToKickBall -> PlanKick chain above.
   kick_policy_priority: 0
+  block_policy_priority: 0
 
   # Skills
   say_priority: 0

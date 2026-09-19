@@ -56,6 +56,8 @@ namespace module::purpose {
             int kick_to_priority = 0;
             /// @brief Priority of the ONNX kick policy (skill::Kick) run directly
             int kick_policy_priority = 0;
+            /// @brief Priority of the Block task (the K1 block policy, inactive command: holds the ready stance)
+            int block_policy_priority = 0;
             /// @brief Priority of LookAround task
             int look_around_priority = 0;
             /// @brief Priority of StandStill task

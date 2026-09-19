@@ -32,6 +32,7 @@
 #include "message/behaviour/state/Stability.hpp"
 #include "message/planning/KickTo.hpp"
 #include "message/planning/LookAround.hpp"
+#include "message/skill/Block.hpp"
 #include "message/skill/GPT.hpp"
 #include "message/skill/Kick.hpp"
 #include "message/skill/Say.hpp"
@@ -52,6 +53,7 @@ namespace module::purpose {
     using message::behaviour::state::Stability;
     using message::planning::KickTo;
     using message::planning::LookAround;
+    using message::skill::Block;
     using message::skill::GPTAudioRequest;
     using message::skill::GPTChatRequest;
     using message::skill::Kick;
@@ -80,6 +82,7 @@ namespace module::purpose {
             cfg.walk_to_field_position_priority = config["tasks"]["walk_to_field_position_priority"].as<int>();
             cfg.kick_to_priority                = config["tasks"]["kick_to_priority"].as<int>();
             cfg.kick_policy_priority            = config["tasks"]["kick_policy_priority"].as<int>();
+            cfg.block_policy_priority           = config["tasks"]["block_policy_priority"].as<int>();
             cfg.look_around_priority            = config["tasks"]["look_around_priority"].as<int>();
             cfg.stand_still_priority            = config["tasks"]["stand_still_priority"].as<int>();
             cfg.say_priority                    = config["tasks"]["say_priority"].as<int>();
@@ -132,6 +135,10 @@ namespace module::purpose {
                     // Trigger the ONNX kick policy directly, bypassing PlanKick's
                     // approach/alignment gate: the policy does its own approach and kick.
                     emit<Task>(std::make_unique<Kick>(), cfg.kick_policy_priority);
+                }
+                if (cfg.block_policy_priority > 0) {
+                    // An inactive Block command: the block policy holds its ready stance
+                    emit<Task>(std::make_unique<Block>(), cfg.block_policy_priority);
                 }
                 if (cfg.look_around_priority > 0) {
                     emit<Task>(std::make_unique<LookAround>(), cfg.look_around_priority);
