@@ -94,6 +94,13 @@ namespace module::localisation {
         /// between updates. Kicks are handled by the filter's association logic, not by this noise.
         Scalar acceleration_noise = Scalar(1);
 
+        /// State transition over delta_T: constant velocity
+        [[nodiscard]] static Eigen::Matrix<Scalar, size, size> transition(const Scalar delta_T) {
+            Eigen::Matrix<Scalar, size, size> F = Eigen::Matrix<Scalar, size, size>::Identity();
+            F.template block<2, 2>(StateVec::PX, StateVec::VX) = Eigen::Matrix<Scalar, 2, 2>::Identity() * delta_T;
+            return F;
+        }
+
         [[nodiscard]] Eigen::Matrix<Scalar, size, 1> time(const StateVec& state, const Scalar delta_T) const {
             StateVec new_state(state);
 

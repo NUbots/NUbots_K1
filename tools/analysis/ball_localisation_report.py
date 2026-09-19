@@ -10,6 +10,7 @@ report.md plus PNG plots next to them:
 - velocity response time against ball speed
 - raw detection error against range (detector error, separate from the filter)
 - the effective-lag distribution
+- consistency (NEES) of the published covariance against the true error
 
 Needs numpy and matplotlib (e.g. any mjlab / booster_mjlab venv).
 
@@ -30,6 +31,9 @@ import numpy as np  # noqa: E402
 
 # A detection further than this from the true ball is counted as a false positive / gross error
 FALSE_POSITIVE_M = 0.5
+
+# 95th percentile of the chi-squared distribution, by degrees of freedom
+CHI2_95 = {2: 5.991, 4: 9.488}
 
 
 def read_csv(path: Path) -> dict[str, np.ndarray]:
@@ -69,6 +73,47 @@ def metrics_table(summary: dict[str, np.ndarray], mask: np.ndarray) -> list[str]
         fmt(np.nanmedian(summary["detection_pos_rmse"][mask]), " m"),
         fmt(np.nanmedian(summary["detection_rate_hz"][mask]), " Hz", 1),
     ]
+
+
+def nees_table(samples: dict[str, np.ndarray], mask: np.ndarray) -> list[str]:
+    """Normalised estimation error squared for the position, velocity and full state over the masked samples.
+
+    A consistent filter averages the number of degrees of freedom (2, 2 and 4). Larger means the filter claims
+    more certainty than it has. The scale column is how much the standard deviations would have to grow to make
+    it consistent, which is what a consumer should apply if the filter itself is not retuned.
+    """
+    names = ["cov_xx", "cov_xy", "cov_xvx", "cov_xvy", "cov_yy", "cov_yvx", "cov_yvy", "cov_vxvx", "cov_vxvy", "cov_vyvy"]
+    if not all(n in samples for n in names):
+        return []
+    n = int(mask.sum())
+    if n == 0:
+        return []
+    error = np.stack(
+        [
+            samples["est_x"][mask] - samples["gt_x"][mask],
+            samples["est_y"][mask] - samples["gt_y"][mask],
+            samples["est_vx"][mask] - samples["gt_vx"][mask],
+            samples["est_vy"][mask] - samples["gt_vy"][mask],
+        ],
+        axis=1,
+    )
+    covariance = np.zeros((n, 4, 4))
+    for name, (i, j) in zip(names, [(a, b) for a in range(4) for b in range(a, 4)]):
+        covariance[:, i, j] = covariance[:, j, i] = samples[name][mask]
+
+    rows = []
+    for label, idx, dof in [("position", [0, 1], 2), ("velocity", [2, 3], 2), ("full state", [0, 1, 2, 3], 4)]:
+        e = error[:, idx]
+        P = covariance[np.ix_(np.arange(n), idx, idx)]
+        finite = np.isfinite(e).all(axis=1) & np.isfinite(P).all(axis=(1, 2)) & (np.linalg.det(P) > 0)
+        if not finite.any():
+            continue
+        nees = np.einsum("ni,nij,nj->n", e[finite], np.linalg.inv(P[finite]), e[finite])
+        rows.append(
+            f"| {label} | {dof} | {np.mean(nees):.1f} | {np.median(nees):.1f} | "
+            f"{100 * np.mean(nees <= CHI2_95[dof]):.0f}% | {np.sqrt(np.mean(nees) / dof):.1f}x |"
+        )
+    return rows
 
 
 def main() -> None:
@@ -115,6 +160,28 @@ def main() -> None:
         "",
         f"Median vision latency (image capture to `Balls`): {fmt(np.nanmedian(summary['vision_latency_median_s']), ' s', 3)}.",
     ]
+
+    if samples:
+        moving = samples["phase"] == "roll"
+        for label, mask in [
+            ("resting ball", samples["phase"] == "settle"),
+            ("rolling, first 0.3 s after the kick", moving & (samples["t_kick"] < 0.3)),
+            ("rolling, 0.3 s after the kick onwards", moving & (samples["t_kick"] >= 0.3)),
+        ]:
+            rows = nees_table(samples, mask)
+            if not rows:
+                continue
+            lines += [
+                "",
+                f"### Covariance consistency: {label} ({int(mask.sum())} estimates)",
+                "",
+                "NEES averages the degrees of freedom when the covariance is honest. The scale column is the factor",
+                "the standard deviations would need to grow by to make it so.",
+                "",
+                "| state | dof | mean NEES | median | within 95% gate | scale needed |",
+                "|---|---|---|---|---|---|",
+                *rows,
+            ]
     if detections:
         valid = np.isfinite(detections["gt_x"])
         err = np.hypot(detections["det_x"] - detections["gt_x"], detections["det_y"] - detections["gt_y"])[valid]

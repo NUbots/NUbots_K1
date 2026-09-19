@@ -276,10 +276,14 @@ namespace module::localisation {
                                cfg.ukf.rolling_deceleration,
                                latency);
 
-                auto ball                 = std::make_unique<Ball>();
-                ball->rBWw                = Eigen::Vector3d(now_state.rBWw.x(), now_state.rBWw.y(), fd.ball_radius);
-                ball->vBw                 = Eigen::Vector3d(now_state.vBw.x(), now_state.vBw.y(), 0);
-                ball->covariance          = ukf.get_covariance();
+                auto ball  = std::make_unique<Ball>();
+                ball->rBWw = Eigen::Vector3d(now_state.rBWw.x(), now_state.rBWw.y(), fd.ball_radius);
+                ball->vBw  = Eigen::Vector3d(now_state.vBw.x(), now_state.vBw.y(), 0);
+
+                // The covariance is predicted over the same latency as the mean, so both describe the same instant
+                const BallModel<double>::StateMat F = BallModel<double>::transition(latency);
+                ball->covariance = F * ukf.get_covariance() * F.transpose() + ukf.model.noise(latency);
+
                 ball->confidence          = 1.0;  // Full confidence in our own measurements
                 ball->time_of_measurement = image_time;
                 ball->Hcw                 = balls.Hcw;

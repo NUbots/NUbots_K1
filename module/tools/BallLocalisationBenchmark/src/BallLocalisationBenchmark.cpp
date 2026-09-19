@@ -295,6 +295,13 @@ namespace module::tools {
                 const Eigen::Vector2d v = (sensors.Hrw.linear() * ball.vBw).head<2>();
                 const bool rolling      = phase == Phase::ROLLING;
 
+                // The filter's covariance, rotated into {r} so it describes the errors recorded here. {r} is
+                // planar, so the same 2D rotation applies to the position and velocity blocks.
+                Eigen::Matrix4d Rrw              = Eigen::Matrix4d::Zero();
+                Rrw.topLeftCorner<2, 2>()        = sensors.Hrw.linear().topLeftCorner<2, 2>();
+                Rrw.bottomRightCorner<2, 2>()    = sensors.Hrw.linear().topLeftCorner<2, 2>();
+                const Eigen::Matrix4d covariance = Rrw * ball.covariance * Rrw.transpose();
+
                 if (rolling) {
                     shot.estimates.push_back({now, r, v});
                     if (gt && !shot.velocity_response && gt->second.norm() > MIN_RESPONSE_SPEED) {
@@ -315,7 +322,14 @@ namespace module::tools {
                     else {
                         samples_csv << ",,,";
                     }
-                    samples_csv << ',' << ball.confidence << '\n';
+                    samples_csv << ',' << ball.confidence;
+                    // The upper triangle of the 4x4 covariance, in {r}
+                    for (int row = 0; row < 4; ++row) {
+                        for (int col = row; col < 4; ++col) {
+                            samples_csv << ',' << covariance(row, col);
+                        }
+                    }
+                    samples_csv << '\n';
                 }
             });
 
@@ -388,7 +402,8 @@ namespace module::tools {
         samples_csv.open(dir / "samples.csv");
         detections_csv.open(dir / "detections.csv");
         summary_csv.open(dir / "summary.csv");
-        samples_csv << "shot,phase,t_shot,t_kick,est_x,est_y,est_vx,est_vy,gt_x,gt_y,gt_vx,gt_vy,confidence\n";
+        samples_csv << "shot,phase,t_shot,t_kick,est_x,est_y,est_vx,est_vy,gt_x,gt_y,gt_vx,gt_vy,confidence,"
+                       "cov_xx,cov_xy,cov_xvx,cov_xvy,cov_yy,cov_yvx,cov_yvy,cov_vxvx,cov_vxvy,cov_vyvy\n";
         detections_csv << "shot,phase,t_shot,t_kick,latency,det_x,det_y,gt_x,gt_y,proj_range,size_range\n";
         summary_csv << "shot,start_x,start_y,target_y,speed,n_estimates,n_detections,estimate_rate_hz,"
                        "detection_rate_hz,pos_rmse,pos_max,vel_rmse,speed_rmse,velocity_response_s,best_lag_s,"
