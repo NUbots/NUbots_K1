@@ -63,14 +63,29 @@ namespace utility::vision {
 
         /// Build a serialized engine plan from an ONNX model
         std::vector<char> build_plan(const std::string& onnx_path, bool fp16) {
+            // Every factory returns nullptr rather than throwing when CUDA cannot initialise (e.g. no
+            // GPU passed into the container). Throw instead of dereferencing it, so callers fall back to
+            // OpenVINO rather than segfaulting.
             auto builder = std::unique_ptr<IBuilder>(createInferBuilder(logger));
+            if (builder == nullptr) {
+                throw std::runtime_error("Failed to create a TensorRT builder (is a CUDA device available?)");
+            }
             auto network = std::unique_ptr<INetworkDefinition>(builder->createNetworkV2(0));
-            auto parser  = std::unique_ptr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+            if (network == nullptr) {
+                throw std::runtime_error("Failed to create a TensorRT network definition");
+            }
+            auto parser = std::unique_ptr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+            if (parser == nullptr) {
+                throw std::runtime_error("Failed to create a TensorRT ONNX parser");
+            }
             if (!parser->parseFromFile(onnx_path.c_str(), static_cast<int>(ILogger::Severity::kWARNING))) {
                 throw std::runtime_error("Failed to parse ONNX model: " + onnx_path);
             }
 
             auto config = std::unique_ptr<IBuilderConfig>(builder->createBuilderConfig());
+            if (config == nullptr) {
+                throw std::runtime_error("Failed to create a TensorRT builder config");
+            }
 #if NV_TENSORRT_MAJOR >= 11
             // kFP16 removed in TensorRT 11; precision follows model types instead
             (void) fp16;
@@ -132,6 +147,15 @@ namespace utility::vision {
     };
 
     TensorRT::TensorRT(const std::string& onnx_path, bool fp16) : impl(std::make_unique<Impl>()) {
+        // Without a usable CUDA device (e.g. no GPU passed into the container) TensorRT's factories log
+        // an error and then hand back objects that crash on first use, so check up front and throw:
+        // every caller catches this and falls back to OpenVINO.
+        int device_count = 0;
+        if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
+            cudaGetLastError();  // clear the sticky error so later CUDA calls in this process start clean
+            throw std::runtime_error("No usable CUDA device for TensorRT");
+        }
+
         // Engine plans are only valid for this GPU and TensorRT build, so cache per TensorRT version
         const std::string plan_path = onnx_path + ".engine";
 
@@ -154,6 +178,9 @@ namespace utility::vision {
         }
 
         impl->runtime.reset(createInferRuntime(logger));
+        if (impl->runtime == nullptr) {
+            throw std::runtime_error("Failed to create a TensorRT runtime (is a CUDA device available?)");
+        }
         impl->engine.reset(impl->runtime->deserializeCudaEngine(plan.data(), plan.size()));
 
         // A cached plan can be stale (e.g. built by a different TensorRT patch or for a different GPU)
