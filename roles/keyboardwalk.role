@@ -16,6 +16,7 @@ nuclear_role(
   extension::Director
   # Servos
   actuation::Servos
+  actuation::K1Servos # provides the K1Servos task the policies emit -> BoosterLowCmd (rt/joint_ctrl)
   actuation::Kinematics
   actuation::FootController
   # Skills
