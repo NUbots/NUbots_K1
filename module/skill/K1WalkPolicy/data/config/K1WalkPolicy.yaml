@@ -1,18 +1,20 @@
 log_level: INFO
 
-# mjlab K1 velocity-tracking walk policy (Mjlab-Velocity-Flat-Booster-K1, W&B run 2p0glew7,
-# iteration 14999). Contract pinned in README.md.
+# mjlab K1 velocity-tracking walk policy, task Mjlab-Velocity-Flat-Booster-K1 in the
+# booster_mjlab repo (experiment k1_velocity_amp_symmetric_muon: AMP style reward + symmetry
+# augmentation + Muon). W&B run poi732yy, iteration 29999. Contract pinned in README.md.
 #
-# The ONNX is an observation-history model: its input is a flat window of the last
-# history_window observation frames, time-major and oldest first, i.e.
-# [1, history_window * (6 + 3 * len(policy_joints) + 5)] = [1, 25 * 71] = [1, 1775].
-# Output is [1, len(policy_joints)] = [1, 20]. Both observation normalizers are baked into
-# the graph, so nothing here normalizes.
+# The ONNX is a single-frame model: its input is one observation frame,
+# [1, 6 + 3 * len(policy_joints) + 3] = [1, 75], and its output is
+# [1, len(policy_joints)] = [1, 22]. The observation normalizer is baked into the graph, so
+# nothing here normalizes.
 #
-# The older mujoco_playground checkpoints (k1_walk*.onnx, 79-obs / 22-action, single frame)
-# are NOT loadable against this module: the module refuses any graph whose I/O sizes do not
-# match the configured contract.
-model_path: "k1_walk_mjlab_2p0glew7_14999.onnx"
+# This is NOT the same contract as the previous checkpoints in data/. The module refuses any
+# graph whose I/O sizes do not match the configured contract, so switching back to
+# k1_walk_mjlab_2p0glew7_14999.onnx means restoring that policy's settings as well:
+# history_window 25, gait_clock true, policy_joints 2..21, and its own gains, action scales
+# and default pose. See README.md.
+model_path: "k1_walk_mjlab_poi732yy_29999.onnx"
 
 # Run inference on the GPU with TensorRT. Falls back to OpenVINO CPU automatically when no
 # CUDA device is visible (the container needs --gpus), so this is safe to leave on. The
@@ -20,23 +22,25 @@ model_path: "k1_walk_mjlab_2p0glew7_14999.onnx"
 # normalizer divides by per-element standard deviations.
 use_tensorrt: true
 
-# Observation window length, in control steps. Must match the training HISTORY_WINDOW
-# (mjlab tasks/velocity/config/booster_k1/env_cfgs.py). At 50 Hz, 25 steps is 0.5 s.
-history_window: 25
+# Observation window length, in control steps. This policy has no observation history
+# (mjlab observation_terms_history_length is 0 for every term), so the input is a single
+# frame.
+history_window: 1
 
-# JointIndexK1 indices the policy controls, in policy (mjlab) order: arms then legs, head
-# excluded (vision owns the head, which tracks BoosterHeadRot below). The mjlab model's joint
-# order is JointIndexK1 with the two head slots removed, so this is simply 2..21 and no
-# permutation is needed.
-policy_joints: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+# JointIndexK1 indices the policy observes and acts on, in policy (mjlab) order. This policy
+# was trained on all 22 joints, head included, and the mjlab joint order (K1_JOINT_ORDER in
+# booster_mjlab/robots/booster_k1/k1_constants.py) is exactly JointIndexK1, so this is simply
+# 0..21 and no permutation is needed.
+policy_joints: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 
-# Gait clock. Full cycle duration (s), matching the training GAIT_PERIOD -- the same clock
-# drove the swing-height and contact-mismatch rewards, so the observed clock and the rewarded
-# clock must agree. The observation is [sin(2*pi*phase), cos(2*pi*phase)].
+# Gait clock. This policy was trained without one -- the gait emerges from the AMP style
+# reward and the air-time/clearance terms, and there is no clock term in the observation --
+# so the frame ends at the command and gait_period/command_threshold below are unused. They
+# are kept so that restoring a clocked policy is a config change and not a code change.
+gait_clock: false
+# Full cycle duration (s) of the observed clock, matching the training GAIT_PERIOD.
 gait_period: 0.6
-# Command magnitude (|v_xy| + |wz|) at or below which the observed clock collapses to (0, 0):
-# the distinct "standing" input the policy was trained to see, rather than a walking phase.
-# Matches the training command_threshold on both the clock observation and the gait rewards.
+# Command magnitude (|v_xy| + |wz|) at or below which the observed clock collapses to (0, 0).
 command_threshold: 0.05
 
 # Commanded pose ramps from the measured pose into the policy target over this window (s).
@@ -47,10 +51,15 @@ handoff_blend: 0.3
 # Global multiplier on action_scale_joint (the training action_scale, 1.0 for this policy)
 action_scale: 1.0
 
-# The policy does not own the head; its two targets are replaced with the latest
-# BoosterHeadRot command and tracked with these gains (higher than the training head kp
-# because there is no gravity feed-forward on this side of the wire).
 head:
+  # This policy does emit head actions, but vision owns the head on the robot: leave this
+  # false and the policy's two head targets are replaced with the latest BoosterHeadRot and
+  # tracked with the gains below (higher than the training head kp because there is no
+  # gravity feed-forward on this side of the wire). The policy still observes the measured
+  # head state and its own raw head action, exactly as in training -- only the applied target
+  # differs. Set it true to hand the head back to the policy, e.g. when reproducing a
+  # training rollout.
+  policy_controlled: false
   kp: 10.0
   kd: 0.5
 
@@ -59,43 +68,47 @@ kick:
   velocity: [0.5, 0, 0]
   duration: 0.5
 
-# Training-time actuation, mirrored from the mjlab K1 constants (k1_constants.py). kp and kd
-# follow Booster's formula kp = armature * (2*pi*f)^2, kd = 2 * zeta * armature * (2*pi*f);
-# action_scale_joint = 0.25 * effort_limit / kp (booster_train convention). These match the
-# values the previous mujoco_playground policy used -- the two training setups share Booster's
-# actuator catalogue -- so they are unchanged.
-kp: [3.948, 3.948,
-     3.948, 3.948, 3.948, 3.948, 3.948, 3.948, 3.948, 3.948,
-     30.201, 21.448, 17.846, 60.402, 35.692, 35.692,
-     30.201, 21.448, 17.846, 60.402, 35.692, 35.692]
-kd: [0.251, 0.251,
-     0.251, 0.251, 0.251, 0.251, 0.251, 0.251, 0.251, 0.251,
-     3.605, 2.56, 2.13, 4.807, 4.26, 4.26,
-     3.605, 2.56, 2.13, 4.807, 4.26, 4.26]
-action_scale_joint: [0.379900, 0.379900,
-                     0.886560, 0.886560, 0.886560, 0.886560, 0.886560, 0.886560, 0.886560, 0.886560,
-                     0.562895, 0.885865, 0.536534, 0.463561, 0.268267, 0.268267,
-                     0.562895, 0.885865, 0.536534, 0.463561, 0.268267, 0.268267]
+# Training-time actuation, mirrored from the booster_mjlab K1 actuator catalogue
+# (robots/booster_k1/k1_constants.py) and cross-checked against the joint_stiffness /
+# joint_damping / action_scale metadata props on the exported ONNX. These are the actuator
+# groups' explicit stiffness/damping, not the armature formula the previous policy used, so
+# they are substantially stiffer: arms 3.948 -> 10, hips 30.2 -> 80, knees 60.4 -> 80,
+# ankles 35.7 -> 50.
+kp: [4.0, 4.0,
+     10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0,
+     80.0, 80.0, 80.0, 80.0, 50.0, 50.0,
+     80.0, 80.0, 80.0, 80.0, 50.0, 50.0]
+kd: [0.25, 0.25,
+     1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+     4.0, 4.0, 4.0, 4.0, 2.0, 2.0,
+     4.0, 4.0, 4.0, 4.0, 2.0, 2.0]
+# action_scale_joint[j] = 0.25 * effort_limit[j] / kp[j] (booster_train convention): head
+# 0.25*6/4, arms 0.25*14/10, hip pitch 0.25*68/80, hip roll 0.25*76/80, hip yaw 0.25*38.3/80,
+# knee 0.25*112/80, ankle 0.25*38.3/50.
+action_scale_joint: [0.375, 0.375,
+                     0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35,
+                     0.2125, 0.2375, 0.11968750, 0.35, 0.1915, 0.1915,
+                     0.2125, 0.2375, 0.11968750, 0.35, 0.1915, 0.1915]
 
-# Training keyframe (mjlab STAND_BENT_KNEES_KEYFRAME): arms tucked, legs crouched. Note the
-# elbow yaws at -0.15 / +0.15 rather than 0: the elbow-yaw hard stop is at 0, which lies
-# outside the 0.9 soft joint limit, so an arms-down pose at 0 would pay the joint-limit
-# penalty every step of training. This is the one entry that differs from the previous
-# mujoco_playground default_pose.
+# Training keyframe (booster_mjlab HOME_KEYFRAME): arms down, legs crouched. Deeper than the
+# previous policy's pose -- shoulder roll +-1.4 rather than +-1.3, elbow yaw +-0.4 rather
+# than +-0.15, hip pitch/knee/ankle pitch -0.4/0.8/-0.4 rather than -0.2/0.4/-0.2.
 default_pose: [0, 0,
-               0, -1.3, 0, -0.15,
-               0, 1.3, 0, 0.15,
-               -0.2, 0, 0, 0.4, -0.2, 0,
-               -0.2, 0, 0, 0.4, -0.2, 0]
+               0, -1.4, 0, -0.4,
+               0, 1.4, 0, 0.4,
+               -0.4, 0, 0, 0.8, -0.4, 0,
+               -0.4, 0, 0, 0.8, -0.4, 0]
 
-# Hard joint ranges used to clamp the commanded position. These are the mjlab k1.xml
+# Hard joint ranges used to clamp the commanded position. These are the booster_mjlab k1.xml
 # jnt_range values, except hip pitch, which is deliberately kept at the tighter
-# mujoco_playground range: the policy's reachable hip-pitch envelope is only
-# -0.763..0.363 rad, so the tighter clamp costs nothing and catches a runaway.
+# mujoco_playground range rather than the XML's -3.0..2.21: the policy's reachable hip-pitch
+# envelope is only -0.613..-0.188 rad, so the tighter clamp costs nothing and catches a
+# runaway.
 #
-# A saturated action still commands past these on several joints -- shoulder roll by
-# 0.447 rad, elbow yaw by 0.737, hip roll by 0.486, knee by 0.064 -- and MuJoCo absorbs
-# that silently while the robot does not. Clamping is counted and logged at DEBUG.
+# Unlike the previous policy, a saturated action here stays inside the mechanical stops on
+# every joint but two: head pitch overshoots by 0.026 rad and shoulder roll by 0.010, because
+# the action scale is set from the effort limit rather than from the joint range. Clamping is
+# counted and logged at DEBUG.
 joint_lower: [-1.000, -0.349,
               -3.316, -1.740, -2.270, -2.440,
               -3.316, -1.570, -2.270,  0.000,

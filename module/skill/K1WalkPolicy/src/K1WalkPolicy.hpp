@@ -16,16 +16,23 @@
 
 namespace module::skill {
 
-    /// Runs the mjlab K1 velocity-tracking walk policy at 50 Hz and streams the resulting joint
+    /// Runs an mjlab K1 velocity-tracking walk policy at 50 Hz and streams the resulting joint
     /// targets to the platform as a Director-arbitrated K1Servos subtask (CUSTOM mode), the same
     /// low-level path as K1BlockPolicy / K1GetUpPolicy. This replaces skill::K1Walk's Move() RPC
     /// path: locomotion inference lives here, and the robot/simulator only tracks joint commands.
     ///
-    /// The policy is an observation-history model (mjlab.rl.obs_history): the ONNX takes a flat
-    /// window of the last `history_window` observation frames, time-major and oldest first, and a
-    /// TCN inside the graph encodes it. One frame is byte-for-byte the actor observation vector, so
-    /// this module keeps a single ring buffer of the frame it already builds. Both observation
-    /// normalizers are baked into the exported graph -- nothing here normalizes.
+    /// The observation contract is configured rather than hardcoded, because the two checkpoints
+    /// that have flown on this robot do not share one. A frame is
+    ///
+    ///     gyro(3) | projected gravity(3) | q - default(N) | dq(N) | last action(N) | command(3)
+    ///     [ | gait clock(2), when gait_clock is set ]
+    ///
+    /// over the `policy_joints` joints, and the ONNX input is the last `history_window` frames
+    /// flattened time-major, oldest first (history_window 1 = no history, just the frame). The
+    /// currently shipped policy is single-frame with no gait clock and all 22 joints; the previous
+    /// one was a 25-frame observation-history model (mjlab.rl.obs_history) with a gait clock over
+    /// 20 joints. Every observation normalizer is baked into the exported graph -- nothing here
+    /// normalizes -- and load_model() refuses any graph whose I/O does not match the config.
     ///
     /// The observation carries no base linear velocity: there is no measured base linear velocity
     /// on the real K1 in CUSTOM mode, so it is a critic-only privileged quantity in training and
@@ -34,7 +41,8 @@ namespace module::skill {
     public:
         /// All K1 joints, in the Booster SDK JointIndexK1 serial order
         static constexpr std::size_t JOINT_COUNT = 22;
-        /// Head joints in JointIndexK1 order; never policy controlled (vision owns the head)
+        /// Head joints in JointIndexK1 order. Whether the policy drives them or whether they
+        /// track BoosterHeadRot is head.policy_controlled; see the config.
         static constexpr std::size_t HEAD_YAW   = 0;
         static constexpr std::size_t HEAD_PITCH = 1;
         /// Velocity command length: [vx, vy, wz]
@@ -53,10 +61,14 @@ namespace module::skill {
             /// Number of frames in the observation window fed to the ONNX (1 = no history). The
             /// input is time-major, oldest frame first: [1, history_window * frame_dim]
             std::size_t history_window = 1;
-            /// JointIndexK1 indices of the policy-controlled joints, in policy order
+            /// JointIndexK1 indices of the joints the policy observes and acts on, in policy order
             std::vector<std::size_t> policy_joints{};
+            /// Whether the observation frame carries the [sin, cos] gait clock. Only true for
+            /// policies trained against an explicit clock; the current one has none.
+            bool gait_clock = false;
             /// Full gait-cycle duration (s) of the observed clock; must match the training
-            /// GAIT_PERIOD, since the same clock drove the swing-height and contact rewards
+            /// GAIT_PERIOD, since the same clock drove the swing-height and contact rewards.
+            /// Unused when gait_clock is false.
             double gait_period = 0.6;
             /// Command magnitude (|v_xy| + |wz|) at or below which the observed clock collapses to
             /// (0, 0) -- the distinct "standing" input the policy was trained to see
@@ -65,7 +77,11 @@ namespace module::skill {
             /// window (s), since deployment enters CUSTOM from wherever the previous mode left the
             /// robot while training always starts at the default pose
             double handoff_blend = 0.3;
-            /// Head tracking gains (the head follows the latest BoosterHeadRot)
+            /// Whether the policy's own head actions drive the head. When false the head is
+            /// overridden with the latest BoosterHeadRot and the gains below, so vision owns it;
+            /// the policy still observes the measured head state and its own head action.
+            bool head_policy_controlled = false;
+            /// Head tracking gains used when the head follows BoosterHeadRot rather than the policy
             double head_kp = 10.0;
             double head_kd = 0.5;
             /// @brief Velocity command applied while performing an in-walk kick
@@ -85,9 +101,9 @@ namespace module::skill {
         } cfg;
 
         /// Length of one observation frame: gyro(3) + gravity(3) + 3 * n_policy_joints
-        /// + command(3) + gait clock(2)
+        /// + command(3) [+ gait clock(2)]
         [[nodiscard]] std::size_t frame_dim() const {
-            return 6 + 3 * cfg.policy_joints.size() + COMMAND_DIM + CLOCK_DIM;
+            return 6 + 3 * cfg.policy_joints.size() + COMMAND_DIM + (cfg.gait_clock ? CLOCK_DIM : 0);
         }
 
         /// Load the ONNX and check its input/output sizes against the configured contract
@@ -113,9 +129,9 @@ namespace module::skill {
         /// Observation window, oldest frame first
         std::deque<std::vector<float>> history{};
 
-        /// Gait clock phase in [0, 1). Training indexes it on episode time at a fixed 50 Hz; here
-        /// it advances on the measured loop period so the gait keeps its trained wall-clock rate
-        /// when the loop runs slow.
+        /// Gait clock phase in [0, 1), unused when gait_clock is false. Training indexes it on
+        /// episode time at a fixed 50 Hz; here it advances on the measured loop period so the gait
+        /// keeps its trained wall-clock rate when the loop runs slow.
         double gait_phase = 0.0;
 
         /// Wall-clock of the previous policy tick, so the gait phase advances on the period that

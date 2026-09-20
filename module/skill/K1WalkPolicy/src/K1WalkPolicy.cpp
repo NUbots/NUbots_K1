@@ -61,9 +61,10 @@ namespace module::skill {
         constexpr double MIN_TICK_DT = 0.005;
         constexpr double MAX_TICK_DT = 0.100;
 
-        // The training control period. The observation window spans `history_window` control
-        // *steps*, so a loop that misses this by much feeds the encoder a window of the wrong
-        // duration -- which is a bug to fix, not to compensate for. Warn past this much error.
+        // The training control period. The joint velocities, the action-rate dynamics and (for a
+        // history policy) the duration the observation window spans are all trained against it, so
+        // a loop that misses it by much is a bug to fix, not to compensate for. Warn past this
+        // much error.
         constexpr double NOMINAL_TICK_DT   = 0.02;
         constexpr double TICK_DT_TOLERANCE = 0.005;
 
@@ -124,34 +125,45 @@ namespace module::skill {
         on<Configuration>("K1WalkPolicy.yaml").then([this](const Configuration& config) {
             log_level = config["log_level"].as<NUClear::LogLevel>();
 
-            cfg.model_path        = config["model_path"].as<std::string>();
-            cfg.use_tensorrt      = config["use_tensorrt"].as<bool>();
-            cfg.history_window    = config["history_window"].as<std::size_t>();
-            cfg.gait_period       = config["gait_period"].as<double>();
-            cfg.command_threshold = config["command_threshold"].as<double>();
-            cfg.handoff_blend     = config["handoff_blend"].as<double>();
-            cfg.head_kp           = config["head"]["kp"].as<double>();
-            cfg.head_kd           = config["head"]["kd"].as<double>();
-            cfg.kick_velocity     = Eigen::Vector3d(config["kick"]["velocity"].as<Expression>());
-            cfg.kick_duration     = std::chrono::duration_cast<NUClear::clock::duration>(
+            cfg.model_path             = config["model_path"].as<std::string>();
+            cfg.use_tensorrt           = config["use_tensorrt"].as<bool>();
+            cfg.history_window         = config["history_window"].as<std::size_t>();
+            cfg.gait_clock             = config["gait_clock"].as<bool>();
+            cfg.gait_period            = config["gait_period"].as<double>();
+            cfg.command_threshold      = config["command_threshold"].as<double>();
+            cfg.handoff_blend          = config["handoff_blend"].as<double>();
+            cfg.head_policy_controlled = config["head"]["policy_controlled"].as<bool>();
+            cfg.head_kp                = config["head"]["kp"].as<double>();
+            cfg.head_kd                = config["head"]["kd"].as<double>();
+            cfg.kick_velocity          = Eigen::Vector3d(config["kick"]["velocity"].as<Expression>());
+            cfg.kick_duration          = std::chrono::duration_cast<NUClear::clock::duration>(
                 std::chrono::duration<double>(config["kick"]["duration"].as<double>()));
 
             if (cfg.history_window < 1) {
                 throw std::runtime_error("K1WalkPolicy.yaml: history_window must be >= 1");
             }
-            if (cfg.gait_period <= 0.0) {
-                throw std::runtime_error("K1WalkPolicy.yaml: gait_period must be > 0");
+            if (cfg.gait_clock && cfg.gait_period <= 0.0) {
+                throw std::runtime_error("K1WalkPolicy.yaml: gait_period must be > 0 when gait_clock is set");
             }
 
-            // The policy joints must be distinct, in range, and exclude the head (vision owns it)
+            // The policy joints must be distinct and in range. The head may or may not be among
+            // them: the current policy acts on all 22 joints, the previous one on the 20 non-head
+            // joints. Which of the two drives the head at run time is head.policy_controlled, not
+            // this list -- the head still has to be *observed* when the policy was trained with it.
             cfg.policy_joints = config["policy_joints"].as<std::vector<std::size_t>>();
             std::set<std::size_t> seen{};
             for (const std::size_t j : cfg.policy_joints) {
-                if (j >= JOINT_COUNT || j == HEAD_YAW || j == HEAD_PITCH || !seen.insert(j).second) {
+                if (j >= JOINT_COUNT || !seen.insert(j).second) {
                     throw std::runtime_error(
-                        "K1WalkPolicy.yaml: policy_joints must be distinct non-head JointIndexK1 indices, got "
-                        + std::to_string(j));
+                        "K1WalkPolicy.yaml: policy_joints must be distinct JointIndexK1 indices in [0, "
+                        + std::to_string(JOINT_COUNT) + "), got " + std::to_string(j));
                 }
+            }
+            // Nothing else drives the head, so asking the policy for it when it has no head action
+            // would leave the head pinned at the default pose with no way to look at the ball.
+            if (cfg.head_policy_controlled && (seen.count(HEAD_YAW) == 0 || seen.count(HEAD_PITCH) == 0)) {
+                throw std::runtime_error("K1WalkPolicy.yaml: head.policy_controlled is set but the head joints are "
+                                         "not in policy_joints, so the policy has no head action to apply");
             }
 
             cfg.kp                    = load_joint_array<JOINT_COUNT>(config, "kp");
@@ -281,7 +293,7 @@ namespace module::skill {
                 if (now - last_timing_report > TIMING_REPORT_PERIOD) {
                     if (off_rate_ticks > 0) {
                         log<WARN>("K1WalkPolicy missed the trained 50 Hz on", off_rate_ticks, "of the last",
-                                  tick - timing_report_tick, "ticks; the observation window spans the wrong duration");
+                                  tick - timing_report_tick, "ticks; the policy is seeing the wrong dynamics");
                     }
                     off_rate_ticks     = 0;
                     timing_report_tick = tick;
@@ -295,7 +307,7 @@ namespace module::skill {
 
                 const auto servos = servos_of(raw);
 
-                // --- observation frame (71 floats; see README.md) ---
+                // --- observation frame (frame_dim() floats; see README.md) ---
                 std::vector<float> frame{};
                 frame.reserve(frame_dim());
 
@@ -313,7 +325,7 @@ namespace module::skill {
                 frame.push_back(static_cast<float>(gravity.y()));
                 frame.push_back(static_cast<float>(gravity.z()));
 
-                // [6:26] q - default_pose, [26:46] dq, both over the policy joints only
+                // q - default_pose, then dq, both over the policy joints and in policy order
                 for (const std::size_t j : cfg.policy_joints) {
                     frame.push_back(static_cast<float>(servos[j]->present_position - cfg.default_pose[j]));
                 }
@@ -321,22 +333,25 @@ namespace module::skill {
                     frame.push_back(servos[j]->present_velocity);
                 }
 
-                // [46:66] previous raw network output
+                // previous raw network output
                 frame.insert(frame.end(), last_action.begin(), last_action.end());
 
-                // [66:69] command [vx, vy, wz], passed through as-is
+                // command [vx, vy, wz], passed through as-is
                 frame.push_back(static_cast<float>(cmd.x()));
                 frame.push_back(static_cast<float>(cmd.y()));
                 frame.push_back(static_cast<float>(cmd.z()));
 
-                // [69:71] gait clock. Collapsed to (0, 0) -- off the unit circle, not pinned to a
-                // phase -- while the command is below threshold, which is the distinct "standing"
-                // input the policy was trained on. The internal phase keeps advancing regardless,
-                // as it does in training where it is indexed on episode time.
-                const double command_magnitude = cmd.head<2>().norm() + std::abs(cmd.z());
-                const bool clock_active        = command_magnitude > cfg.command_threshold;
-                frame.push_back(clock_active ? static_cast<float>(std::sin(TWO_PI * gait_phase)) : 0.0f);
-                frame.push_back(clock_active ? static_cast<float>(std::cos(TWO_PI * gait_phase)) : 0.0f);
+                // Gait clock, for the policies trained against one. Collapsed to (0, 0) -- off the
+                // unit circle, not pinned to a phase -- while the command is below threshold, which
+                // is the distinct "standing" input those policies were trained on. The internal
+                // phase keeps advancing regardless, as it does in training where it is indexed on
+                // episode time.
+                if (cfg.gait_clock) {
+                    const double command_magnitude = cmd.head<2>().norm() + std::abs(cmd.z());
+                    const bool clock_active        = command_magnitude > cfg.command_threshold;
+                    frame.push_back(clock_active ? static_cast<float>(std::sin(TWO_PI * gait_phase)) : 0.0f);
+                    frame.push_back(clock_active ? static_cast<float>(std::cos(TWO_PI * gait_phase)) : 0.0f);
+                }
 
                 // --- observation window: seed by repeating the first frame, as the training-side
                 // circular buffer backfills on reset ---
@@ -361,7 +376,9 @@ namespace module::skill {
 
                 // Advance the gait phase once per inference regardless of the command (only the
                 // *observed* clock is gated), wrapped into [0, 1)
-                gait_phase = std::fmod(gait_phase + tick_dt / cfg.gait_period, 1.0);
+                if (cfg.gait_clock) {
+                    gait_phase = std::fmod(gait_phase + tick_dt / cfg.gait_period, 1.0);
+                }
 
                 // Full observation trace. Statistics over a log that mixes CUSTOM-mode walking with
                 // frozen non-CUSTOM ticks are meaningless, so every record carries the tick counter,
@@ -388,10 +405,15 @@ namespace module::skill {
                     const std::size_t j = cfg.policy_joints[k];
                     target[j]           = cfg.default_pose[j] + cfg.action_scale_joint[j] * last_action[k];
                 }
-                target[HEAD_YAW]   = head_target.x();
-                target[HEAD_PITCH] = head_target.y();
-                kp[HEAD_YAW] = kp[HEAD_PITCH] = cfg.head_kp;
-                kd[HEAD_YAW] = kd[HEAD_PITCH] = cfg.head_kd;
+                // The head is the one place deployment deliberately overrides the policy: vision
+                // has to be able to look at the ball. The policy still saw its own head action fed
+                // back in the observation above, so only the applied target differs from training.
+                if (!cfg.head_policy_controlled) {
+                    target[HEAD_YAW]   = head_target.x();
+                    target[HEAD_PITCH] = head_target.y();
+                    kp[HEAD_YAW] = kp[HEAD_PITCH] = cfg.head_kp;
+                    kd[HEAD_YAW] = kd[HEAD_PITCH] = cfg.head_kd;
+                }
 
                 // Cross-fade from the measured pose into the policy target: training always starts
                 // at the default pose, deployment enters CUSTOM from wherever PREP left the robot.
@@ -437,11 +459,13 @@ namespace module::skill {
                     std::ostringstream out;
                     out << std::fixed << std::setprecision(4);
                     out << "K1WalkPolicy sim2real"
-                        // The command the planner actually asked for. Training's final envelope is
-                        // vx [-0.6, 1.2], vy [-0.4, 0.4], wz [-1.0, 1.0]; PlanWalkPath's
-                        // ball-adjust mode can ask for wz 1.5, which is outside that.
-                        << " cmd=[" << cmd.x() << ',' << cmd.y() << ',' << cmd.z() << ']' << " phase=" << gait_phase
-                        << " clamped=" << clamped;
+                        // The command the planner actually asked for. See README.md for the
+                        // trained envelope; commands are passed through unclipped, as in training.
+                        << " cmd=[" << cmd.x() << ',' << cmd.y() << ',' << cmd.z() << ']';
+                    if (cfg.gait_clock) {
+                        out << " phase=" << gait_phase;
+                    }
+                    out << " clamped=" << clamped;
                     std::ostringstream action_stream;
                     std::ostringstream joint_pos_rel_stream;
                     std::ostringstream joint_vel_stream;
