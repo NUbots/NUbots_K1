@@ -32,6 +32,7 @@
 #include "message/behaviour/state/Stability.hpp"
 #include "message/planning/KickTo.hpp"
 #include "message/planning/LookAround.hpp"
+#include "message/planning/Save.hpp"
 #include "message/skill/Block.hpp"
 #include "message/skill/GPT.hpp"
 #include "message/skill/Kick.hpp"
@@ -53,6 +54,7 @@ namespace module::purpose {
     using message::behaviour::state::Stability;
     using message::planning::KickTo;
     using message::planning::LookAround;
+    using message::planning::Save;
     using message::skill::Block;
     using message::skill::GPTAudioRequest;
     using message::skill::GPTChatRequest;
@@ -83,6 +85,7 @@ namespace module::purpose {
             cfg.kick_to_priority                = config["tasks"]["kick_to_priority"].as<int>();
             cfg.kick_policy_priority            = config["tasks"]["kick_policy_priority"].as<int>();
             cfg.block_policy_priority           = config["tasks"]["block_policy_priority"].as<int>();
+            cfg.plan_save_priority              = config["tasks"]["plan_save_priority"].as<int>();
             cfg.look_around_priority            = config["tasks"]["look_around_priority"].as<int>();
             cfg.stand_still_priority            = config["tasks"]["stand_still_priority"].as<int>();
             cfg.say_priority                    = config["tasks"]["say_priority"].as<int>();
@@ -139,6 +142,10 @@ namespace module::purpose {
                 if (cfg.block_policy_priority > 0) {
                     // An inactive Block command: the block policy holds its ready stance
                     emit<Task>(std::make_unique<Block>(), cfg.block_policy_priority);
+                }
+                if (cfg.plan_save_priority > 0) {
+                    // Guard the goal: PlanSave holds the ready stance near the ball and blocks shots on target
+                    emit<Task>(std::make_unique<Save>(), cfg.plan_save_priority);
                 }
                 if (cfg.look_around_priority > 0) {
                     emit<Task>(std::make_unique<LookAround>(), cfg.look_around_priority);

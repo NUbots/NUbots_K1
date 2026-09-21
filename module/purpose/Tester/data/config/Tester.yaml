@@ -28,6 +28,9 @@ tasks:
   # test only). 0 = use the real FindBall -> WalkToKickBall -> PlanKick chain above.
   kick_policy_priority: 0
   block_policy_priority: 0
+  # Planner: guard the goal with planning::PlanSave (ready stance near the ball, block policy on a shot).
+  # Needs the goalie role (K1BlockPolicy + PlanSave). Keep it above any walk task so a block takes the servos.
+  plan_save_priority: 0
 
   # Skills
   say_priority: 0

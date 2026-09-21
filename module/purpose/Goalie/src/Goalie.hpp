@@ -52,6 +52,9 @@ namespace module::purpose {
             double strafe_curve_depth = 0.0;
             /// @brief Maximum time to stand still and look around waiting for localisation to converge
             std::chrono::seconds localise_timeout{0};
+            /// @brief Priority of the Save task (planning::PlanSave) over the positioning walk while defending, 0 to
+            /// only position
+            int save_priority = 0;
         } cfg;
 
         /// @brief When the robot started standing still and looking around to localise, unset when localised

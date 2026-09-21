@@ -15,3 +15,7 @@ strafe_curve_depth: 0.15
 
 # Maximum time (s) to stand still and look around waiting for localisation to converge
 localise_timeout: 8
+
+# Priority of the Save task while defending: planning::PlanSave guards the goal and runs the block policy when a
+# shot is coming, taking over from the positioning walk (priority 0). 0 turns saving off and only positions.
+save_priority: 3

@@ -1,6 +1,7 @@
 # NUSim role for goalie development: roles/nusim/behaviour.role plus the goalie skills.
 # Run it against NUSim. Pick behaviours in Tester.yaml; block_policy_priority > 0 runs the
-# K1 block policy with an inactive command (it holds its ready stance).
+# K1 block policy with an inactive command (it holds its ready stance), and plan_save_priority > 0
+# guards the goal with planning::PlanSave (ready stance near the ball, block policy on a shot).
 nuclear_role(
   # FileWatcher, ConsoleLogHandler and Signal Catcher Must Go First and without it many roles do not run
   extension::FileWatcher # Watches configuration files for changes
@@ -44,6 +45,7 @@ nuclear_role(
   planning::PlanWalkPath
   planning::PlanLook
   planning::PlanKick
+  planning::PlanSave # Shot prediction + block envelope -> skill::Block
   planning::GetUpPlanner
   planning::FallingRelaxPlanner
   # Strategies

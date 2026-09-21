@@ -58,6 +58,8 @@ namespace module::purpose {
             int kick_policy_priority = 0;
             /// @brief Priority of the Block task (the K1 block policy, inactive command: holds the ready stance)
             int block_policy_priority = 0;
+            /// @brief Priority of the Save task (planning::PlanSave: guard the goal, block shots)
+            int plan_save_priority = 0;
             /// @brief Priority of LookAround task
             int look_around_priority = 0;
             /// @brief Priority of StandStill task

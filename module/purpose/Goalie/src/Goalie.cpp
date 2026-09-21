@@ -35,6 +35,7 @@
 #include "message/localisation/Field.hpp"
 #include "message/localisation/Robot.hpp"
 #include "message/planning/LookAround.hpp"
+#include "message/planning/Save.hpp"
 #include "message/purpose/Player.hpp"
 #include "message/purpose/Purpose.hpp"
 #include "message/strategy/FindBall.hpp"
@@ -60,6 +61,7 @@ namespace module::purpose {
     using message::localisation::Field;
     using message::localisation::Robots;
     using message::planning::LookAround;
+    using message::planning::Save;
     using message::purpose::Attack;
     using message::purpose::FieldPlayer;
     using message::purpose::Purpose;
@@ -85,6 +87,7 @@ namespace module::purpose {
             cfg.goal_post_clearance        = config["goal_post_clearance"].as<double>();
             cfg.strafe_curve_depth         = config["strafe_curve_depth"].as<double>();
             cfg.localise_timeout           = std::chrono::seconds(config["localise_timeout"].as<int>());
+            cfg.save_priority              = config["save_priority"].as<int>();
         });
 
         on<Provide<GoalieTask>,
@@ -242,7 +245,13 @@ namespace module::purpose {
                 }
 
                 // We are not the closest, but the ball is in our half, so we should defend the goals.
-                // To do this we stay within the goals, following the ball's y position but bowing forward off the
+                // PlanSave takes over from the positioning walk below when the ball comes near or a shot is on its
+                // way, so it runs above it
+                if (cfg.save_priority > 0) {
+                    emit<Task>(std::make_unique<Save>(), cfg.save_priority);
+                }
+
+                // To position, we stay within the goals, following the ball's y position but bowing forward off the
                 // line in a parabola as we approach the posts, and staying cfg.goal_post_clearance away from them
                 double y_max = fd.dimensions.goal_width / 2.0 - cfg.goal_post_clearance;
                 double y_position = std::clamp(rBFf.y(), -y_max, y_max);
