@@ -70,6 +70,11 @@ SCENARIO("The goalie guards a near ball and blocks shots on target", "[PlanSave]
         REQUIRE(decider.step(ball_at(3.6), DT, cfg) == Mode::IDLE);
         REQUIRE(decider.step(ball_at(3.2), DT, cfg) == Mode::IDLE);
     }
+    THEN("a ball beside or behind the goalie is not guarded") {
+        Situation beside = ball_at(0.6);
+        beside.ahead     = -0.2;
+        REQUIRE(decider.step(beside, DT, cfg) == Mode::IDLE);
+    }
     THEN("a shot going wide is not blocked") {
         REQUIRE(decider.step(shot(0.2), DT, cfg) == Mode::IDLE);
     }
@@ -99,6 +104,15 @@ SCENARIO("A block sticks with its shot until the shot is over", "[PlanSave]") {
         REQUIRE(mode == Mode::GUARD);
         REQUIRE(ticks == 25);  // 0.5 s at 50 Hz
     }
+    THEN("a ball jittering beside the goalie ends it, however fast its estimate moves") {
+        Situation ghost = ball_at(0.6, 0.5);
+        ghost.ahead     = -0.2;
+        Mode mode       = Mode::BLOCK;
+        for (int i = 0; i < 30; ++i) {
+            mode = decider.step(ghost, DT, cfg);
+        }
+        REQUIRE(mode == Mode::IDLE);
+    }
     THEN("the delay restarts if the ball moves again") {
         for (int i = 0; i < 20; ++i) {
             decider.step(ball_at(0.4, 0.0), DT, cfg);
@@ -111,6 +125,7 @@ SCENARIO("A block sticks with its shot until the shot is over", "[PlanSave]") {
     THEN("a ball that got past is over, and does not start another block") {
         Situation behind = shot(0.9);
         behind.ahead     = -0.5;
+        behind.active    = false;
         Mode mode        = Mode::BLOCK;
         for (int i = 0; i < 30; ++i) {
             mode = decider.step(behind, DT, cfg);

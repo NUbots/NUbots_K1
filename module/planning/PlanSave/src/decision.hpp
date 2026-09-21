@@ -43,7 +43,6 @@ namespace module::planning::save {
         double min_p_on_target  = 0.5;
         double guard_distance   = 3.0;
         double guard_hysteresis = 0.5;
-        double behind_margin    = 0.3;
         double release_delay    = 0.5;
         double min_shot_speed   = 0.3;
     };
@@ -64,15 +63,15 @@ namespace module::planning::save {
 
     /**
      * Picks the goalie's mode tick to tick. A block starts on a shot that is both on its way (the training rule) and
-     * likely to go in, and is stuck with until that shot is over: the ball stopped, went behind the goalie or was
-     * lost, for release_delay seconds. There is no other skill to switch to mid-shot yet; when there is (a dive),
+     * likely to go in, and is stuck with until that shot is over: the ball no longer on its way (stopped, past the
+     * goalie or going away) or lost, for release_delay seconds. There is no other skill to switch to mid-shot yet; when there is (a dive),
      * switching is where "unless the prediction jumps" belongs.
      */
     class Decider {
     public:
         Mode step(const Situation& s, const double dt, const DecisionConfig& cfg) {
             if (mode == Mode::BLOCK) {
-                const bool over = !s.ball_valid || s.speed < cfg.min_shot_speed || s.ahead < -cfg.behind_margin;
+                const bool over = !s.ball_valid || !s.active;
                 release_timer   = over ? release_timer + dt : 0.0;
                 if (release_timer < cfg.release_delay) {
                     return mode;
@@ -87,8 +86,11 @@ namespace module::planning::save {
             else if (s.active && s.p_on_target >= cfg.min_p_on_target && s.ahead > 0.0) {
                 mode = Mode::BLOCK;
             }
-            else if (s.distance < cfg.guard_distance
-                     || (mode == Mode::GUARD && s.distance < cfg.guard_distance + cfg.guard_hysteresis)) {
+            // Only a ball in front: the ready stance faces the field, and vision's false positives on the goalie's
+            // own body (beside and behind it) would otherwise hold it there for good
+            else if (s.ahead > 0.0
+                     && (s.distance < cfg.guard_distance
+                         || (mode == Mode::GUARD && s.distance < cfg.guard_distance + cfg.guard_hysteresis))) {
                 mode = Mode::GUARD;
             }
             else {

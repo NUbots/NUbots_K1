@@ -28,9 +28,8 @@ decision:
   guard_distance: 3.0
   # Extra distance (m) the ball must go before the goalie stops guarding, so it does not flicker at the edge
   guard_hysteresis: 0.5
-  # A shot is over once the ball is this far (m) behind the goalie's line, or stops
-  behind_margin: 0.3
-  # Seconds the block keeps running after its shot is over, so the policy settles before it hands off
+  # A shot is over once the ball is no longer on its way by the training rule (stopped, past the goalie or going
+  # away) or lost, for this long (s). The delay also rides out the estimate flickering early in a shot.
   release_delay: 0.5
   # Below this expected success the block is still run (it is the only skill), but logged as a gap. This is where a
   # dive policy would be chosen, if the gap analysis ever calls for one.

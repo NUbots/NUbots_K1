@@ -14,8 +14,8 @@ Every tick (50 Hz) it:
 2. **Scores the block:** averages the envelope's conservative save rate (a Wilson lower bound per cell) over the Gaussian on `dy`, at the predicted time and speed. Probability outside the measured grid counts as a miss.
 3. **Chooses:**
    - **IDLE:** emits nothing, so the positioning walk (a lower-priority sibling of `Save`) runs.
-   - **GUARD:** the ball is within `guard_distance`. Emits an inactive `Block`, so the goalie holds the policy's ready stance in CUSTOM mode, which is the state the envelope was measured from.
-   - **BLOCK:** a shot reaches the goalie's line within `max_time` and has `P(on target) ≥ min_p_on_target`. Emits `Block{active, dy, t, v}` every tick. The command follows the training rule: active while the ball is on its way, zeros otherwise. PlanSave sticks with the block until the shot is over (the ball stopped, got past, or was lost for `release_delay`).
+   - **GUARD:** the ball is within `guard_distance` and in front of the goalie's line. Emits an inactive `Block`, so the goalie holds the policy's ready stance in CUSTOM mode, which is the state the envelope was measured from.
+   - **BLOCK:** a shot reaches the goalie's line within `max_time` and has `P(on target) ≥ min_p_on_target`. Emits `Block{active, dy, t, v}` every tick. The command follows the training rule: active while the ball is on its way, zeros otherwise. PlanSave sticks with the block until the shot is over: the ball is no longer on its way (stopped, past the goalie or going away) or lost, for `release_delay`.
 
    The block is the only skill so far. PlanSave still blocks a shot whose expected success is under `block_threshold`, but warns: that is the gap a dive policy would fill.
 
