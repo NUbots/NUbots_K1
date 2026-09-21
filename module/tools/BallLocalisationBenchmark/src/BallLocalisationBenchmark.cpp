@@ -425,8 +425,12 @@ namespace module::tools {
 
         // Rest the ball in front of the robot; the estimate gets settle_time to converge on it
         auto cmd      = std::make_unique<NUSimBallCommand>();
-        cmd->frame    = NUSimBallCommand::Frame::ROBOT;
-        cmd->position = Eigen::Vector3d(shot.start.x(), shot.start.y(), -1.0);
+        // Eigen members are not zeroed by the message's default constructor: a command that leaves them
+        // unset hands NUSim whatever was in memory, which blew up its physics
+        cmd->velocity         = Eigen::Vector3d::Zero();
+        cmd->angular_velocity = Eigen::Vector3d::Zero();
+        cmd->frame            = NUSimBallCommand::Frame::ROBOT;
+        cmd->position         = Eigen::Vector3d(shot.start.x(), shot.start.y(), -1.0);
         emit(cmd);
 
         phase       = Phase::SETTLING;
@@ -454,10 +458,14 @@ namespace module::tools {
         const Eigen::Vector2d dir  = (Eigen::Vector2d(0.0, shot.target_y) - from).normalized();
 
         auto cmd      = std::make_unique<NUSimBallCommand>();
-        cmd->frame    = NUSimBallCommand::Frame::ROBOT;
-        cmd->position = Eigen::Vector3d(from.x(), from.y(), -1.0);
-        cmd->velocity = Eigen::Vector3d(shot.speed * dir.x(), shot.speed * dir.y(), 0.0);
-        cmd->rolling  = true;
+        // Eigen members are not zeroed by the message's default constructor: a command that leaves them
+        // unset hands NUSim whatever was in memory, which blew up its physics
+        cmd->velocity         = Eigen::Vector3d::Zero();
+        cmd->angular_velocity = Eigen::Vector3d::Zero();
+        cmd->frame            = NUSimBallCommand::Frame::ROBOT;
+        cmd->position         = Eigen::Vector3d(from.x(), from.y(), -1.0);
+        cmd->velocity         = Eigen::Vector3d(shot.speed * dir.x(), shot.speed * dir.y(), 0.0);
+        cmd->rolling          = true;
         emit(cmd);
 
         phase       = Phase::ROLLING;
