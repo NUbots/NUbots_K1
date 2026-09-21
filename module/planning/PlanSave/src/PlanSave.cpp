@@ -108,6 +108,7 @@ namespace module::planning {
             cfg.decision.min_p_on_target  = config["decision"]["min_p_on_target"].as<double>();
             cfg.decision.guard_distance   = config["decision"]["guard_distance"].as<double>();
             cfg.decision.guard_hysteresis = config["decision"]["guard_hysteresis"].as<double>();
+            cfg.decision.guard_min_ahead  = config["decision"]["guard_min_ahead"].as<double>();
             cfg.decision.release_delay    = config["decision"]["release_delay"].as<double>();
             cfg.decision.min_shot_speed   = cfg.ball.min_speed;
             cfg.block_threshold           = config["decision"]["block_threshold"].as<double>();

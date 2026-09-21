@@ -11,11 +11,15 @@ ball:
   max_time: 3.0
   # Oldest ball estimate (s) planned with
   timeout: 0.5
-  # The ball filter's velocity covariance is about 2x optimistic in sigma for the first 0.3 s after a kick (NEES,
-  # tumminello/ball-covariance-check), so it is widened by this factor over that window.
+  # Widening of the ball filter's velocity covariance (sigma factor) over the first moments of a shot. The NEES
+  # check (tumminello/ball-covariance-check) found it ~2x optimistic in the first 0.3 s, but through the full stack
+  # in NUSim (GoalieShotBenchmark, 22 Sep) sigma(dy) at the commit was 1.41 m with 2x against an actual 0.07 m RMS
+  # error, and 0.93 m against 0.05 m without: the filter's own kick handling already opens it far enough. Without
+  # the widening the goalie saved 28/40 against 25/40, committed 0.02 s sooner, and the envelope's expected saves
+  # came closer (17 against 12, for 28 and 25).
   kick_widening:
     window: 0.3
-    factor: 2.0
+    factor: 1.0
 
 decision:
   # Commit to a block only for a shot at least this likely to go in. The command itself follows the training rule
@@ -28,6 +32,9 @@ decision:
   guard_distance: 3.0
   # Extra distance (m) the ball must go before the goalie stops guarding, so it does not flicker at the edge
   guard_hysteresis: 0.5
+  # ...and at least this far (m) in front of the goalie's line. In NUSim vision sees balls on the goalie's own feet
+  # and hands; guarding one of those keeps the head on it, which keeps it seen.
+  guard_min_ahead: 0.3
   # A shot is over once the ball is no longer on its way by the training rule (stopped, past the goalie or going
   # away) or lost, for this long (s). The delay also rides out the estimate flickering early in a shot.
   release_delay: 0.5

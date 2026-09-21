@@ -43,6 +43,7 @@ namespace module::planning::save {
         double min_p_on_target  = 0.5;
         double guard_distance   = 3.0;
         double guard_hysteresis = 0.5;
+        double guard_min_ahead  = 0.3;
         double release_delay    = 0.5;
         double min_shot_speed   = 0.3;
     };
@@ -86,9 +87,9 @@ namespace module::planning::save {
             else if (s.active && s.p_on_target >= cfg.min_p_on_target && s.ahead > 0.0) {
                 mode = Mode::BLOCK;
             }
-            // Only a ball in front: the ready stance faces the field, and vision's false positives on the goalie's
-            // own body (beside and behind it) would otherwise hold it there for good
-            else if (s.ahead > 0.0
+            // Only a ball out in front: the ready stance faces the field, and vision's false positives on the
+            // goalie's own feet and hands would otherwise hold it there for good (and keep its head on them)
+            else if (s.ahead > cfg.guard_min_ahead
                      && (s.distance < cfg.guard_distance
                          || (mode == Mode::GUARD && s.distance < cfg.guard_distance + cfg.guard_hysteresis))) {
                 mode = Mode::GUARD;

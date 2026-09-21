@@ -70,10 +70,13 @@ SCENARIO("The goalie guards a near ball and blocks shots on target", "[PlanSave]
         REQUIRE(decider.step(ball_at(3.6), DT, cfg) == Mode::IDLE);
         REQUIRE(decider.step(ball_at(3.2), DT, cfg) == Mode::IDLE);
     }
-    THEN("a ball beside or behind the goalie is not guarded") {
+    THEN("a ball beside, behind or at the feet of the goalie is not guarded") {
         Situation beside = ball_at(0.6);
         beside.ahead     = -0.2;
         REQUIRE(decider.step(beside, DT, cfg) == Mode::IDLE);
+        Situation at_feet = ball_at(0.2);
+        at_feet.ahead     = 0.01;
+        REQUIRE(decider.step(at_feet, DT, cfg) == Mode::IDLE);
     }
     THEN("a shot going wide is not blocked") {
         REQUIRE(decider.step(shot(0.2), DT, cfg) == Mode::IDLE);
