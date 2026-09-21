@@ -1,0 +1,48 @@
+# Validates the ball UKF (localisation::BallLocalisation) against NUSim ground truth: the robot stands
+# and looks at the ball while NUSim rolls it at the robot. See module/tools/BallLocalisationBenchmark.
+# Run it against NUSim; it exits when the shot schedule is done.
+nuclear_role(
+  # FileWatcher, ConsoleLogHandler and Signal Catcher Must Go First and without it many roles do not run
+  extension::FileWatcher # Watches configuration files for changes
+  support::SignalCatcher # Allows for graceful shutdown
+  support::logging::ConsoleLogHandler # `log()` calls show in the console filtered for log level
+  # Configuration
+  actuation::KinematicsConfiguration # Must go early in the role as other modules depend on it
+  support::configuration::SoccerConfig # Field description
+  # Network
+  network::NUClearNet
+  network::NetworkForwarder
+  network::PlotJuggler
+  output::Overview
+  output::ImageCompressor
+  # Sensors — NUSimCamera (sim seqlock reader) instead of K1Camera (NUbridge/on-robot).
+  # K1Sensors is shared: NUSim's pose writer still uses the v1 layout it reads.
+  input::NUSimCamera
+  input::K1Sensors
+  input::NUSimGroundTruth # NUSim ground truth in, ball commands out
+  # Vision — Yolo-only, matching the robocup.role hardware pipeline
+  vision::Yolo
+  # Localisation
+  localisation::FieldLocalisationSRIF
+  localisation::BallLocalisation
+  localisation::RobotLocalisation
+  # Director
+  extension::Director
+  # Servos
+  actuation::Kinematics
+  actuation::Servos
+  actuation::K1Servos # Director-arbitrated sink for the K1 low-level channel (walk/kick/getup subsumption)
+  actuation::FootController
+  # Skills — shared with the real robot (ONNX policy inference works in both)
+  skill::K1WalkPolicy # ONNX walk inference -> LowCmd
+  skill::K1Look
+  # Planners
+  planning::PlanLook
+  # Strategies
+  strategy::StandStill
+  strategy::StrategiseLook
+  # Purposes
+  # Platform — Booster HardwareIO bridges to NUSim's SdkBridge over DDS in sim
+  tools::BallLocalisationBenchmark
+  platform::${SUBCONTROLLER}::HardwareIO
+)

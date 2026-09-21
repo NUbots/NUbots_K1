@@ -1,0 +1,7 @@
+# NUSim's head camera is the MJCF camera "head" (NUSim mujoco/models/k1/K1_22dof.xml): 0.075 m forward and
+# 0.089 m up from the head pitch link, on the centre line and square to the head. The default Hpc is a real
+# robot's calibration (the left stereo camera, 3.5 cm off-centre, with about 5 degrees of yaw); applied to the
+# ideal sim camera it put every NUSim detection about 4 degrees off in azimuth (0.26 m sideways at 3.5 m).
+Hpc:
+  translation: [0.075, 0.0, 0.089]
+  rotation_rpy: [0.0, 0.0, 0.0]
