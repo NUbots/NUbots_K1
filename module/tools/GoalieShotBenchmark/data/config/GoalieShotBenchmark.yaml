@@ -1,0 +1,61 @@
+log_level: INFO
+
+# Rolls shots at the goalie in NUSim and scores them against ground truth, with planning::PlanSave guarding the goal
+# through the full stack. Launch NUSim with `./b run sim/soccer --keyframe goalie` so the goalie starts at home.
+
+# Seconds after startup before localisation is reset to home and shots begin (the robot stands up first)
+start_delay: 15
+
+# Publish Field from NUSim's ground truth instead of running field localisation (take it out of the role). With
+# field localisation in NUSim the goalie can be localised to the wrong end of the symmetric field and walk off,
+# which measures localisation, not saving. The ball still goes through vision and the UKF.
+ground_truth_field: true
+
+seed: 1
+shots: 40
+
+# Goalie's home spot in the NUSim world {s} (the "goalie" keyframe), facing +x. Our goal line is line_offset behind
+# it: the M-Field's -x goal line is at x = -7.
+home: [-6.8, 0.0]
+line_offset: 0.2
+
+# Shots, the mjlab goalkeeper task's "full" level: the ball starts distance in front of home and lateral to the
+# side, and rolls through the point crossing to the side of home on its line (all m, speed m/s). A shot too slow
+# to reach that point is sped up just enough, as in mjlab.
+shot:
+  distance: [2.0, 4.5]
+  lateral: [-1.5, 1.5]
+  crossing: [-0.8, 0.8]
+  speed: [1.5, 4.0]
+rolling_deceleration: 0.5
+
+# Seconds the ball rests before the kick, so the ball estimate settles on it and PlanSave picks GUARD or IDLE
+settle_time: 2.0
+# Longest a shot is followed (s)
+max_roll_time: 8.0
+
+# Torso heights (m): below fall_height the goalie is down; the next shot waits until it has been above
+# upright_height for recover_time seconds (the walk takes it back home meanwhile)
+fall_height: 0.35
+upright_height: 0.5
+recover_time: 3.0
+# ...and back within home_tolerance (m) of home, facing the field within yaw_tolerance (rad). The walk takes it
+# (WalkToFieldPosition stops about 0.3 m short, so tighter than that never comes true)
+# there; after home_timeout (s) the shot is taken wherever it is.
+home_tolerance: 0.5
+yaw_tolerance: 0.5
+home_timeout: 60.0
+
+# shots.csv is written here, timestamped per run. The repository is mounted at /home/nubots/NUbots in the
+# container, so this lands in the host checkout.
+output_dir: "/home/nubots/NUbots/recordings/goalie_shot_benchmark"
+
+shutdown_when_done: true
+
+# What purpose::Goalie emits while it defends: Save above the positioning walk (here, back to home)
+tasks:
+  save_priority: 3
+  walk_priority: 1
+  fall_recovery_priority: 5
+  look_at_ball_priority: 2
+  look_around_priority: 1
