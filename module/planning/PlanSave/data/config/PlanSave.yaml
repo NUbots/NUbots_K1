@@ -1,0 +1,43 @@
+log_level: INFO
+
+# Ball model. The block policy was trained on commands computed with exactly this model (the mjlab goalkeeper
+# task's ShotCommand), so these match that task, not the field: change them together with a retrain.
+ball:
+  # Rolling deceleration (m/s^2); ShotCommandCfg.rolling_deceleration, also BallLocalisation's motion model
+  rolling_deceleration: 0.5
+  # Slowest ball (m/s) that counts as travelling; ShotCommandCfg.min_shot_speed
+  min_shot_speed: 0.3
+  # Longest time to arrival (s) the policy is told about a shot; ShotCommandCfg.max_time
+  max_time: 3.0
+  # Oldest ball estimate (s) planned with
+  timeout: 0.5
+  # The ball filter's velocity covariance is about 2x optimistic in sigma for the first 0.3 s after a kick (NEES,
+  # tumminello/ball-covariance-check), so it is widened by this factor over that window.
+  kick_widening:
+    window: 0.3
+    factor: 2.0
+
+decision:
+  # Commit to a block only for a shot at least this likely to go in. The command itself follows the training rule
+  # (the ball reaches the goalie's line within max_time), whatever the goal line says.
+  min_p_on_target: 0.5
+  # Hold the ready stance while our own ball estimate is within this distance (m) of the goalie, so a close shot
+  # finds it in the state the envelope was measured from (mjlab shots start 2.0-4.5 m out). Further out the walk
+  # keeps positioning it, and a shot switches it straight to the block. That start, from the walk, is not in the
+  # envelope yet (PLAN.md: measure it from both starting states); this is the stopgap until it is.
+  guard_distance: 3.0
+  # Extra distance (m) the ball must go before the goalie stops guarding, so it does not flicker at the edge
+  guard_hysteresis: 0.5
+  # A shot is over once the ball is this far (m) behind the goalie's line, or stops
+  behind_margin: 0.3
+  # Seconds the block keeps running after its shot is over, so the policy settles before it hands off
+  release_delay: 0.5
+  # Below this expected success the block is still run (it is the only skill), but logged as a gap. This is where a
+  # dive policy would be chosen, if the gap analysis ever calls for one.
+  block_threshold: 0.3
+
+envelope:
+  # One-sided z of the Wilson lower bound on each cell's save rate (1.64 = 95%)
+  confidence_z: 1.64
+  # Cells with fewer shots than this count as 0% success
+  min_trials: 10

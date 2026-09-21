@@ -1,0 +1,78 @@
+// MIT License
+//
+// Copyright (c) 2026 NUbots
+//
+// This file is part of the NUbots codebase.
+// See https://github.com/NUbots/NUbots for further info.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+syntax = "proto3";
+
+package message.planning;
+
+import "Vector.proto";
+
+/// Guard the goal: planning::PlanSave predicts shots from the ball estimate and, when one is coming, runs the
+/// block policy. Emit it every tick while the goalie is guarding, above the positioning walk: while no shot is on
+/// its way PlanSave emits nothing and the walk keeps the goalie positioned.
+message Save {}
+
+/// What PlanSave predicted and decided on one tick, for logging shots against their outcomes
+message SavePlan {
+    enum State {
+        /// No threat: positioning is left to the walk
+        IDLE = 0;
+        /// Ball near: holding the ready stance the envelope was measured from
+        GUARD = 1;
+        /// Shot on its way: the block policy is running with a live command
+        BLOCK = 2;
+        /// No envelope for the deployed policy: positioning only
+        DISABLED = 3;
+    }
+    State state = 1;
+
+    /// Whether a ball estimate from our own vision was fresh enough to plan with
+    bool ball_valid = 2;
+    /// Ball position and velocity in the robot frame {r}
+    vec2 rBRr = 3;
+    vec2 vBr  = 4;
+
+    /// Crossing of the goalie's frontal plane (x = 0 in {r}): offset (m, +left) and time (s), with standard deviations
+    bool reaches_robot   = 5;
+    double dy            = 6;
+    double sigma_dy      = 7;
+    double time          = 8;
+    double sigma_time    = 9;
+    /// Crossing of our goal line in the field frame: y (m) and the probability it lands between the posts
+    bool reaches_goal    = 10;
+    double goal_y        = 11;
+    double sigma_goal_y  = 12;
+    double p_on_target   = 13;
+
+    /// Expected conservative save rate of the block policy over the Gaussian on dy, from the envelope
+    double expected_block_success = 14;
+    /// Measured fall rate at the predicted command, negative if the envelope has too few shots there
+    double block_fall_rate        = 15;
+
+    /// Seconds since the ball started rolling, while the velocity estimate is still catching up
+    double time_since_kick = 16;
+    /// Whether the velocity covariance was widened for the first moments of the shot
+    bool widened           = 17;
+}
