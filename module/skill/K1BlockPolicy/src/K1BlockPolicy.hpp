@@ -31,6 +31,7 @@
 #include <array>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <nuclear>
 #include <openvino/openvino.hpp>
 #include <string>
@@ -111,6 +112,10 @@ namespace module::skill {
         ov::InferRequest infer_request;
         bool model_loaded = false;
 
+        /// Guards the policy state below and the model: Start, configuration and the 50 Hz tick run on different
+        /// threads, and a planner that starts and stops Block often (planning::PlanSave) otherwise clears the
+        /// history under an inference that is reading it
+        std::mutex state_mutex{};
         /// Previous raw policy output (policy order), fed back as the last-action observation
         std::vector<float> last_action{};
         /// Observation window, oldest frame first

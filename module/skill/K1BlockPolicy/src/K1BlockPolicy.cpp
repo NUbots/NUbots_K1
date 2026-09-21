@@ -103,6 +103,7 @@ namespace module::skill {
         : BehaviourReactor(std::move(environment)) {
 
         on<Configuration>("K1BlockPolicy.yaml").then([this](const Configuration& config) {
+            const std::lock_guard<std::mutex> lock(state_mutex);
             log_level = config["log_level"].as<NUClear::LogLevel>();
 
             cfg.model_path          = config["model_path"].as<std::string>();
@@ -149,11 +150,13 @@ namespace module::skill {
 
         // The policy does not own the head: track whatever the look skills last asked for
         on<Trigger<BoosterHeadRot>>().then([this](const BoosterHeadRot& head) {
+            const std::lock_guard<std::mutex> lock(state_mutex);
             head_target.x() = std::clamp(head.rot.x(), -HEAD_YAW_LIMIT, HEAD_YAW_LIMIT);
             head_target.y() = std::clamp(head.rot.y(), HEAD_PITCH_MIN, HEAD_PITCH_MAX);
         });
 
         on<Start<BlockTask>>().then([this] {
+            const std::lock_guard<std::mutex> lock(state_mutex);
             if (!model_loaded) {
                 log<ERROR>("Block task started but no block policy is loaded; staying out of CUSTOM mode");
                 return;
@@ -175,6 +178,7 @@ namespace module::skill {
         // 50 Hz inference loop, matching the training control rate (0.02 s)
         on<Provide<BlockTask>, Every<50, Per<std::chrono::seconds>>, With<RawSensors>, Single>().then(
             [this](const BlockTask& block, const RawSensors& raw) {
+                const std::lock_guard<std::mutex> lock(state_mutex);
                 if (!model_loaded) {
                     emit<Task>(std::make_unique<Continue>());
                     return;
