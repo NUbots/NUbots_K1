@@ -4,7 +4,7 @@ log_level: INFO
 # through the full stack. Launch NUSim with `./b run sim/soccer --keyframe goalie` so the goalie starts at home.
 
 # Seconds after startup before localisation is reset to home and shots begin (the robot stands up first)
-start_delay: 15
+start_delay: 5
 
 # Publish Field from NUSim's ground truth instead of running field localisation (take it out of the role). With
 # field localisation in NUSim the goalie can be localised to the wrong end of the symmetric field and walk off,
@@ -19,7 +19,7 @@ ground_truth_field: true
 #   true_crossing: as true_state, and PlanSave takes where the ball crosses the goalie and the goal line from NUSim,
 #                  which rolls the ball ahead without the robot, instead of predicting it
 # Both ground-truth sources plan with zero uncertainty. Each run's choice is in shots.csv's ball_source column.
-ground_truth_ball: estimate
+ground_truth_ball: true_state
 
 seed: 1
 shots: 40

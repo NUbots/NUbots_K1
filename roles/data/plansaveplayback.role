@@ -1,0 +1,16 @@
+# Replays a goalie recording (roles/nusim/goalieshots.role with DataLogging) into planning::PlanSave, one message at a
+# time, so it can be stepped through under a debugger. See module/tools/PlanSavePlayback/README.md.
+#   ./b run data/plansaveplayback recordings/goalieshots/<file>.nbs
+nuclear_role(
+  # FileWatcher, ConsoleLogHandler and Signal Catcher Must Go First and without it many roles do not run
+  extension::FileWatcher # Watches configuration files for changes
+  support::SignalCatcher # Allows for graceful shutdown
+  support::logging::ConsoleLogHandler # `log()` calls show in the console filtered for log level
+  # Director
+  extension::Director
+  # Under test
+  planning::PlanSave
+  # Playback
+  tools::PlanSavePlayback
+  nbs::Player
+)

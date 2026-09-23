@@ -1,0 +1,24 @@
+log_level: INFO
+
+# SEQUENTIAL: one message at a time, each only once everything it triggered has finished, with time held still in
+#   between. A breakpoint therefore pauses the replay too, so this is the mode to debug in.
+# REALTIME: at the recorded rate. FAST: as fast as possible, skipping the gaps between messages.
+playback_mode: SEQUENTIAL
+
+# Recordings to play when none are given on the command line, relative to the build directory (which has a
+# `recordings` link). Handy under a debugger: `./b configure` regenerates .vscode/launch.json with no arguments.
+files:
+  - recordings/goalieshots/20260923T10_59_48.nbs
+
+# What planning::PlanSave reads, as recorded by roles/nusim/goalieshots.role (DataLogging.yaml). Leave out anything a
+# module in the role produces itself: message.planning.SavePlan is PlanSave's output, so replaying it as well would mix
+# the recorded decisions in with the new ones.
+messages:
+  message.support.FieldDescription: true
+  message.input.Sensors: true
+  message.localisation.Field: true
+  message.localisation.Ball: true
+  # Which ball the recording ran on (GoalieShotBenchmark's ground_truth_ball). With TRUE_CROSSING, PlanSave also needs
+  # the crossings, and plans nothing without them.
+  message.booster.NUSimBallSource: true
+  message.booster.NUSimBallCrossings: true
