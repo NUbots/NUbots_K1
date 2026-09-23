@@ -84,6 +84,8 @@ namespace module::planning {
         bool rolling = false;
         NUClear::clock::time_point kick_time{};
         NUClear::clock::time_point last_tick{};
+        /// Throttles the warning that NUSim's forecast is missing while planning on it
+        NUClear::clock::time_point last_forecast_warning{};
 
     public:
         /// @brief Called by the powerplant to build and setup the PlanSave reactor.

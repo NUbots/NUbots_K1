@@ -31,8 +31,6 @@
 
 #include "extension/Configuration.hpp"
 
-#include "message/booster/NUSimGroundTruth.hpp"
-
 #include "utility/platform/Booster/channel_factory.hpp"
 
 namespace module::input {
@@ -40,6 +38,7 @@ namespace module::input {
     using extension::Configuration;
 
     using message::booster::NUSimBallCommand;
+    using message::booster::NUSimBallCrossings;
     using message::booster::NUSimBallGroundTruth;
     using message::booster::NUSimRobotGroundTruth;
 
@@ -66,16 +65,27 @@ namespace module::input {
             out.z(v.z());
         }
 
+        /// NUSim's robot frame {r} in {s}: the yaw-only frame at the torso's ground projection
+        Eigen::Isometry3d robot_in_world(const Eigen::Isometry3d& Hst) {
+            const double yaw      = std::atan2(Hst.linear()(1, 0), Hst.linear()(0, 0));
+            Eigen::Isometry3d Hsr = Eigen::Isometry3d::Identity();
+            Hsr.linear()          = Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+            Hsr.translation()     = Eigen::Vector3d(Hst.translation().x(), Hst.translation().y(), 0.0);
+            return Hsr;
+        }
+
     }  // namespace
 
     NUSimGroundTruth::NUSimGroundTruth(std::unique_ptr<NUClear::Environment> environment)
         : Reactor(std::move(environment)) {
 
         on<Configuration>("NUSimGroundTruth.yaml").then([this](const Configuration& config) {
-            log_level         = config["log_level"].as<NUClear::LogLevel>();
-            cfg.ball_topic    = config["topics"]["ball"].as<std::string>();
-            cfg.robot_topic   = config["topics"]["robot"].as<std::string>();
-            cfg.command_topic = config["topics"]["ball_command"].as<std::string>();
+            log_level                = config["log_level"].as<NUClear::LogLevel>();
+            cfg.ball_topic           = config["topics"]["ball"].as<std::string>();
+            cfg.robot_topic          = config["topics"]["robot"].as<std::string>();
+            cfg.robot_crossing_topic = config["topics"]["ball_crossing_robot"].as<std::string>();
+            cfg.goal_crossing_topic  = config["topics"]["ball_crossing_goal"].as<std::string>();
+            cfg.command_topic        = config["topics"]["ball_command"].as<std::string>();
         });
 
         on<Startup>().then("Subscribe to NUSim ground truth", [this] {
@@ -89,8 +99,21 @@ namespace module::input {
                 cfg.robot_topic,
                 [this](const void* msg) { robot_handler(msg); },
                 /* reliable = */ false);
+            robot_crossing_channel = ChannelFactory::Instance()->CreateRecvChannel<nav_msgs::msg::Odometry>(
+                cfg.robot_crossing_topic,
+                [this](const void* msg) { crossing_handler(msg, false); },
+                /* reliable = */ false);
+            goal_crossing_channel = ChannelFactory::Instance()->CreateRecvChannel<nav_msgs::msg::Odometry>(
+                cfg.goal_crossing_topic,
+                [this](const void* msg) { crossing_handler(msg, true); },
+                /* reliable = */ false);
             command_channel = ChannelFactory::Instance()->CreateSendChannel<nav_msgs::msg::Odometry>(cfg.command_topic);
-            log<INFO>("Listening for NUSim ground truth on", cfg.ball_topic, "and", cfg.robot_topic);
+            log<INFO>("Listening for NUSim ground truth on",
+                      cfg.ball_topic,
+                      cfg.robot_topic,
+                      cfg.robot_crossing_topic,
+                      "and",
+                      cfg.goal_crossing_topic);
         });
 
         on<Trigger<NUSimBallCommand>>().then([this](const NUSimBallCommand& cmd) {
@@ -122,6 +145,15 @@ namespace module::input {
         gt->rBSs      = Eigen::Vector3d(p.x(), p.y(), p.z());
         gt->vBs       = vec(odom.twist().twist().linear());
         gt->omegaBs   = vec(odom.twist().twist().angular());
+        {
+            const std::lock_guard<std::mutex> lock(truth_mutex);
+            gt->robot_frame_valid = have_Hst;
+            if (have_Hst) {
+                const Eigen::Isometry3d Hrs = robot_in_world(Hst).inverse();
+                gt->rBRr                    = Hrs * gt->rBSs;
+                gt->vBr                     = Hrs.linear() * gt->vBs;
+            }
+        }
         emit(gt);
     }
 
@@ -139,7 +171,37 @@ namespace module::input {
         gt->Hst       = Hst;
         gt->vTs       = vec(odom.twist().twist().linear());
         gt->omegaTs   = vec(odom.twist().twist().angular());
+        {
+            const std::lock_guard<std::mutex> lock(truth_mutex);
+            this->Hst = Hst;
+            have_Hst  = true;
+        }
         emit(gt);
+    }
+
+    void NUSimGroundTruth::crossing_handler(const void* msg, const bool goal_line) {
+        const auto& odom = *static_cast<const nav_msgs::msg::Odometry*>(msg);
+        const auto& p    = odom.pose().pose().position();
+
+        NUSimBallCrossings::Crossing crossing{};
+        crossing.crosses = odom.child_frame_id() == "crossing";
+        crossing.time    = stamp_of(odom);
+        crossing.rBRr    = Eigen::Vector3d(p.x(), p.y(), p.z());
+        crossing.vBr     = vec(odom.twist().twist().linear());
+
+        const std::lock_guard<std::mutex> lock(truth_mutex);
+        // The goal line comes in NUSim's world {s}
+        if (odom.header().frame_id() == "world") {
+            if (!have_Hst) {
+                return;
+            }
+            const Eigen::Isometry3d Hrs = robot_in_world(Hst).inverse();
+            crossing.rBRr               = Hrs * crossing.rBRr;
+            crossing.vBr                = Hrs.linear() * crossing.vBr;
+        }
+        (goal_line ? crossings.goal_line : crossings.robot) = crossing;
+        crossings.timestamp                                 = NUClear::clock::now();
+        emit(std::make_unique<NUSimBallCrossings>(crossings));
     }
 
 }  // namespace module::input

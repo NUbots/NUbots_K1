@@ -38,6 +38,18 @@ Each shot is also logged, with a summary at the end.
 
 With `ground_truth_field: true` (the default), the harness publishes `Field` from NUSim's ground truth, and the role has no field localisation. On NUSim's symmetric field, localisation can settle on the wrong end, and the walk then takes the goalie away from its goal. That tests localisation, not saving.
 
+`ground_truth_ball` picks which ball the stack runs on, so ground truth can be swapped for the estimates one piece at a time to find where the goalie loses its shots. The harness emits it as `message::booster::NUSimBallSource`:
+
+| `ground_truth_ball` | Ball state (everything that reads `localisation::Ball`) | Where the shot crosses (PlanSave) |
+|---|---|---|
+| `estimate` (default) | vision → `BallLocalisation`'s filter | PlanSave's rolling-ball prediction |
+| `true_state` | NUSim's true ball, published by `BallLocalisation` with zero covariance | PlanSave's prediction, from the true state |
+| `true_crossing` | as `true_state` | NUSim's forecast: the ball rolled ahead in a copy of the scene without the robot (NUSim `rt/nusim/gt/ball_crossing/*`) |
+
+`true_crossing` needs NUSim from `tumminello/goalie-shooter-test` at `68e1e4f` or later. Each run's choice is in the `ball_source` column of `shots.csv`.
+
+In a 4-shot `true_crossing` run (23 Sep 2026), all 4 on-target shots were saved, and PlanSave blocked a median 0.03 s after the kick. `true_dy` in `shots.csv` is still the rolling model's crossing at the kick, from where the goalie stood then. So it differs from PlanSave's `plan_dy` for a shot kicked while the goalie was still walking home (0.2–0.5 m in the two such shots).
+
 ## Consumes
 
 - `message::booster::NUSimBallGroundTruth`, `NUSimRobotGroundTruth` (`input::NUSimGroundTruth`)
@@ -47,6 +59,7 @@ With `ground_truth_field: true` (the default), the harness publishes `Field` fro
 ## Emits
 
 - `message::booster::NUSimBallCommand`: place, kick and park the ball
+- `message::booster::NUSimBallSource`: which ball the stack runs on (`ground_truth_ball`)
 - `message::localisation::Field` (ground-truth mode), or `PenaltyReset` to seed field localisation at home
 - Tasks: `Save`, `WalkToFieldPosition`, `LookAtBall`, `LookAround`, `FallRecovery`
 

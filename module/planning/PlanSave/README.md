@@ -44,6 +44,7 @@ The current envelope is goalkeeper run 12 (wandb `zrhfjas8`, `model_2999`, measu
 - `message::planning::Save`: Director task, guard the goal.
 - `message::localisation::Ball`: our own estimate (confidence > 0) with covariance. Teammates' balls carry no velocity and are ignored.
 - `message::input::Sensors` (`Hrw`), `message::localisation::Field` (`Hfw`), `message::support::FieldDescription`.
+- `message::booster::NUSimBallSource`, `NUSimBallCrossings` (NUSim only): with the source at `TRUE_CROSSING`, the crossings of the goalie's line and our goal line come from NUSim rolling the ball ahead without the robot, not from the prediction, with zero σ. `SavePlan.true_crossing` says so. Without a forecast from the last `ball.timeout`, the ball counts as invalid rather than falling back to the prediction. On a real robot neither message exists.
 
 ## Emits
 

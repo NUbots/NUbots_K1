@@ -36,8 +36,10 @@
 
 #include "extension/Configuration.hpp"
 
+#include "message/booster/NUSimGroundTruth.hpp"
 #include "message/eye/DataPoint.hpp"
 #include "message/input/Robocup.hpp"
+#include "message/input/Sensors.hpp"
 #include "message/localisation/Ball.hpp"
 #include "message/localisation/Field.hpp"
 #include "message/support/FieldDescription.hpp"
@@ -54,8 +56,11 @@ namespace module::localisation {
     using VisionBalls = message::vision::Balls;
     using VisionBall  = message::vision::Ball;
 
+    using message::booster::NUSimBallGroundTruth;
+    using message::booster::NUSimBallSource;
     using message::eye::DataPoint;
     using message::input::Message;
+    using message::input::Sensors;
     using message::localisation::Field;
     using message::support::FieldDescription;
     using message::support::GlobalConfig;
@@ -64,6 +69,11 @@ namespace module::localisation {
     using utility::support::Expression;
 
     namespace {
+        /// Whether a NUSim harness has put the stack on NUSim's true ball instead of this filter's estimate
+        bool on_ground_truth(const std::shared_ptr<const NUSimBallSource>& source) {
+            return source != nullptr && source->source != NUSimBallSource::Source::ESTIMATE;
+        }
+
         double seconds(const NUClear::clock::duration& d) {
             return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
         }
@@ -124,8 +134,11 @@ namespace module::localisation {
         });
 
         /* To run whenever a ball has been detected */
-        on<Trigger<VisionBalls>, With<FieldDescription>, With<Field>, Single>().then(
-            [this](const VisionBalls& balls, const FieldDescription& fd, const Field& field) {
+        on<Trigger<VisionBalls>, With<FieldDescription>, With<Field>, Optional<With<NUSimBallSource>>, Single>().then(
+            [this](const VisionBalls& balls,
+                   const FieldDescription& fd,
+                   const Field& field,
+                   const std::shared_ptr<const NUSimBallSource>& source) {
                 // The filter runs in image time: the detections describe the ball when the image was taken,
                 // however long vision took to deliver them
                 const NUClear::clock::time_point image_time = balls.timestamp;
@@ -296,50 +309,72 @@ namespace module::localisation {
                     emit(graph("rBWw: ", ball->rBWw.x(), ball->rBWw.y(), ball->rBWw.z()));
                     emit(graph("vBw: ", ball->vBw.x(), ball->vBw.y(), ball->vBw.z()));
                 }
+                // On NUSim's ground truth the filter keeps running, but the stack gets the true ball below
+                if (!on_ground_truth(source)) {
+                    emit(ball);
+                }
+            });
+
+        // NUSim's true ball in place of the estimate, while a harness asks for it (NUSimBallSource). It goes through
+        // the robot frame {r}, so its position relative to the robot is exact whatever odometry has drifted to.
+        on<Trigger<NUSimBallGroundTruth>, With<NUSimBallSource>, With<Sensors>>().then(
+            [this](const NUSimBallGroundTruth& gt, const NUSimBallSource& source, const Sensors& sensors) {
+                if (source.source == NUSimBallSource::Source::ESTIMATE || !gt.robot_frame_valid) {
+                    return;
+                }
+                const Eigen::Isometry3d Hwr = Eigen::Isometry3d(sensors.Hrw).inverse();
+                auto ball                   = std::make_unique<Ball>();
+                ball->rBWw                  = Hwr * gt.rBRr;
+                ball->vBw                   = Hwr.linear() * gt.vBr;
+                ball->covariance.setZero();
+                ball->confidence          = 1.0;
+                ball->time_of_measurement = gt.timestamp;
+                ball->Hcw                 = sensors.Hcw;
                 emit(ball);
             });
 
         // Stores ball positions received from teammates
-        on<Trigger<Message>, With<Field>>().then([this](const Message& robocup, const Field& field) {
-            if (!cfg.use_r2r_balls) {
-                return;
-            }
+        on<Trigger<Message>, With<Field>, Optional<With<NUSimBallSource>>>().then(
+            [this](const Message& robocup, const Field& field, const std::shared_ptr<const NUSimBallSource>& source) {
+                if (!cfg.use_r2r_balls || on_ground_truth(source)) {
+                    return;
+                }
 
-            // This occurs when the ball has not been seen
-            if (robocup.ball.age < 0.0f) {
-                // If the ball has not been seen, then we don't care about it
-                return;
-            }
+                // This occurs when the ball has not been seen
+                if (robocup.ball.age < 0.0f) {
+                    // If the ball has not been seen, then we don't care about it
+                    return;
+                }
 
-            Eigen::Vector3d rBFf = robocup.ball.position.cast<double>();
+                Eigen::Vector3d rBFf = robocup.ball.position.cast<double>();
 
-            // Resize the vector of guesses if it is not large enough
-            if (team_guesses.capacity() < robocup.current_pose.player_id) {
-                team_guesses.resize(robocup.current_pose.player_id);
-            }
+                // Resize the vector of guesses if it is not large enough
+                if (team_guesses.capacity() < robocup.current_pose.player_id) {
+                    team_guesses.resize(robocup.current_pose.player_id);
+                }
 
-            // Update this teammates information
-            team_guesses[robocup.current_pose.player_id - 1].last_heard = NUClear::clock::now();
-            team_guesses[robocup.current_pose.player_id - 1].rBFf       = rBFf;
+                // Update this teammates information
+                team_guesses[robocup.current_pose.player_id - 1].last_heard = NUClear::clock::now();
+                team_guesses[robocup.current_pose.player_id - 1].rBFf       = rBFf;
 
-            // Don't use teammates ball info if we have a recent ball measurement
-            const auto dt =
-                std::chrono::duration_cast<std::chrono::duration<double>>(NUClear::clock::now() - last_time_update)
-                    .count();
-            if (dt < cfg.team_guess_default_timer) {
-                return;
-            }
+                // Don't use teammates ball info if we have a recent ball measurement
+                const auto dt =
+                    std::chrono::duration_cast<std::chrono::duration<double>>(NUClear::clock::now() - last_time_update)
+                        .count();
+                if (dt < cfg.team_guess_default_timer) {
+                    return;
+                }
 
-            // If we have a valid guess, emit a new ball message
-            last_time_update          = NUClear::clock::now();
-            auto ball                 = std::make_unique<Ball>();
-            ball->rBWw                = field.Hfw.inverse() * get_average_team_rBFf().second;
-            ball->vBw                 = Eigen::Vector3d::Zero();
-            ball->confidence          = 0.0;  // No confidence in other teammates' guesses
-            ball->time_of_measurement = last_time_update;
-            ball->Hcw                 = last_Hcw;
-            emit(ball);
-        });
+                // If we have a valid guess, emit a new ball message
+                last_time_update          = NUClear::clock::now();
+                auto ball                 = std::make_unique<Ball>();
+                ball->rBWw                = field.Hfw.inverse() * get_average_team_rBFf().second;
+                ball->vBw                 = Eigen::Vector3d::Zero();
+                ball->confidence          = 0.0;  // No confidence in other teammates' guesses
+                ball->time_of_measurement = last_time_update;
+                ball->Hcw                 = last_Hcw;
+                emit(ball);
+            });
     }
 
     void BallLocalisation::reset_track(const Candidate& candidate, const NUClear::clock::time_point& time) {

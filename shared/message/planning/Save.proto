@@ -75,4 +75,7 @@ message SavePlan {
     double time_since_kick = 16;
     /// Whether the velocity covariance was widened for the first moments of the shot
     bool widened           = 17;
+    /// Whether the crossings came from NUSim's ground truth (NUSimBallSource TRUE_CROSSING) instead of the
+    /// prediction. Their standard deviations are then zero.
+    bool true_crossing     = 18;
 }

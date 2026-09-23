@@ -53,6 +53,8 @@ namespace module::tools {
             double start_delay = 0.0;
             /// Publish Field from NUSim's ground truth instead of running field localisation
             bool ground_truth_field = false;
+            /// Which ball the stack runs on: estimate, true_state or true_crossing (message::booster::NUSimBallSource)
+            std::string ground_truth_ball{};
             unsigned int seed  = 0;
             int shots          = 0;
             /// Goalie's home spot in the simulator world {s}, facing +x; the goal line is line_offset behind it

@@ -33,6 +33,7 @@
 
 #include "extension/Configuration.hpp"
 
+#include "message/booster/NUSimGroundTruth.hpp"
 #include "message/input/Sensors.hpp"
 #include "message/localisation/Field.hpp"
 #include "message/planning/Save.hpp"
@@ -45,6 +46,8 @@ namespace module::planning {
 
     using SaveTask  = message::planning::Save;
     using BlockTask = message::skill::Block;
+    using message::booster::NUSimBallCrossings;
+    using message::booster::NUSimBallSource;
     using message::input::Sensors;
     using message::localisation::Ball;
     using message::localisation::Field;
@@ -81,6 +84,18 @@ namespace module::planning {
                 }
             }
             return flat;
+        }
+
+        /// A crossing known exactly, from NUSim's ground truth: no uncertainty, and the time counted down to it
+        save::UncertainCrossing known_crossing(const bool reaches,
+                                               const double offset,
+                                               const NUClear::clock::time_point& at,
+                                               const NUClear::clock::time_point& now) {
+            save::UncertainCrossing c{};
+            c.crossing.reaches = reaches;
+            c.crossing.offset  = offset;
+            c.crossing.time    = std::max(0.0, seconds(at - now));
+            return c;
         }
 
         SavePlan::State to_message(const Mode mode) {
@@ -161,12 +176,16 @@ namespace module::planning {
            With<Sensors>,
            With<Field>,
            With<FieldDescription>,
+           Optional<With<NUSimBallSource>>,
+           Optional<With<NUSimBallCrossings>>,
            Every<50, Per<std::chrono::seconds>>,
            Single>()
             .then([this](const std::shared_ptr<const Ball>& ball,
                          const Sensors& sensors,
                          const Field& field,
-                         const FieldDescription& fd) {
+                         const FieldDescription& fd,
+                         const std::shared_ptr<const NUSimBallSource>& source,
+                         const std::shared_ptr<const NUSimBallCrossings>& crossings) {
                 const auto now = NUClear::clock::now();
                 const double dt = std::clamp(seconds(now - last_tick), 0.0, 0.1);
                 last_tick       = now;
@@ -181,9 +200,21 @@ namespace module::planning {
                     return;
                 }
 
+                // In NUSim a harness can put the crossings on ground truth (NUSimBallSource TRUE_CROSSING): then
+                // they come from NUSim rolling the ball ahead, and without a fresh forecast there is no shot to plan
+                const bool true_crossing   = source != nullptr && source->source == NUSimBallSource::Source::TRUE_CROSSING;
+                const bool crossings_fresh = crossings != nullptr
+                                             && seconds(now - crossings->timestamp) < cfg.ball_timeout;
+                plan->true_crossing = true_crossing;
+                if (true_crossing && !crossings_fresh && now - last_forecast_warning > std::chrono::seconds(5)) {
+                    last_forecast_warning = now;
+                    log<WARN>("On NUSim's true crossings, but no fresh forecast from NUSim (rt/nusim/gt/ball_crossing/*)");
+                }
+
                 // Only our own estimate carries a velocity; teammates' balls come with confidence 0 and none
                 const bool ball_valid = ball != nullptr && ball->confidence > 0.0
-                                        && seconds(now - ball->time_of_measurement) < cfg.ball_timeout;
+                                        && seconds(now - ball->time_of_measurement) < cfg.ball_timeout
+                                        && (!true_crossing || crossings_fresh);
 
                 save::Situation situation{};
                 situation.ball_valid = ball_valid;
@@ -225,9 +256,32 @@ namespace module::planning {
                     save::Covariance Pg = P;
                     save::transform(yaw_of(field.Hfw), field.Hfw.translation().head<2>(), xg, Pg);
                     save::transform(M_PI, Eigen::Vector2d(fd.dimensions.field_length / 2.0, 0.0), xg, Pg);
-                    const save::UncertainCrossing at_goal = save::predict_crossing(xg, Pg, cfg.ball);
-                    rBGg                                  = xg.head<2>();
-                    const double half_goal                = fd.dimensions.goal_width / 2.0;
+                    save::UncertainCrossing at_goal = save::predict_crossing(xg, Pg, cfg.ball);
+                    rBGg                            = xg.head<2>();
+                    const double half_goal          = fd.dimensions.goal_width / 2.0;
+
+                    if (true_crossing) {
+                        // The goalie's line: NUSim's crossing is already in {r}. The training rule still needs the
+                        // ball moving faster than min_shot_speed now.
+                        const auto& robot = crossings->robot;
+                        at_robot          = known_crossing(robot.crosses && speed > cfg.ball.min_speed,
+                                                  robot.rBRr.y(),
+                                                  robot.time,
+                                                  now);
+                        // The goal line: NUSim reports the first one the ball leaves the field over, at either end,
+                        // in {r}; it is ours if it lands on our half of {g}
+                        const auto& goal     = crossings->goal_line;
+                        const Eigen::Isometry3d Hwr = Eigen::Isometry3d(sensors.Hrw).inverse();
+                        save::State xc{};
+                        xc << (Hwr * goal.rBRr).head<2>(), (Hwr.linear() * goal.vBr).head<2>();
+                        save::Covariance Pc = save::Covariance::Zero();
+                        save::transform(yaw_of(field.Hfw), field.Hfw.translation().head<2>(), xc, Pc);
+                        save::transform(M_PI, Eigen::Vector2d(fd.dimensions.field_length / 2.0, 0.0), xc, Pc);
+                        at_goal = known_crossing(goal.crosses && xc.x() < fd.dimensions.field_length / 2.0,
+                                                 xc.y(),
+                                                 goal.time,
+                                                 now);
+                    }
 
                     plan->rBRr          = xr.head<2>();
                     plan->vBr           = xr.tail<2>();

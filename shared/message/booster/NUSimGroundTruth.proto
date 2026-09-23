@@ -32,12 +32,13 @@ import "Transform.proto";
 import "Vector.proto";
 
 // NUSim-only messages for validating estimators against the simulator and driving repeatable ball
-// scenarios. They mirror the NUSim DDS topics rt/nusim/gt/ball, rt/nusim/gt/robot and
-// rt/nusim/ball_command (NUSim module/SdkBridge/PROTOCOL.md §6), bridged by input::NUSimGroundTruth.
-// A real robot never produces them.
+// scenarios. They mirror the NUSim DDS topics rt/nusim/gt/ball, rt/nusim/gt/robot,
+// rt/nusim/gt/ball_crossing/* and rt/nusim/ball_command (NUSim module/SdkBridge/PROTOCOL.md §6), bridged by
+// input::NUSimGroundTruth. A real robot never produces them.
 //
 // Frames: {s} is the simulator world (the scene's field frame, fixed); {t} is the torso (Trunk).
-// Neither is the NUbots odometry world {w}: compare through the robot frame {r} instead.
+// Neither is the NUbots odometry world {w}: compare through the robot frame {r} instead. NUSim's {r} is the
+// yaw-only frame at the torso's ground projection, the frame NUbots' odometry (Sensors.Hrw) tracks.
 
 /// Ground-truth ball state from NUSim (rt/nusim/gt/ball)
 message NUSimBallGroundTruth {
@@ -49,6 +50,10 @@ message NUSimBallGroundTruth {
     vec3 vBs = 3;
     /// Ball spin in {s}
     vec3 omegaBs = 4;
+    /// Ball centre and velocity in the robot frame {r}, at the latest robot ground truth
+    bool robot_frame_valid = 5;
+    vec3 rBRr              = 6;
+    vec3 vBr               = 7;
 }
 
 /// Ground-truth robot torso (Trunk) state from NUSim (rt/nusim/gt/robot)
@@ -61,6 +66,43 @@ message NUSimRobotGroundTruth {
     vec3 vTs = 3;
     /// Torso angular velocity in {s}
     vec3 omegaTs = 4;
+}
+
+/// Where NUSim's ball will cross the robot's frontal plane and the goal line, from rolling it ahead in a copy of
+/// the scene with the robot taken out (rt/nusim/gt/ball_crossing/robot and .../goal). This is where the shot goes
+/// if nothing stops it, which is what the goalie has to predict.
+message NUSimBallCrossings {
+    message Crossing {
+        /// Whether the ball crosses within NUSim's forecast horizon (5 s)
+        bool crosses = 1;
+        /// Wall-clock time it crosses
+        google.protobuf.Timestamp time = 2;
+        /// Ball centre as it crosses, and its velocity, in the robot frame {r} at the forecast
+        vec3 rBRr = 3;
+        vec3 vBr  = 4;
+    }
+    /// When the latest forecast arrived
+    google.protobuf.Timestamp timestamp = 1;
+    /// The robot's frontal plane (x = 0 in {r}), crossed from in front: rBRr.y is where the ball passes it
+    Crossing robot = 2;
+    /// The first goal line the ball leaves the field over, at either end
+    Crossing goal_line = 3;
+}
+
+/// Which ball the stack runs on in NUSim, emitted by the harness that owns the choice
+/// (tools::GoalieShotBenchmark, ground_truth_ball). Without one, everything runs on the estimate.
+message NUSimBallSource {
+    enum Source {
+        /// Our own estimate: vision, then localisation::BallLocalisation's filter, then PlanSave's prediction
+        ESTIMATE = 0;
+        /// NUSim's true ball state replaces the filter's estimate for the whole stack (BallLocalisation publishes
+        /// it); PlanSave still predicts where it crosses
+        TRUE_STATE = 1;
+        /// As TRUE_STATE, and PlanSave takes where the ball crosses the goalie and the goal line from NUSim's
+        /// forecast instead of predicting it
+        TRUE_CROSSING = 2;
+    }
+    Source source = 1;
 }
 
 /// Place the NUSim ball and set its velocity (rt/nusim/ball_command)

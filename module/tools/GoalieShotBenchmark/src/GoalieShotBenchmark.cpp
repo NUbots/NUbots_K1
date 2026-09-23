@@ -52,6 +52,7 @@ namespace module::tools {
     using extension::Configuration;
 
     using message::booster::NUSimBallCommand;
+    using message::booster::NUSimBallSource;
     using message::booster::NUSimBallGroundTruth;
     using message::booster::NUSimRobotGroundTruth;
     using message::input::Sensors;
@@ -113,6 +114,24 @@ namespace module::tools {
             this->log_level          = config["log_level"].as<NUClear::LogLevel>();
             cfg.start_delay          = config["start_delay"].as<double>();
             cfg.ground_truth_field   = config["ground_truth_field"].as<bool>();
+            cfg.ground_truth_ball    = config["ground_truth_ball"].as<std::string>();
+            // Tell BallLocalisation and PlanSave which ball to run on
+            auto source = std::make_unique<NUSimBallSource>();
+            if (cfg.ground_truth_ball == "estimate") {
+                source->source = NUSimBallSource::Source::ESTIMATE;
+            }
+            else if (cfg.ground_truth_ball == "true_state") {
+                source->source = NUSimBallSource::Source::TRUE_STATE;
+            }
+            else if (cfg.ground_truth_ball == "true_crossing") {
+                source->source = NUSimBallSource::Source::TRUE_CROSSING;
+            }
+            else {
+                throw std::runtime_error("GoalieShotBenchmark.yaml: ground_truth_ball must be estimate, true_state or "
+                                         "true_crossing, not "
+                                         + cfg.ground_truth_ball);
+            }
+            emit(source);
             cfg.seed                 = config["seed"].as<unsigned int>();
             cfg.shots                = config["shots"].as<int>();
             const auto home          = config["home"].as<std::vector<double>>();
@@ -144,7 +163,14 @@ namespace module::tools {
             rng.seed(cfg.seed);
             start_after = Clock::now()
                           + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(cfg.start_delay));
-            log<INFO>("Goalie shot benchmark:", cfg.shots, "shots starting in", cfg.start_delay, "s");
+            log<INFO>("Goalie shot benchmark:",
+                      cfg.shots,
+                      "shots starting in",
+                      cfg.start_delay,
+                      "s, ball:",
+                      cfg.ground_truth_ball,
+                      ", field:",
+                      cfg.ground_truth_field ? "ground truth" : "localisation");
         });
 
         // What the Goalie does while it defends: PlanSave above a walk back to the home spot, and the head on the ball
@@ -280,7 +306,8 @@ namespace module::tools {
                             shots_csv.open(dir / "shots.csv");
                             shots_csv << "shot,start_x,start_y,crossing_y,speed,on_target,mode_at_kick,true_dy,true_t,"
                                          "robot_dx,robot_dy,robot_yaw,block_reaction_s,plan_dy,plan_sigma_dy,plan_t,"
-                                         "plan_p_on_target,plan_expected,closest,fell,outcome,saved,conceded\n";
+                                         "plan_p_on_target,plan_expected,closest,fell,outcome,saved,conceded,"
+                                         "ball_source\n";
                             log<INFO>("Writing goalie shot results to", dir.string());
                         }
                         // Give the walk and localisation a moment with the reset before the first shot
@@ -496,7 +523,7 @@ namespace module::tools {
                       << shot.plan_dy << ',' << shot.plan_sigma_dy << ',' << shot.plan_t << ','
                       << shot.plan_p_on_target << ','
                       << shot.plan_expected << ',' << shot.closest << ',' << shot.fell << ',' << shot.outcome << ','
-                      << saved << ',' << shot.conceded << '\n';
+                      << saved << ',' << shot.conceded << ',' << cfg.ground_truth_ball << '\n';
             shots_csv.flush();
         }
 

@@ -4,4 +4,6 @@ log_level: INFO
 topics:
   ball: rt/nusim/gt/ball
   robot: rt/nusim/gt/robot
+  ball_crossing_robot: rt/nusim/gt/ball_crossing/robot
+  ball_crossing_goal: rt/nusim/gt/ball_crossing/goal
   ball_command: rt/nusim/ball_command

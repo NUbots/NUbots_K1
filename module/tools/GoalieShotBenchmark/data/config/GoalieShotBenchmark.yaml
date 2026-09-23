@@ -11,6 +11,16 @@ start_delay: 15
 # which measures localisation, not saving. The ball still goes through vision and the UKF.
 ground_truth_field: true
 
+# Which ball the stack runs on, to find where the goalie loses its shots by swapping ground truth in one piece at a
+# time (NUSim module/SdkBridge/PROTOCOL.md §6, message::booster::NUSimBallSource):
+#   estimate:      vision -> BallLocalisation's filter -> PlanSave's rolling-ball prediction
+#   true_state:    NUSim's true ball position and velocity replace the filter's estimate for the whole stack
+#                  (BallLocalisation publishes it); PlanSave still predicts where it crosses
+#   true_crossing: as true_state, and PlanSave takes where the ball crosses the goalie and the goal line from NUSim,
+#                  which rolls the ball ahead without the robot, instead of predicting it
+# Both ground-truth sources plan with zero uncertainty. Each run's choice is in shots.csv's ball_source column.
+ground_truth_ball: estimate
+
 seed: 1
 shots: 40
 
