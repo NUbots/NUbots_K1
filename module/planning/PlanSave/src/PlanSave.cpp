@@ -34,10 +34,12 @@
 
 #include "extension/Configuration.hpp"
 
+#include "message/behaviour/state/WalkState.hpp"
 #include "message/booster/NUSimGroundTruth.hpp"
 #include "message/input/Sensors.hpp"
 #include "message/localisation/Field.hpp"
 #include "message/planning/Save.hpp"
+#include "message/platform/RawSensors.hpp"
 #include "message/skill/Block.hpp"
 #include "message/strategy/WalkToFieldPosition.hpp"
 #include "message/support/FieldDescription.hpp"
@@ -50,16 +52,19 @@ namespace module::planning {
 
     using SaveTask  = message::planning::Save;
     using BlockTask = message::skill::Block;
+    using message::behaviour::state::WalkState;
     using message::booster::NUSimBallCrossings;
     using message::booster::NUSimBallSource;
     using message::input::Sensors;
     using message::localisation::Ball;
     using message::localisation::Field;
     using message::planning::SavePlan;
+    using message::platform::RawSensors;
     using message::strategy::WalkToFieldPosition;
     using message::support::FieldDescription;
 
     using utility::math::euler::pos_rpy_to_transform;
+    using utility::math::euler::rpy_intrinsic_to_mat;
 
     using save::Mode;
 
@@ -122,6 +127,22 @@ namespace module::planning {
                                         Eigen::Vector3d(0.0, 0.0, yaw_g + M_PI));
         }
 
+        /// How far the left ankle is above the right (m), from the servos and the IMU
+        double ankle_height_difference(const RawSensors& raw) {
+            const auto& s = raw.servo;
+            const save::LegAngles left{s.l_hip_pitch.present_position,
+                                       s.l_hip_roll.present_position,
+                                       s.l_hip_yaw.present_position,
+                                       s.l_knee.present_position};
+            const save::LegAngles right{s.r_hip_pitch.present_position,
+                                        s.r_hip_roll.present_position,
+                                        s.r_hip_yaw.present_position,
+                                        s.r_knee.present_position};
+            const Eigen::Matrix3d Rwt =
+                rpy_intrinsic_to_mat(Eigen::Vector3d(raw.imu_rpy.x(), raw.imu_rpy.y(), raw.imu_rpy.z()));
+            return save::ankle_height_difference(left, right, Rwt);
+        }
+
         SavePlan::State to_message(const Mode mode) {
             switch (mode) {
                 case Mode::GUARD: return SavePlan::State::GUARD;
@@ -154,6 +175,10 @@ namespace module::planning {
 
             cfg.confidence_z = config["envelope"]["confidence_z"].as<double>();
             cfg.min_trials   = config["envelope"]["min_trials"].as<int>();
+
+            cfg.handoff.enabled               = config["handoff"]["enabled"].as<bool>();
+            cfg.handoff.foot_height_tolerance = config["handoff"]["foot_height_tolerance"].as<double>();
+            cfg.handoff.max_wait              = config["handoff"]["max_wait"].as<double>();
 
             const auto& pos = config["positioning"];
             save::PositioningConfig p{};
@@ -241,12 +266,14 @@ namespace module::planning {
 
         on<Start<SaveTask>>().then([this] {
             decider.reset();
+            handoff_gate.reset();
             last_tick    = NUClear::clock::now();
             save_running = true;
         });
 
         on<Stop<SaveTask>>().then([this] {
             decider.reset();
+            handoff_gate.reset();
             save_running = false;
             blocking     = false;
             const std::lock_guard<std::mutex> lock(positioning_mutex);
@@ -324,6 +351,8 @@ namespace module::planning {
            With<FieldDescription>,
            Optional<With<NUSimBallSource>>,
            Optional<With<NUSimBallCrossings>>,
+           Optional<With<RawSensors>>,
+           Optional<With<WalkState>>,
            Every<50, Per<std::chrono::seconds>>,
            Single>()
             .then([this](const std::shared_ptr<const Ball>& ball,
@@ -331,7 +360,9 @@ namespace module::planning {
                          const Field& field,
                          const FieldDescription& fd,
                          const std::shared_ptr<const NUSimBallSource>& source,
-                         const std::shared_ptr<const NUSimBallCrossings>& crossings) {
+                         const std::shared_ptr<const NUSimBallCrossings>& crossings,
+                         const std::shared_ptr<const RawSensors>& raw,
+                         const std::shared_ptr<const WalkState>& walk) {
                 const auto now = NUClear::clock::now();
                 const double dt = std::clamp(seconds(now - last_tick), 0.0, 0.1);
                 last_tick       = now;
@@ -474,6 +505,25 @@ namespace module::planning {
                 plan->state         = to_message(mode);
                 blocking            = mode == Mode::BLOCK;
 
+                // A walking goalie goes to the block policy (GUARD or BLOCK) only with both feet down; until then it
+                // carries on as in IDLE. The policy was trained from a standing start and topples taking over
+                // mid-stride.
+                const bool walking = walk != nullptr && walk->state == WalkState::State::WALKING;
+                const std::optional<double> feet =
+                    raw != nullptr ? std::optional<double>(ankle_height_difference(*raw)) : std::nullopt;
+                const bool was_waiting = handoff_gate.waiting();
+                const bool handed      = handoff_gate.step(mode != Mode::IDLE, walking, feet, dt, cfg.handoff);
+                const Mode acting      = handed ? mode : Mode::IDLE;
+                plan->handoff_waiting  = handoff_gate.waiting();
+                plan->handoff_wait     = handed ? handoff_gate.last_wait : handoff_gate.waited_so_far();
+                plan->ankle_height_difference = feet.value_or(NAN);
+                if (handed && was_waiting) {
+                    log<INFO>("Handed the walking goalie to the block policy after",
+                              handoff_gate.last_wait,
+                              "s:",
+                              handoff_gate.timed_out ? "gave up waiting for both feet down" : "both feet down");
+                }
+
                 // The latest spot chosen for the goalie, if it is fresh
                 std::optional<Target> spot{};
                 {
@@ -520,7 +570,7 @@ namespace module::planning {
                     log<INFO>("Shot over, ball at (x, y) =", rBGg.x(), rBGg.y(), "from our goal, facing the field");
                 }
 
-                switch (mode) {
+                switch (acting) {
                     case Mode::GUARD: emit<Task>(std::make_unique<BlockTask>()); break;
                     case Mode::BLOCK: {
                         // The training rule: a command only while the ball is on its way within max_time, zeros

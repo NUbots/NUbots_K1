@@ -91,4 +91,11 @@ message SavePlan {
     double target_cvar         = 23;
     double target_regret       = 24;
     double target_compute_time = 25;
+
+    /// Whether the hand-off of a walking goalie to the block policy is being held until both feet are down, and how
+    /// long it has waited or last waited (s). Until it is handed over, the goalie carries on as in IDLE.
+    bool handoff_waiting = 26;
+    double handoff_wait  = 27;
+    /// How far the left ankle is above the right (m), levelled by the IMU: near zero with both feet down
+    double ankle_height_difference = 28;
 }

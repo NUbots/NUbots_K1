@@ -24,7 +24,12 @@ policy_joints: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 
 
 # Commanded pose ramps from the measured pose into the policy target over this window (s).
 # Training starts every episode from the default pose; deployment does not.
-handoff_blend: 0.3
+handoff_blend: 0.0
+# While another skill (the walk) has the robot, record the frames this policy would have seen, and start a block from
+# them instead of from its first frame repeated as if it had been standing still. The previous action in them is the
+# other skill's last command, read back into this policy's action space. Only used when they are fresh (s).
+seed_history: true
+seed_max_age: 0.1
 
 # Command clipping, matching the training command ranges
 command_limits:

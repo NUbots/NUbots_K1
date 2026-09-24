@@ -71,7 +71,8 @@ The head (indices 0–1) is **not** policy controlled. It tracks the latest `Boo
 ### History
 
 - `history_window` frames of the layout above, time-major with the **oldest frame first**, flattened into one input of `history_window × 70` floats.
-- The buffer is seeded by repeating the first frame when a Block task starts, which matches mjlab's `CircularBuffer` backfill on reset.
+- While another skill (the walk) has the robot, the module keeps recording the frames it would have seen, at 50 Hz (`seed_history`). A Block task starts from them when there is a full window no older than `seed_max_age`, so a goalie taken over mid-stride shows the policy its real last half second, not a robot that has been standing still. The previous action in those frames is the last command sent to the servos (`BoosterLowCmd`, whoever sent it), read back into this policy's action space; without a recent one, the measured pose.
+- Otherwise the buffer is seeded by repeating the first frame, which matches mjlab's `CircularBuffer` backfill on reset.
 - `history_window: 1` means a plain MLP. For a history policy, mjlab's `OnnxHistoryPolicy` expects exactly this layout.
 
 ### ONNX graph
@@ -100,6 +101,7 @@ The head (indices 0–1) is **not** policy controlled. It tracks the latest `Boo
 - `message::skill::Block`: Director task carrying the block command.
 - `message::platform::RawSensors`: servo feedback, gyro, IMU attitude.
 - `message::booster::BoosterHeadRot`: head targets.
+- `message::booster::BoosterLowCmd`: the last command sent to the servos, for the recorded frames.
 
 ## Emits
 

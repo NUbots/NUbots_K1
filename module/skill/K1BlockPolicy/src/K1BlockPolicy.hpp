@@ -39,6 +39,8 @@
 
 #include "extension/Behaviour.hpp"
 
+#include "message/platform/RawSensors.hpp"
+
 #include "utility/vision/TensorRT.hpp"
 
 namespace module::skill {
@@ -78,6 +80,10 @@ namespace module::skill {
             /// Commanded pose is blended from the current pose into the policy target over this
             /// window (s), since deployment starts from wherever the previous skill left the robot
             double handoff_blend = 0.3;
+            /// Start from the frames recorded while another skill had the robot, instead of repeating the
+            /// first frame, when they are no older than seed_max_age (s)
+            bool seed_history   = true;
+            double seed_max_age = 0.1;
             /// Command clipping, matching the training ranges
             double dy_limit            = 1.5;
             double time_to_arrival_max = 3.0;
@@ -98,6 +104,13 @@ namespace module::skill {
         [[nodiscard]] std::size_t frame_dim() const {
             return 6 + 3 * cfg.policy_joints.size() + COMMAND_DIM;
         }
+
+        /// One observation frame (contract v0): the robot's state, the previous action, and the command, zeros
+        /// when inactive
+        [[nodiscard]] std::vector<float> make_frame(const message::platform::RawSensors& raw,
+                                                    const std::vector<float>& action,
+                                                    const bool active,
+                                                    const std::array<float, COMMAND_DIM - 1>& command) const;
 
         /// Load the ONNX and check its input/output sizes against the configured contract
         void load_model();
@@ -124,6 +137,17 @@ namespace module::skill {
         Eigen::Vector2d head_target = Eigen::Vector2d::Zero();
         /// When the current Block task started (drives the hand-off blend)
         NUClear::clock::time_point block_since{};
+        /// Whether the Block task is running
+        bool running = false;
+        /// Frames recorded while another skill has the robot, oldest first, as the policy would have seen them, and
+        /// when the last was recorded. The previous action in them is the other skill's command, read back into this
+        /// policy's action space.
+        std::deque<std::vector<float>> recent{};
+        std::vector<float> recent_action{};
+        NUClear::clock::time_point recent_time{};
+        /// The last low-level command sent to the servos, whoever sent it, and when
+        std::vector<double> last_command_q{};
+        NUClear::clock::time_point last_command_time{};
         /// Monotonic tick counter for the BLOCKOBS trace
         uint64_t tick = 0;
     };

@@ -48,6 +48,18 @@ envelope:
   # Cells with fewer shots than this count as 0% success
   min_trials: 10
 
+# Handing a walking goalie to the block policy (GUARD or BLOCK). The policy was trained from a standing start, and
+# taking over mid-stride topples it, so the hand-off waits for both feet to be down (the ankles level, from the leg
+# kinematics and the IMU: the K1 has no foot contact sensors). Until then the goalie carries on as in IDLE.
+handoff:
+  enabled: true
+  # Ankles within this height of each other (m) count as both feet down. K1WalkPolicy's swing foot only rises ~2.5 cm
+  # (NUSim, 24 Sep), so this is the moment the feet swap over rather than a foot merely being low.
+  foot_height_tolerance: 0.005
+  # Longest wait (s) before handing off anyway. In the same recordings the ankles came level every 0.18 s (median)
+  # while walking, and within 0.30 s nine times in ten.
+  max_wait: 0.35
+
 # Where the goalie stands while no shot is on its way (tools/policy/save_positioning_prototype.py has the maths and
 # plots). Every spot from min_depth off the goal line out to the penalty area line is scored by the block policy's
 # save probability (SaveCapability.yaml) against every straight shot at the goal from the ball, facing the ball; the

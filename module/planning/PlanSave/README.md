@@ -17,6 +17,8 @@ Every tick (50 Hz) it:
    - **GUARD:** the ball is within `guard_distance` and at least `guard_min_ahead` in front of the goalie's line. Emits an inactive `Block`, so the goalie holds the policy's ready stance in CUSTOM mode, which is the state the envelope was measured from.
    - **BLOCK:** a shot reaches the goalie's line within `max_time` and has `P(on target) ≥ min_p_on_target`. Emits `Block{active, dy, t, v}` every tick. The command follows the training rule: active while the ball is on its way, zeros otherwise. PlanSave sticks with the block until the shot is over: the ball is no longer on its way (stopped, past the goalie or going away) or lost, for `release_delay`.
 
+   A **walking goalie is handed to the block policy (GUARD or BLOCK) only with both feet down**, for at most `handoff.max_wait`. Until then it carries on as in IDLE. The policy was trained from a standing start, and taking over mid-stride topples it. The K1 has no foot contact sensors, so "both feet down" is the two ankles level to within `handoff.foot_height_tolerance`, from the leg joints (the K1 URDF's leg chain) and the IMU. In NUSim the ankles come level every 0.18 s (median) while walking. `SavePlan` carries the ankle-height difference and the wait.
+
    The block is the only skill so far. PlanSave still blocks a shot whose expected success is under `block_threshold`, but warns: that is the gap a dive policy would fill.
 
 Each tick is published as `message::planning::SavePlan`: the prediction, its uncertainty, `P(on target)`, the expected save rate and fall rate, the mode, and the goalie's chosen spot. Shots are also logged at INFO when they start and end, so the predictions can be matched against the outcomes.
@@ -60,6 +62,7 @@ The current envelope is goalkeeper run 12 (wandb `zrhfjas8`, `model_2999`, measu
 - `message::planning::Save`: Director task, guard the goal.
 - `message::localisation::Ball`: our own estimate (confidence > 0) with covariance, for shots. Teammates' balls carry no velocity and are ignored for shots, but positioning needs only where the ball is, so it uses them too.
 - `message::input::Sensors` (`Hrw`), `message::localisation::Field` (`Hfw`), `message::support::FieldDescription`.
+- `message::platform::RawSensors` (leg joints and IMU, for both feet down) and `message::behaviour::state::WalkState` (whether the walk is stepping), for the hand-off.
 - `message::booster::NUSimBallSource`, `NUSimBallCrossings` (NUSim only): with the source at `TRUE_CROSSING`, the crossings of the goalie's line and our goal line come from NUSim rolling the ball ahead without the robot, not from the prediction, with zero σ. `SavePlan.true_crossing` says so. Without a forecast from the last `ball.timeout`, the ball counts as invalid rather than falling back to the prediction. On a real robot neither message exists.
 
 ## Emits

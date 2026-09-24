@@ -37,6 +37,7 @@
 
 #include "decision.hpp"
 #include "envelope.hpp"
+#include "handoff.hpp"
 #include "positioning.hpp"
 #include "prediction.hpp"
 
@@ -70,6 +71,8 @@ namespace module::planning {
             bool positioning = false;
             /// @brief Oldest target (s) walked to; older, PlanSave leaves positioning to the walk below it
             double target_timeout = 0.0;
+            /// @brief When a walking goalie is handed to the block policy
+            save::HandoffConfig handoff{};
         } cfg;
 
         /// @brief Guards the positioning configuration and target, shared with the positioning reaction
@@ -106,6 +109,8 @@ namespace module::planning {
 
         /// @brief Mode switching, stuck to one shot at a time
         save::Decider decider{};
+        /// @brief Holds a walking goalie's hand-off to the block policy until both its feet are down
+        save::HandoffGate handoff_gate{};
 
         /// @brief The last ball estimate seen, to notice a new one, and when the current shot started rolling
         std::shared_ptr<const message::localisation::Ball> last_ball{};

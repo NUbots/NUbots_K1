@@ -110,6 +110,8 @@ namespace module::skill {
             cfg.use_tensorrt        = config["use_tensorrt"].as<bool>();
             cfg.history_window      = config["history_window"].as<std::size_t>();
             cfg.handoff_blend       = config["handoff_blend"].as<double>();
+            cfg.seed_history        = config["seed_history"].as<bool>();
+            cfg.seed_max_age        = config["seed_max_age"].as<double>();
             cfg.dy_limit            = config["command_limits"]["dy"].as<double>();
             cfg.time_to_arrival_max = config["command_limits"]["time_to_arrival"].as<double>();
             cfg.ball_speed_max      = config["command_limits"]["ball_speed"].as<double>();
@@ -145,7 +147,56 @@ namespace module::skill {
 
             last_action.assign(cfg.policy_joints.size(), 0.0f);
             history.clear();
+            recent.clear();
             load_model();
+        });
+
+        // Whatever was last sent to the servos, by any skill: while another skill has the robot, it stands in for
+        // this policy's previous action in the recorded frames
+        on<Trigger<BoosterLowCmd>>().then([this](const BoosterLowCmd& low) {
+            const std::lock_guard<std::mutex> lock(state_mutex);
+            if (low.motor_cmd.size() != JOINT_COUNT) {
+                return;
+            }
+            last_command_q.resize(JOINT_COUNT);
+            for (std::size_t j = 0; j < JOINT_COUNT; ++j) {
+                last_command_q[j] = low.motor_cmd[j].q;
+            }
+            last_command_time = NUClear::clock::now();
+        });
+
+        // While another skill has the robot, keep the frames this policy would have seen, at its own rate. A hand-off
+        // then starts from the robot's real last moments, not from its first frame repeated as if it had been
+        // standing still, which is what a goalie taken over mid-stride is not.
+        on<Every<50, Per<std::chrono::seconds>>, With<RawSensors>, Single>().then([this](const RawSensors& raw) {
+            const std::lock_guard<std::mutex> lock(state_mutex);
+            if (running || !cfg.seed_history || !model_loaded) {
+                return;
+            }
+            const auto servos = servos_of(raw);
+            const auto now    = NUClear::clock::now();
+            const bool commanded =
+                last_command_q.size() == JOINT_COUNT
+                && std::chrono::duration<double>(now - last_command_time).count() < cfg.seed_max_age;
+
+            // The previous action, read back from the last command sent: what this policy would have output to
+            // command the same targets. Without a recent command (another mode, such as the firmware walk), the
+            // measured pose stands in for it.
+            std::vector<float> action(cfg.policy_joints.size(), 0.0f);
+            for (std::size_t k = 0; k < cfg.policy_joints.size(); ++k) {
+                const std::size_t j = cfg.policy_joints[k];
+                const double q      = commanded ? last_command_q[j] : double(servos[j]->present_position);
+                const double scale  = cfg.action_scale_joint[j];
+                action[k]           = scale != 0.0 ? float((q - cfg.default_pose[j]) / scale) : 0.0f;
+            }
+
+            // The command in force as the frame is observed, as the policy's own previous output is in its frames
+            recent.push_back(make_frame(raw, action, false, {}));
+            while (recent.size() > cfg.history_window) {
+                recent.pop_front();
+            }
+            recent_action = std::move(action);
+            recent_time   = now;
         });
 
         // The policy does not own the head: track whatever the look skills last asked for
@@ -161,11 +212,25 @@ namespace module::skill {
                 log<ERROR>("Block task started but no block policy is loaded; staying out of CUSTOM mode");
                 return;
             }
-            log<INFO>("Blocking (policy)...");
             std::fill(last_action.begin(), last_action.end(), 0.0f);
             history.clear();
             block_since = NUClear::clock::now();
             tick        = 0;
+            running     = true;
+
+            // Start from the frames recorded while another skill had the robot, if there is a full, fresh window of
+            // them; otherwise the first frame is repeated, as training backfills on reset
+            const double age = std::chrono::duration<double>(block_since - recent_time).count();
+            if (cfg.seed_history && recent.size() == cfg.history_window && age < cfg.seed_max_age) {
+                history.assign(recent.begin(), recent.end());
+                last_action = recent_action;
+                log<INFO>("Blocking (policy), from the last", recent.size(), "frames recorded...");
+            }
+            else {
+                log<INFO>("Blocking (policy)...");
+            }
+            recent.clear();
+            recent_action.clear();
 
             // Low-level joint commands are only honoured in CUSTOM mode
             auto mode  = std::make_unique<BoosterMode>();
@@ -173,7 +238,11 @@ namespace module::skill {
             emit(std::move(mode));
         });
 
-        on<Stop<BlockTask>>().then([this] { log<INFO>("Stopped blocking (policy)"); });
+        on<Stop<BlockTask>>().then([this] {
+            const std::lock_guard<std::mutex> lock(state_mutex);
+            running = false;
+            log<INFO>("Stopped blocking (policy)");
+        });
 
         // 50 Hz inference loop, matching the training control rate (0.02 s)
         on<Provide<BlockTask>, Every<50, Per<std::chrono::seconds>>, With<RawSensors>, Single>().then(
@@ -187,42 +256,16 @@ namespace module::skill {
                 const auto servos = servos_of(raw);
 
                 // --- observation frame (contract v0) ---
-                std::vector<float> frame{};
-                frame.reserve(frame_dim());
+                const std::vector<float> frame = make_frame(
+                    raw,
+                    last_action,
+                    block.active,
+                    {static_cast<float>(std::clamp(block.dy, -cfg.dy_limit, cfg.dy_limit)),
+                     static_cast<float>(std::clamp(block.time_to_arrival, 0.0, cfg.time_to_arrival_max)),
+                     static_cast<float>(std::clamp(block.ball_speed, 0.0, cfg.ball_speed_max))});
 
-                frame.push_back(raw.gyroscope.x());
-                frame.push_back(raw.gyroscope.y());
-                frame.push_back(raw.gyroscope.z());
-
-                const Eigen::Matrix3d Rwt =
-                    rpy_intrinsic_to_mat(Eigen::Vector3d(raw.imu_rpy.x(), raw.imu_rpy.y(), raw.imu_rpy.z()));
-                const Eigen::Vector3d gravity = Rwt.transpose() * Eigen::Vector3d(0.0, 0.0, -1.0);
-                frame.push_back(static_cast<float>(gravity.x()));
-                frame.push_back(static_cast<float>(gravity.y()));
-                frame.push_back(static_cast<float>(gravity.z()));
-
-                for (const std::size_t j : cfg.policy_joints) {
-                    frame.push_back(static_cast<float>(servos[j]->present_position - cfg.default_pose[j]));
-                }
-                for (const std::size_t j : cfg.policy_joints) {
-                    frame.push_back(servos[j]->present_velocity);
-                }
-                frame.insert(frame.end(), last_action.begin(), last_action.end());
-
-                // An inactive command is all zeros, exactly as in training
-                if (block.active) {
-                    frame.push_back(1.0f);
-                    frame.push_back(static_cast<float>(std::clamp(block.dy, -cfg.dy_limit, cfg.dy_limit)));
-                    frame.push_back(
-                        static_cast<float>(std::clamp(block.time_to_arrival, 0.0, cfg.time_to_arrival_max)));
-                    frame.push_back(static_cast<float>(std::clamp(block.ball_speed, 0.0, cfg.ball_speed_max)));
-                }
-                else {
-                    frame.insert(frame.end(), COMMAND_DIM, 0.0f);
-                }
-
-                // --- observation window: seed by repeating the first frame, as the training-side
-                // circular buffer backfills on reset ---
+                // --- observation window: seeded at Start from the recorded frames, or else by repeating the first
+                // frame, as the training-side circular buffer backfills on reset ---
                 if (history.empty()) {
                     history.assign(cfg.history_window, frame);
                 }
@@ -301,6 +344,44 @@ namespace module::skill {
                 k1_servos->command = *low;
                 emit<Task>(std::move(k1_servos));
             });
+    }
+
+    std::vector<float> K1BlockPolicy::make_frame(const RawSensors& raw,
+                                                 const std::vector<float>& action,
+                                                 const bool active,
+                                                 const std::array<float, COMMAND_DIM - 1>& command) const {
+        const auto servos = servos_of(raw);
+        std::vector<float> frame{};
+        frame.reserve(frame_dim());
+
+        frame.push_back(raw.gyroscope.x());
+        frame.push_back(raw.gyroscope.y());
+        frame.push_back(raw.gyroscope.z());
+
+        const Eigen::Matrix3d Rwt =
+            rpy_intrinsic_to_mat(Eigen::Vector3d(raw.imu_rpy.x(), raw.imu_rpy.y(), raw.imu_rpy.z()));
+        const Eigen::Vector3d gravity = Rwt.transpose() * Eigen::Vector3d(0.0, 0.0, -1.0);
+        frame.push_back(static_cast<float>(gravity.x()));
+        frame.push_back(static_cast<float>(gravity.y()));
+        frame.push_back(static_cast<float>(gravity.z()));
+
+        for (const std::size_t j : cfg.policy_joints) {
+            frame.push_back(static_cast<float>(servos[j]->present_position - cfg.default_pose[j]));
+        }
+        for (const std::size_t j : cfg.policy_joints) {
+            frame.push_back(servos[j]->present_velocity);
+        }
+        frame.insert(frame.end(), action.begin(), action.end());
+
+        // An inactive command is all zeros, exactly as in training
+        if (active) {
+            frame.push_back(1.0f);
+            frame.insert(frame.end(), command.begin(), command.end());
+        }
+        else {
+            frame.insert(frame.end(), COMMAND_DIM, 0.0f);
+        }
+        return frame;
     }
 
     void K1BlockPolicy::load_model() {
