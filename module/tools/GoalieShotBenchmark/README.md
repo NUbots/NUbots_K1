@@ -8,11 +8,11 @@ NUSim camera → YOLO → ball UKF → PlanSave → `skill::K1BlockPolicy` (CUST
 
 It measures what the mjlab envelope can't see: vision and filter delay, the hand-off from the walk to the block policy, and PlanSave's decisions.
 
-The harness does what `purpose::Goalie` does while it defends. It emits `Save` above a `WalkToFieldPosition` back to the home spot, keeps the head on the ball, and runs fall recovery.
+The harness does what `purpose::Goalie` does while it defends. It emits `Save` above a `WalkToFieldPosition` back to the home spot, keeps the head on the ball, and runs fall recovery. It emits `Save` only while a shot is set up or rolling. Between shots it withdraws it, so the walk takes the goalie home: PlanSave positions the goalie against any ball it sees, and on NUSim's true ball (`true_state`, `true_crossing`) that includes the ball parked out of play.
 
 For each shot it:
 
-1. Rests the ball in front of the goal for `settle_time`, so the ball estimate converges and PlanSave picks GUARD (ball within `guard_distance`) or IDLE.
+1. Rests the ball in front of the goal for `settle_time`, so the ball estimate converges and PlanSave picks GUARD (ball within `guard_distance`) or IDLE. In IDLE PlanSave walks the goalie from home towards its chosen spot, and it may still be on its way at the kick; `robot_dx`, `robot_dy` and `robot_yaw` in `shots.csv` say where it got to.
 2. Kicks it through a point on the goalie's home line over NUSim's ball command. The distribution is the mjlab goalkeeper task's "full" level: crossing ±0.8 m, speed 1.5–4 m/s, from 2–4.5 m.
 3. Follows the ball until it crosses the goal line (a goal between the posts, a miss outside them), stops, or `max_roll_time` passes.
 4. Parks the ball out of play, and waits for the goalie to be upright, home and facing the field before the next shot.

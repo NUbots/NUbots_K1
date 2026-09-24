@@ -174,7 +174,7 @@ namespace module::tools {
         });
 
         // What the Goalie does while it defends: PlanSave above a walk back to the home spot, and the head on the ball
-        on<Every<10, Per<std::chrono::seconds>>, Optional<With<FieldDescription>>>().then(
+        on<Every<10, Per<std::chrono::seconds>>, Optional<With<FieldDescription>>, Sync<GoalieShotBenchmark>>().then(
             [this](const std::shared_ptr<const FieldDescription>& fd) {
                 if (cfg.fall_recovery_priority > 0) {
                     emit<Task>(std::make_unique<FallRecovery>(), cfg.fall_recovery_priority);
@@ -192,9 +192,7 @@ namespace module::tools {
                     emit<Task>(std::make_unique<WalkToFieldPosition>(home_in_field(*fd, cfg.line_offset), true),
                                cfg.walk_priority);
                 }
-                if (cfg.save_priority > 0) {
-                    emit<Task>(std::make_unique<Save>(), cfg.save_priority);
-                }
+                emit_save();
             });
 
         on<Trigger<NUSimBallGroundTruth>, Sync<GoalieShotBenchmark>>().then([this](const NUSimBallGroundTruth& gt) {
@@ -400,6 +398,19 @@ namespace module::tools {
 
         phase       = Phase::SETTLING;
         phase_since = Clock::now();
+        emit_save();
+    }
+
+    void GoalieShotBenchmark::emit_save() {
+        // Only while a shot is set up or rolling. PlanSave positions the goalie against whatever ball it sees, and
+        // on NUSim's true ball that includes the one parked out of play, so between shots it would hold the goalie
+        // away from home for good. Without Save the walk takes it home.
+        if (cfg.save_priority > 0 && (phase == Phase::SETTLING || phase == Phase::ROLLING)) {
+            emit<Task>(std::make_unique<Save>(), cfg.save_priority);
+        }
+        else {
+            emit<Task>(std::unique_ptr<Save>(nullptr));
+        }
     }
 
     void GoalieShotBenchmark::kick() {
@@ -534,6 +545,7 @@ namespace module::tools {
         phase       = Phase::RECOVERING;
         phase_since = Clock::now();
         home_since  = phase_since;
+        emit_save();
     }
 
     void GoalieShotBenchmark::finish_run() {

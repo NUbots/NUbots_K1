@@ -150,6 +150,8 @@ namespace module::tools {
         void kick();
         void track(double dt);
         void finish_shot(const std::string& outcome);
+        /// Emits Save while a shot is set up or rolling, and withdraws it otherwise so the walk takes the goalie home
+        void emit_save();
         void finish_run();
 
     public:
