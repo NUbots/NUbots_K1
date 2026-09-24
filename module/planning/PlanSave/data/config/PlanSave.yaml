@@ -47,3 +47,39 @@ envelope:
   confidence_z: 1.64
   # Cells with fewer shots than this count as 0% success
   min_trials: 10
+
+# Where the goalie stands while no shot is on its way (tools/policy/save_positioning_prototype.py has the maths and
+# plots). Every spot from min_depth off the goal line out to the penalty area line is scored by the block policy's
+# save probability (SaveCapability.yaml) against every straight shot at the goal from the ball, facing the ball; the
+# goalie walks to the spot closest to the goal line within near_best of the best score. The penalty area and goal
+# come from the field.
+positioning:
+  # Off: leave positioning to the walk below Save (purpose::Goalie's strafe)
+  enabled: true
+  # Kick to a live Block command (s); GoalieShotBenchmark measured a median 0.23 s through the stack
+  t_lat: 0.2
+  # Shot speeds the opponent kicks at (m/s), n_speed spread evenly over the range; aim points spread across the goal
+  speed_range: [1.5, 4.0]
+  n_speed: 11
+  n_aim: 41
+  # cvar: the save rate over the worst cvar_fraction of aim points (a shooter who picks the goalie's gaps); mean: over
+  # all of them. The mean barely cares how far out the goalie stands and leaves the near post open on tight angles.
+  objective: cvar
+  cvar_fraction: 0.2
+  # Subtracted from a spot's score per metre off the goal line, for what one shot doesn't show (dribbles, passes)
+  line_penalty: 0.0
+  # Closest the goalie stands to the ball (m)
+  min_ball_distance: 0.5
+  # Guesses at how much worse the real goalie is than mjlab's, until it is measured: every combination of an extra
+  # delay (s) and a reach scale. regret: choose the spot that is never far from the best for any of them; mean: the
+  # best on average over them.
+  extra_lat: [0.0, 0.2]
+  reach_scale: [1.0, 0.7]
+  robust: regret
+  # Take the spot closest to the goal line within this of the best score: the score is nearly flat in depth
+  near_best: 0.02
+  # Spots considered (m): this grid, from min_depth off the goal line out to the penalty area line
+  grid_step: 0.1
+  min_depth: 0.05
+  # Oldest chosen spot (s) walked to; it is rechosen at 5 Hz
+  target_timeout: 1.0

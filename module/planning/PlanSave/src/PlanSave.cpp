@@ -26,6 +26,7 @@
  */
 #include "PlanSave.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <vector>
 
@@ -38,7 +39,10 @@
 #include "message/localisation/Field.hpp"
 #include "message/planning/Save.hpp"
 #include "message/skill/Block.hpp"
+#include "message/strategy/WalkToFieldPosition.hpp"
 #include "message/support/FieldDescription.hpp"
+
+#include "utility/math/euler.hpp"
 
 namespace module::planning {
 
@@ -52,7 +56,10 @@ namespace module::planning {
     using message::localisation::Ball;
     using message::localisation::Field;
     using message::planning::SavePlan;
+    using message::strategy::WalkToFieldPosition;
     using message::support::FieldDescription;
+
+    using utility::math::euler::pos_rpy_to_transform;
 
     using save::Mode;
 
@@ -98,6 +105,23 @@ namespace module::planning {
             return c;
         }
 
+        /// A point on the field plane in the goal frame {g}: {f} turned half way round about our goal's centre, so x
+        /// runs out of the goal and y is to the left looking out
+        Eigen::Vector2d field_to_goal(const Eigen::Vector2d& rPFf, const FieldDescription& fd) {
+            return {fd.dimensions.field_length / 2.0 - rPFf.x(), -rPFf.y()};
+        }
+
+        /// Standing at rGg in {g} and facing the point rBGg, as a pose in the field frame
+        Eigen::Isometry3d goal_pose_to_field(const Eigen::Vector2d& rGg,
+                                             const Eigen::Vector2d& rBGg,
+                                             const FieldDescription& fd) {
+            const Eigen::Vector2d to_ball = rBGg - rGg;
+            // Out of the goal (+x in {g}) if the ball is on top of the spot
+            const double yaw_g = to_ball.norm() > 1e-3 ? std::atan2(to_ball.y(), to_ball.x()) : 0.0;
+            return pos_rpy_to_transform(Eigen::Vector3d(fd.dimensions.field_length / 2.0 - rGg.x(), -rGg.y(), 0.0),
+                                        Eigen::Vector3d(0.0, 0.0, yaw_g + M_PI));
+        }
+
         SavePlan::State to_message(const Mode mode) {
             switch (mode) {
                 case Mode::GUARD: return SavePlan::State::GUARD;
@@ -130,6 +154,59 @@ namespace module::planning {
 
             cfg.confidence_z = config["envelope"]["confidence_z"].as<double>();
             cfg.min_trials   = config["envelope"]["min_trials"].as<int>();
+
+            const auto& pos = config["positioning"];
+            save::PositioningConfig p{};
+            p.deceleration      = cfg.ball.deceleration;
+            p.t_lat             = pos["t_lat"].as<double>();
+            const auto speeds   = pos["speed_range"].as<std::vector<double>>();
+            p.min_speed         = speeds.at(0);
+            p.max_speed         = speeds.at(1);
+            p.n_aim             = pos["n_aim"].as<int>();
+            p.n_speed           = pos["n_speed"].as<int>();
+            p.cvar              = pos["objective"].as<std::string>() != "mean";
+            p.cvar_fraction     = pos["cvar_fraction"].as<double>();
+            p.line_penalty      = pos["line_penalty"].as<double>();
+            p.min_ball_distance = pos["min_ball_distance"].as<double>();
+            p.extra_lat         = pos["extra_lat"].as<std::vector<double>>();
+            p.reach_scale       = pos["reach_scale"].as<std::vector<double>>();
+            p.regret            = pos["robust"].as<std::string>() != "mean";
+            p.near_best         = pos["near_best"].as<double>();
+            p.grid_step         = pos["grid_step"].as<double>();
+            p.min_depth         = pos["min_depth"].as<double>();
+
+            const std::lock_guard<std::mutex> lock(positioning_mutex);
+            cfg.positioning    = pos["enabled"].as<bool>();
+            cfg.target_timeout = pos["target_timeout"].as<double>();
+            positioning_cfg    = p;
+            target.reset();
+        });
+
+        on<Configuration>("SaveCapability.yaml").then([this](const Configuration& config) {
+            auto c         = std::make_shared<save::Capability>();
+            c->onnx_sha256 = config["onnx_sha256"].as<std::string>();
+            const auto axis = [&](const char* name) {
+                return save::Axis{config[name]["start"].as<double>(),
+                                  config[name]["step"].as<double>(),
+                                  config[name]["count"].as<std::size_t>()};
+            };
+            c->dy    = axis("dy");
+            c->time  = axis("time");
+            c->speed = axis("speed");
+            for (const auto& plane : config["rate"].as<std::vector<std::vector<std::vector<double>>>>()) {
+                for (const auto& row : plane) {
+                    c->rate.insert(c->rate.end(), row.begin(), row.end());
+                }
+            }
+            const std::lock_guard<std::mutex> lock(envelope_mutex);
+            if (!c->valid()) {
+                log<ERROR>("SaveCapability.yaml does not describe a grid: positioning is left to the walk");
+                capability.reset();
+            }
+            else {
+                capability = std::move(c);
+            }
+            check_policy();
         });
 
         on<Configuration>("SaveEnvelope.yaml").then([this](const Configuration& config) {
@@ -164,10 +241,79 @@ namespace module::planning {
 
         on<Start<SaveTask>>().then([this] {
             decider.reset();
-            last_tick = NUClear::clock::now();
+            last_tick    = NUClear::clock::now();
+            save_running = true;
         });
 
-        on<Stop<SaveTask>>().then([this] { decider.reset(); });
+        on<Stop<SaveTask>>().then([this] {
+            decider.reset();
+            save_running = false;
+            blocking     = false;
+            const std::lock_guard<std::mutex> lock(positioning_mutex);
+            target.reset();
+        });
+
+        // Choosing the goalie's spot scores a few thousand spots against a few hundred shots, too slow for every tick,
+        // so it runs on its own while Save does. Not during a block, which has the goalie's attention and the CPU.
+        on<Every<5, Per<std::chrono::seconds>>,
+           Optional<With<Ball>>,
+           With<Field>,
+           With<FieldDescription>,
+           Single>()
+            .then("Position goalie",
+                  [this](const std::shared_ptr<const Ball>& ball, const Field& field, const FieldDescription& fd) {
+                      if (!save_running || blocking) {
+                          return;
+                      }
+                      std::shared_ptr<const save::Capability> S{};
+                      {
+                          const std::lock_guard<std::mutex> lock(envelope_mutex);
+                          if (!capability_ok) {
+                              return;
+                          }
+                          S = capability;
+                      }
+                      save::PositioningConfig pcfg{};
+                      std::optional<Eigen::Vector2d> hold{};
+                      {
+                          const std::lock_guard<std::mutex> lock(positioning_mutex);
+                          if (!cfg.positioning) {
+                              return;
+                          }
+                          pcfg = positioning_cfg;
+                          if (target) {
+                              hold = target->position.rGg;
+                          }
+                      }
+
+                      // Positioning needs only where the ball is, so a teammate's ball does as well as our own
+                      const auto now = NUClear::clock::now();
+                      if (ball == nullptr || seconds(now - ball->time_of_measurement) > cfg.ball_timeout) {
+                          const std::lock_guard<std::mutex> lock(positioning_mutex);
+                          target.reset();
+                          return;
+                      }
+
+                      // The field says where the goal is, and how far out the goalie may go: the penalty area
+                      pcfg.goal_width  = fd.dimensions.goal_width;
+                      pcfg.ball_radius = fd.ball_radius;
+                      pcfg.max_depth   = fd.dimensions.penalty_area_length;
+                      pcfg.max_lateral = fd.dimensions.penalty_area_width / 2.0;
+
+                      const Eigen::Vector2d rBGg = field_to_goal((field.Hfw * ball->rBWw).head<2>(), fd);
+                      const auto start           = std::chrono::steady_clock::now();
+                      const auto position        = save::choose_position(*S, pcfg, rBGg, hold);
+                      const double took =
+                          std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+
+                      const std::lock_guard<std::mutex> lock(positioning_mutex);
+                      if (position) {
+                          target = Target{*position, now, took};
+                      }
+                      else {
+                          target.reset();
+                      }
+                  });
 
         // 50 Hz, the block policy's rate. Between ball estimates (30 Hz) the command is recomputed from the held
         // estimate and the robot's latest pose, which is also how the training command behaves.
@@ -326,6 +472,24 @@ namespace module::planning {
                 const Mode previous = decider.current();
                 const Mode mode     = decider.step(situation, dt, cfg.decision);
                 plan->state         = to_message(mode);
+                blocking            = mode == Mode::BLOCK;
+
+                // The latest spot chosen for the goalie, if it is fresh
+                std::optional<Target> spot{};
+                {
+                    const std::lock_guard<std::mutex> lock(positioning_mutex);
+                    if (cfg.positioning && target && seconds(now - target->time) < cfg.target_timeout) {
+                        spot = target;
+                    }
+                }
+                if (spot) {
+                    plan->has_target          = true;
+                    plan->rTGg                = spot->position.rGg;
+                    plan->target_mean         = spot->position.mean;
+                    plan->target_cvar         = spot->position.cvar;
+                    plan->target_regret       = spot->position.regret;
+                    plan->target_compute_time = spot->compute_time;
+                }
 
                 if (mode == Mode::BLOCK && previous != Mode::BLOCK) {
                     log<INFO>("Shot: dy",
@@ -371,8 +535,18 @@ namespace module::planning {
                         emit<Task>(block);
                         break;
                     }
-                    // Emitting nothing hands the goalie back to the positioning walk
-                    default: break;
+                    default: {
+                        // Walk to the chosen spot facing the ball. Without one, emitting nothing hands the goalie back
+                        // to the positioning walk below Save.
+                        if (spot && ball != nullptr) {
+                            const Eigen::Vector2d rBGg = field_to_goal((field.Hfw * ball->rBWw).head<2>(), fd);
+                            emit<Task>(std::make_unique<WalkToFieldPosition>(
+                                goal_pose_to_field(spot->position.rGg, rBGg, fd),
+                                true));
+                            plan->positioning = true;
+                        }
+                        break;
+                    }
                 }
 
                 emit(plan);
@@ -380,12 +554,29 @@ namespace module::planning {
     }
 
     void PlanSave::check_policy() {
-        if (!envelope || !policy_path) {
-            envelope_ok = false;
+        if (!policy_path) {
+            envelope_ok   = false;
+            capability_ok = false;
             return;
         }
         const auto hash = save::sha256_file(*policy_path);
-        envelope_ok     = hash && *hash == envelope->onnx_sha256;
+
+        capability_ok = capability && hash && *hash == capability->onnx_sha256;
+        if (capability && hash && !capability_ok) {
+            log<ERROR>("The block policy",
+                       *policy_path,
+                       "is not the one SaveCapability.yaml was measured from (sha256",
+                       *hash,
+                       "vs",
+                       capability->onnx_sha256,
+                       "): positioning is left to the walk. Regenerate it with tools/policy/make_save_envelope.py.");
+        }
+
+        if (!envelope) {
+            envelope_ok = false;
+            return;
+        }
+        envelope_ok = hash && *hash == envelope->onnx_sha256;
         if (!hash) {
             log<ERROR>("Cannot read the block policy", *policy_path, "to check it: planning positioning only");
         }

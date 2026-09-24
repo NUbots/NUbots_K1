@@ -38,7 +38,12 @@ The objective is nearly flat in depth for central balls (a metre or two of spots
 best), so the depth the maximum lands on is noise. The spot chosen is therefore the shallowest (closest to the goal
 line) within `near_best` of the best score: stay home unless stepping out is clearly worth it.
 
-Frames: field frame with our goal line at x = 0, x out into the field, y to the left looking out from the goal.
+Frames: field frame with our goal line at x = 0, x out into the field, y to the left looking out from the goal. This is
+planning::PlanSave's goal frame {g}: x = field_length / 2 - x_f, y = -y_f in NUbots' field frame.
+
+planning::PlanSave runs this (module/planning/PlanSave/src/positioning.hpp) on SaveCapability.yaml, which
+make_save_envelope.py writes with Capability.from_csv. Spots stop at the penalty area line. --write-reference writes the
+results its tests hold the port to; change the two together and regenerate them.
 
 Usage:
     uv run tools/policy/save_positioning_prototype.py <run>/envelope.csv -o <out dir>
@@ -75,6 +80,12 @@ class Config:
     objective: str = "cvar"  # "cvar": the worst cvar_fraction of aim points; "mean": all of them
     line_penalty: float = 0.0  # per metre off the goal line
     min_ball_distance: float = 0.5  # the goalie can't stand on the ball
+    # The spots considered: a grid from min_depth off the goal line out to the penalty area line (max_depth, the M-Field's
+    # penalty_area_length), and across the penalty area (max_lateral, half its width). PlanSave uses a coarser step.
+    grid_step: float = 0.04
+    min_depth: float = 0.05
+    max_depth: float = 3.0
+    max_lateral: float = 3.0
     # Sim-to-real degradations scored against: every combination of an extra reaction delay (s) and a reach scale.
     # Guesses until the real goalie has been measured.
     extra_lat: tuple[float, ...] = (0.0, 0.2)
@@ -87,21 +98,34 @@ class Config:
 # The block policy's capability, smoothed from the raw shots
 
 
+def axis(start: float, step: float, count: int) -> np.ndarray:
+    """A uniform grid axis, built the way planning::PlanSave builds it from SaveCapability.yaml."""
+    return start + step * np.arange(count)
+
+
 class Capability:
-    """S(dy, t, v): smoothed save rate of the block policy, shrunk to 0 where there is little data."""
+    """S(dy, t, v): the block policy's save rate on a uniform grid, interpolated trilinearly.
 
-    DY = np.arange(-2.0, 2.0 + 1e-9, 0.05)
-    T = np.arange(0.0, 3.0 + 1e-9, 0.05)
-    V = np.arange(1.5, 4.0 + 1e-9, 0.25)
+    `from_csv` smooths it from mjlab's raw shots, shrunk to 0 where there is little data. `from_yaml` and `to_yaml` read
+    and write the SaveCapability.yaml planning::PlanSave positions the goalie with, which uses the same interpolation.
+    """
 
-    def __init__(
-        self,
+    def __init__(self, dy: np.ndarray, t: np.ndarray, v: np.ndarray, rate: np.ndarray, support=None):
+        self.DY, self.T, self.V, self.rate = dy, t, v, rate
+        self.support = support
+        self._interp = RegularGridInterpolator((self.DY, self.T, self.V), self.rate, bounds_error=False, fill_value=0.0)
+        self.n_shots, self.raw_rate = 0, float("nan")
+
+    @classmethod
+    def from_csv(
+        cls,
         csv: Path,
         sigma: tuple[float, float, float] = (0.08, 0.1, 0.3),
         prior_failures: float = 5.0,
         monotone_time: bool = True,
         monotone_speed: bool = True,
-    ):
+    ) -> "Capability":
+        DY, T, V = axis(-2.0, 0.05, 81), axis(0.0, 0.05, 61), axis(1.5, 0.25, 11)
         d = np.genfromtxt(csv, delimiter=",", names=True)
         fell = d["fell"] > 0.5
         on_target = (d["on_target"] > 0.5) | fell  # falls are written off target upstream; count them as failures
@@ -113,29 +137,55 @@ class Capability:
             h = (c[1] - c[0]) / 2
             return np.append(c - h, c[-1] + h)
 
-        e = [edges(self.DY), edges(self.T), edges(self.V)]
-        sample = np.column_stack([dy, np.clip(t, 0, self.T[-1]), np.clip(v, self.V[0], self.V[-1])])
+        e = [edges(DY), edges(T), edges(V)]
+        sample = np.column_stack([dy, np.clip(t, 0, T[-1]), np.clip(v, V[0], V[-1])])
         trials, _ = np.histogramdd(sample, bins=e)
         saves, _ = np.histogramdd(sample, bins=e, weights=saved)
-        steps = [self.DY[1] - self.DY[0], self.T[1] - self.T[0], self.V[1] - self.V[0]]
+        steps = [DY[1] - DY[0], T[1] - T[0], V[1] - V[0]]
         s = [sg / st for sg, st in zip(sigma, steps)]
         # Undo the kernel's normalisation so the counts stay counts (the prior then means pseudo-shots)
         norm = (2 * np.pi) ** 1.5 * np.prod(s)
         trials_s = gaussian_filter(trials, s, mode="constant") * norm
         saves_s = gaussian_filter(saves, s, mode="constant") * norm
-        self.rate = saves_s / (trials_s + prior_failures)
+        rate = saves_s / (trials_s + prior_failures)
         if monotone_time:
             # mjlab shots start at most 4.5 m out, so fast balls are never measured arriving late, and the prior reads
             # that gap as failure. More time can't hurt as long as PlanSave holds the ready stance until the time to
             # arrival is back in the measured range, so carry the best rate so far up the time axis.
-            self.rate = np.maximum.accumulate(self.rate, axis=1)
+            rate = np.maximum.accumulate(rate, axis=1)
         if monotone_speed:
             # Likewise slow balls are never measured arriving early. A slower ball arriving at the same time and place
             # is no harder to stop, so carry the best rate so far down the speed axis.
-            self.rate = np.maximum.accumulate(self.rate[:, :, ::-1], axis=2)[:, :, ::-1]
-        self.support = trials_s
-        self._interp = RegularGridInterpolator((self.DY, self.T, self.V), self.rate, bounds_error=False, fill_value=0.0)
-        self.n_shots, self.raw_rate = len(saved), saved.mean()
+            rate = np.maximum.accumulate(rate[:, :, ::-1], axis=2)[:, :, ::-1]
+        c = cls(DY, T, V, rate, trials_s)
+        c.n_shots, c.raw_rate = len(saved), saved.mean()
+        c.smoothing = dict(
+            sigma=list(sigma), prior_failures=prior_failures, monotone_time=monotone_time, monotone_speed=monotone_speed
+        )
+        return c
+
+    @classmethod
+    def from_yaml(cls, path: Path) -> "Capability":
+        import yaml
+
+        d = yaml.safe_load(Path(path).read_text())
+        ax = [axis(d[k]["start"], d[k]["step"], d[k]["count"]) for k in ("dy", "time", "speed")]
+        return cls(*ax, np.asarray(d["rate"], float))
+
+    def axes_yaml(self) -> list[str]:
+        def one(name, a):
+            return f"{name}: {{start: {a[0]:.6g}, step: {a[1] - a[0]:.6g}, count: {len(a)}}}"
+
+        return [one("dy", self.DY), one("time", self.T), one("speed", self.V)]
+
+    def rate_yaml(self, indent: str = "") -> list[str]:
+        """The rate as nested [dy][time][speed] lists, one line per (dy, time)."""
+        lines = [f"{indent}rate:"]
+        for i in range(len(self.DY)):
+            lines.append(f"{indent}  # dy = {self.DY[i]:.2f} m; rows are time, columns speed")
+            lines.append(f"{indent}  -")
+            lines += [f"{indent}    - [{', '.join(f'{r:.4f}' for r in row)}]" for row in self.rate[i]]
+        return lines
 
     def __call__(self, dy, t, v):
         """Save rate; dy outside the grid is a miss, t and v clamp to the measured range, t <= 0 is a miss."""
@@ -204,8 +254,10 @@ def save_probability(S: Capability, cfg: Config, ball: np.ndarray, gx: np.ndarra
     w = n_threat / max(n_threat.sum(), 1)  # aim points weighted by how many of their shots are threats
     mean = (per_aim * w).sum(axis=-1)
 
-    k = max(1, int(round(cfg.cvar_fraction * len(aims))))
-    cvar = np.sort(per_aim, axis=-1)[..., :k].mean(axis=-1)
+    # CVaR over the aim points a shot reaches at all: one that can't is no threat, not a goal
+    reached = n_threat > 0
+    k = max(1, int(round(cfg.cvar_fraction * max(reached.sum(), 1))))
+    cvar = np.sort(per_aim[..., reached], axis=-1)[..., :k].mean(axis=-1) if reached.any() else np.zeros_like(mean)
 
     # Positions the goalie can't take
     bad = (dist[..., 0, 0] < cfg.min_ball_distance) | (gx >= ball[0])
@@ -242,7 +294,10 @@ class Evaluation:
         """Worst-case regret of a spot off the grid (e.g. today's), against the grid's best per degradation."""
         J = [
             objective(
-                *save_probability(Degraded(S, l, k), cfg, ball, point[:1], point[1:], facing)[:2], point[:1], cfg, use_cvar
+                *save_probability(Degraded(S, l, k), cfg, ball, point[:1], point[1:], facing)[:2],
+                point[:1],
+                cfg,
+                use_cvar,
             )
             for l in cfg.extra_lat
             for k in cfg.reach_scale
@@ -289,6 +344,14 @@ def current_goalie(ball, cfg: Config):
     return np.array([0.15 * (y / y_max) ** 2, y])
 
 
+def spot_grid(cfg: Config, step: float | None = None):
+    """The goalie spots considered, as (GX, GY) of shape (y, x): planning::PlanSave's grid, capped at the penalty area."""
+    step = cfg.grid_step if step is None else step
+    xs = cfg.min_depth + step * np.arange(int(np.floor((cfg.max_depth - cfg.min_depth) / step + 1e-9)) + 1)
+    ys = -cfg.max_lateral + step * np.arange(int(np.floor(2 * cfg.max_lateral / step + 1e-9)) + 1)
+    return np.meshgrid(xs, ys, indexing="xy")
+
+
 # --------------------------------------------------------------------------------------------------------------------
 # Plots
 
@@ -305,9 +368,8 @@ def draw_field(ax, cfg: Config, xmax):
 
 
 def plot_ball_positions(S, cfg, balls, out: Path, use_cvar: bool):
-    xs = np.arange(0.05, 5.0, 0.04)
-    ys = np.arange(-3.0, 3.0 + 1e-9, 0.04)
-    GX, GY = np.meshgrid(xs, ys, indexing="xy")
+    GX, GY = spot_grid(cfg)
+    xs, ys = GX[0], GY[:, 0]
 
     cols = 3
     rows = int(np.ceil(len(balls) / cols))
@@ -317,7 +379,7 @@ def plot_ball_positions(S, cfg, balls, out: Path, use_cvar: bool):
     for ax, ball in zip(axes.flat, balls):
         ball = np.asarray(ball, float)
         ev = evaluate(S, cfg, ball, GX, GY, use_cvar)
-        draw_field(ax, cfg, max(xs[-1], ball[0] + 0.3))
+        draw_field(ax, cfg, max(cfg.max_depth + 0.5, ball[0] + 0.3))
         if ev.threat == 0:
             ax.set_title(f"ball ({ball[0]:.1f}, {ball[1]:.1f}): no shot reaches the goal")
             ax.plot(*ball, "o", color="orange", ms=8, mec="k")
@@ -338,7 +400,9 @@ def plot_ball_positions(S, cfg, balls, out: Path, use_cvar: bool):
         ax.fill([ball[0], 0, 0], [ball[1], hw, -hw], facecolor="none", edgecolor="orange", lw=1, ls="--")
         ax.plot(*ball, "o", color="orange", ms=8, mec="k")
         at = lambda k: (GX.flat[k], GY.flat[k])
-        ax.plot(*at(j), "*", color="none", ms=14, mec="red", mew=1.2, label=f"best score: regret {ev.regret.flat[j]:.2f}")
+        ax.plot(
+            *at(j), "*", color="none", ms=14, mec="red", mew=1.2, label=f"best score: regret {ev.regret.flat[j]:.2f}"
+        )
         ax.plot(
             *at(i),
             "*",
@@ -365,7 +429,8 @@ def plot_ball_positions(S, cfg, balls, out: Path, use_cvar: bool):
         f"Colour: nominal (mjlab) P_save, {label}. Legends: nominal mean / CVaR, worst-case regret.\n"
         f"Red outline: spots within {cfg.near_best} of the best {cfg.robust} score over extra delay {cfg.extra_lat} s"
         f" x reach {cfg.reach_scale}; filled star: the shallowest of them.\n"
-        f"t_lat={cfg.t_lat}s, speeds {cfg.speed_range} m/s, line penalty {cfg.line_penalty}/m"
+        f"t_lat={cfg.t_lat}s, speeds {cfg.speed_range} m/s, line penalty {cfg.line_penalty}/m,"
+        f" spots out to {cfg.max_depth} m (penalty area line)"
     )
     fig.savefig(out, dpi=110)
     plt.close(fig)
@@ -374,9 +439,7 @@ def plot_ball_positions(S, cfg, balls, out: Path, use_cvar: bool):
 
 def plot_policy_map(S, cfg, out: Path, use_cvar: bool):
     """g*(ball) over a grid of ball positions: an arrow from each ball to where the goalie should stand."""
-    xs = np.arange(0.05, 5.0, 0.1)
-    ys = np.arange(-3.0, 3.0 + 1e-9, 0.1)
-    GX, GY = np.meshgrid(xs, ys, indexing="xy")
+    GX, GY = spot_grid(cfg, 0.1)
     fig, ax = plt.subplots(figsize=(10, 8), constrained_layout=True)
     draw_field(ax, cfg, 7.5)
     for bx in np.arange(1.5, 7.6, 1.0):
@@ -405,7 +468,10 @@ def plot_capability(S: Capability, out: Path):
     for ax, v in zip(axes, [2.0, 2.75, 3.5]):
         k = int(np.argmin(np.abs(S.V - v)))
         im = ax.pcolormesh(S.DY, S.T, S.rate[:, :, k].T, vmin=0, vmax=1, cmap="viridis", shading="nearest")
-        ax.contour(S.DY, S.T, S.support[:, :, k].T, levels=[20, 100], colors="w", linewidths=0.6, linestyles=["--", "-"])
+        if S.support is not None:
+            ax.contour(
+                S.DY, S.T, S.support[:, :, k].T, levels=[20, 100], colors="w", linewidths=0.6, linestyles=["--", "-"]
+            )
         ax.set_xlabel("dy (m, +left)")
         ax.set_ylabel("time to arrival (s)")
         ax.set_title(f"S at v = {S.V[k]:.2f} m/s (white: 20 / 100 shots)", fontsize=10)
@@ -414,9 +480,87 @@ def plot_capability(S: Capability, out: Path):
     plt.close(fig)
 
 
+# --------------------------------------------------------------------------------------------------------------------
+# Reference results for planning::PlanSave's port (tests/TestPositioning.cpp)
+
+
+def synthetic_capability() -> Capability:
+    """A small made-up capability: a reach that grows with time, off centre, a little worse for faster balls. Rounded
+    as the YAML writes it, so both sides of the comparison read the same numbers."""
+    DY, T, V = axis(-2.0, 0.1, 41), axis(0.0, 0.1, 31), axis(1.5, 0.5, 6)
+    dy, t, v = np.meshgrid(DY, T, V, indexing="ij")
+    reach = 0.35 + 0.6 * np.maximum(t - 0.3, 0.0)
+    rate = np.clip((reach - np.abs(dy - 0.05)) / 0.25 + 0.5, 0.0, 1.0) * (0.95 - 0.05 * (v - 1.5))
+    return Capability(DY, T, V, np.round(rate, 4))
+
+
+def write_reference(path: Path) -> None:
+    """Positions chosen on the synthetic capability with PlanSave's default configuration and a few variations."""
+    import dataclasses
+
+    S = synthetic_capability()
+    base = Config(grid_step=0.1)  # PlanSave.yaml's positioning defaults
+    cases = [((2.0, 0.0), {}), ((3.0, 0.0), {}), ((4.5, 0.0), {}), ((3.0, 1.5), {}), ((3.0, -1.5), {})]
+    cases += [((5.0, -2.0), {}), ((6.5, 0.0), {}), ((1.0, 2.5), {}), ((3.0, 1.5), {"objective": "mean"})]
+    cases += [((3.0, 1.5), {"robust": "mean"}), ((3.0, 0.5), {"line_penalty": 0.05, "near_best": 0.0})]
+    cases += [((4.5, 0.0), {"speed_range": (1.5, 2.0)})]  # no shot reaches the goal
+
+    def config_yaml(c: Config) -> str:
+        fields = [
+            "goal_width", "ball_radius", "rolling_deceleration", "t_lat", "speed_range", "n_aim", "n_speed",
+            "cvar_fraction", "objective", "line_penalty", "min_ball_distance", "extra_lat", "reach_scale", "robust",
+            "near_best", "grid_step", "min_depth", "max_depth", "max_lateral",
+        ]  # fmt: skip
+        def val(x):
+            if isinstance(x, str):
+                return x
+            if isinstance(x, (tuple, list)):
+                return "[" + ", ".join(f"{float(e):.6g}" for e in x) + "]"
+            return f"{x:.6g}"
+
+        return "{" + ", ".join(f"{f}: {val(getattr(c, f))}" for f in fields) + "}"
+
+    lines = [
+        "# Reference results for planning::PlanSave's goalie positioning (tests/TestPositioning.cpp).",
+        "# GENERATED by tools/policy/save_positioning_prototype.py --write-reference: do not edit by hand.",
+        "",
+        "capability:",
+        *[f"  {line}" for line in S.axes_yaml()],
+        *S.rate_yaml("  "),
+        "",
+        f"config: {config_yaml(base)}",
+        "",
+        "cases:",
+    ]
+    for ball, over in cases:
+        cfg = dataclasses.replace(base, **over)
+        GX, GY = spot_grid(cfg)
+        ev = evaluate(S, cfg, np.asarray(ball, float), GX, GY, cfg.objective == "cvar")
+        lines.append(f"  - ball: [{ball[0]}, {ball[1]}]")
+        if over:
+            lines.append(f"    overrides: {config_yaml(cfg)}")
+        if ev.threat == 0:
+            lines.append("    reaches: false")
+            continue
+        i = choose(ev.score, GX, cfg.near_best)
+        lines += [
+            "    reaches: true",
+            f"    target: [{GX.flat[i]:.6f}, {GY.flat[i]:.6f}]",
+            f"    mean: {ev.mean.flat[i]:.9f}",
+            f"    cvar: {ev.cvar.flat[i]:.9f}",
+            f"    regret: {ev.regret.flat[i]:.9f}",
+        ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n")
+    print(f"Wrote {len(cases)} reference cases to {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("csv", type=Path, help="envelope.csv from mjlab's measure_envelope")
+    parser.add_argument(
+        "csv", type=Path, nargs="?", help="envelope.csv from mjlab's measure_envelope, or a SaveCapability.yaml"
+    )
+    parser.add_argument("--write-reference", type=Path, help="write the C++ port's reference results here and stop")
     parser.add_argument("-o", "--output", type=Path, default=Path("save_positioning"))
     parser.add_argument("--t-lat", type=float, default=Config.t_lat)
     parser.add_argument("--line-penalty", type=float, default=Config.line_penalty)
@@ -425,10 +569,16 @@ def main() -> None:
     parser.add_argument("--raw-speed", action="store_true", help="don't assume slower never hurts (see Capability)")
     parser.add_argument("--speed-range", type=float, nargs=2, default=Config.speed_range, help="shot speed prior (m/s)")
     parser.add_argument("--no-map", action="store_true", help="skip the (slow) map over ball positions")
-    parser.add_argument("--extra-lat", type=float, nargs="+", default=Config.extra_lat, help="extra delays (s) to score against")
-    parser.add_argument("--reach-scale", type=float, nargs="+", default=Config.reach_scale, help="reach scales to score against")
+    parser.add_argument(
+        "--extra-lat", type=float, nargs="+", default=Config.extra_lat, help="extra delays (s) to score against"
+    )
+    parser.add_argument(
+        "--reach-scale", type=float, nargs="+", default=Config.reach_scale, help="reach scales to score against"
+    )
     parser.add_argument("--robust", choices=["regret", "mean"], default=Config.robust)
-    parser.add_argument("--near-best", type=float, default=Config.near_best, help="depth rule tolerance (0: plain best)")
+    parser.add_argument(
+        "--near-best", type=float, default=Config.near_best, help="depth rule tolerance (0: plain best)"
+    )
     args = parser.parse_args()
 
     cfg = Config(
@@ -443,11 +593,30 @@ def main() -> None:
     )
     use_cvar = cfg.objective == "cvar"
     args.output.mkdir(parents=True, exist_ok=True)
-    S = Capability(args.csv, monotone_time=not args.raw_time, monotone_speed=not args.raw_speed)
-    print(f"{S.n_shots} on-target shots, raw save rate {S.raw_rate:.1%}")
+    if args.write_reference:
+        write_reference(args.write_reference)
+        return
+    if args.csv is None:
+        parser.error("an envelope.csv or SaveCapability.yaml is needed")
+    if args.csv.suffix in (".yaml", ".yml"):
+        S = Capability.from_yaml(args.csv)
+        print(f"Capability from {args.csv}")
+    else:
+        S = Capability.from_csv(args.csv, monotone_time=not args.raw_time, monotone_speed=not args.raw_speed)
+        print(f"{S.n_shots} on-target shots, raw save rate {S.raw_rate:.1%}")
     plot_capability(S, args.output / "capability.png")
 
-    balls = [(2.0, 0.0), (3.0, 0.0), (4.5, 0.0), (3.0, 1.5), (3.0, -1.5), (2.0, 2.5), (5.0, -2.0), (6.5, 0.0), (1.0, 2.5)]
+    balls = [
+        (2.0, 0.0),
+        (3.0, 0.0),
+        (4.5, 0.0),
+        (3.0, 1.5),
+        (3.0, -1.5),
+        (2.0, 2.5),
+        (5.0, -2.0),
+        (6.5, 0.0),
+        (1.0, 2.5),
+    ]
     rows = plot_ball_positions(S, cfg, balls, args.output / "positions.png", use_cvar)
     if not args.no_map:
         plot_policy_map(S, cfg, args.output / "policy_map.png", use_cvar)

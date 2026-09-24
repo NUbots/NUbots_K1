@@ -27,6 +27,8 @@
 #ifndef MODULE_PLANNING_PLANSAVE_HPP
 #define MODULE_PLANNING_PLANSAVE_HPP
 
+#include <Eigen/Core>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <nuclear>
@@ -35,6 +37,7 @@
 
 #include "decision.hpp"
 #include "envelope.hpp"
+#include "positioning.hpp"
 #include "prediction.hpp"
 
 #include "extension/Behaviour.hpp"
@@ -63,7 +66,28 @@ namespace module::planning {
             /// @brief Wilson lower bound z and minimum shots per envelope cell
             double confidence_z = 0.0;
             int min_trials      = 0;
+            /// @brief Whether PlanSave positions the goalie while no shot is on its way, instead of the walk below it
+            bool positioning = false;
+            /// @brief Oldest target (s) walked to; older, PlanSave leaves positioning to the walk below it
+            double target_timeout = 0.0;
         } cfg;
+
+        /// @brief Guards the positioning configuration and target, shared with the positioning reaction
+        std::mutex positioning_mutex{};
+        /// @brief How the goalie's spot is chosen. The field's goal, ball and penalty area fill in the rest.
+        save::PositioningConfig positioning_cfg{};
+        /// @brief The spot the goalie is walking to while no shot is on its way, in the goal frame {g}
+        struct Target {
+            save::Position position{};
+            /// When it was chosen, and how long choosing it took (s)
+            NUClear::clock::time_point time{};
+            double compute_time = 0.0;
+        };
+        std::optional<Target> target{};
+
+        /// @brief Whether the Save task is running, and the mode of the last tick, for the positioning reaction
+        std::atomic<bool> save_running{false};
+        std::atomic<bool> blocking{false};
 
         /// @brief Guards the envelope and the policy check, which configuration updates change under the planner
         std::mutex envelope_mutex{};
@@ -72,8 +96,12 @@ namespace module::planning {
         std::optional<std::string> policy_path{};
         /// @brief Whether the envelope matches the deployed policy; without that, PlanSave only ever lets the walk run
         bool envelope_ok = false;
-        /// @brief Checks the deployed policy's SHA-256 against the envelope once both are known. Call with
-        /// envelope_mutex held.
+        /// @brief The block policy's smoothed capability, which the goalie is positioned with, and whether it matches
+        /// the deployed policy. Without that, positioning is left to the walk.
+        std::shared_ptr<const save::Capability> capability{};
+        bool capability_ok = false;
+        /// @brief Checks the deployed policy's SHA-256 against the envelope and capability once they are known. Call
+        /// with envelope_mutex held.
         void check_policy();
 
         /// @brief Mode switching, stuck to one shot at a time

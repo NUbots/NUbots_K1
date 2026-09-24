@@ -30,14 +30,15 @@ package message.planning;
 import "Vector.proto";
 
 /// Guard the goal: planning::PlanSave predicts shots from the ball estimate and, when one is coming, runs the
-/// block policy. Emit it every tick while the goalie is guarding, above the positioning walk: while no shot is on
-/// its way PlanSave emits nothing and the walk keeps the goalie positioned.
+/// block policy. While no shot is on its way it walks the goalie to a spot chosen from the policy's capability. Emit
+/// it every tick while the goalie is guarding, above a positioning walk: whenever PlanSave has no spot to go to it
+/// emits nothing, and that walk keeps the goalie positioned.
 message Save {}
 
 /// What PlanSave predicted and decided on one tick, for logging shots against their outcomes
 message SavePlan {
     enum State {
-        /// No threat: positioning is left to the walk
+        /// No shot and no ball near: PlanSave positions the goalie (positioning), or leaves it to the walk below it
         IDLE = 0;
         /// Ball near: holding the ready stance the envelope was measured from
         GUARD = 1;
@@ -78,4 +79,16 @@ message SavePlan {
     /// Whether the crossings came from NUSim's ground truth (NUSimBallSource TRUE_CROSSING) instead of the
     /// prediction. Their standard deviations are then zero.
     bool true_crossing     = 18;
+
+    /// Whether PlanSave walked the goalie to its chosen spot this tick (IDLE, with a fresh spot)
+    bool positioning = 19;
+    /// The latest spot chosen for the goalie, if fresh: where in the goal frame {g} (x out of our goal, y to the left
+    /// looking out), its save probability on the mjlab capability over all aim points and over the worst of them, its
+    /// worst-case regret over the sim-to-real guesses, and how long choosing it took (s)
+    bool has_target            = 20;
+    vec2 rTGg                  = 21;
+    double target_mean         = 22;
+    double target_cvar         = 23;
+    double target_regret       = 24;
+    double target_compute_time = 25;
 }
