@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <Eigen/Core>
 #include <nuclear>
 #include <openvino/openvino.hpp>
@@ -27,9 +28,9 @@ namespace module::skill {
     /// this module keeps a single ring buffer of the frame it already builds. Both observation
     /// normalizers are baked into the exported graph -- nothing here normalizes.
     ///
-    /// The observation carries no base linear velocity: there is no measured base linear velocity
-    /// on the real K1 in CUSTOM mode, so it is a critic-only privileged quantity in training and
-    /// the deployment side has nothing to estimate. See README.md for the full contract.
+    /// The observation leads with the base linear velocity, in the body frame, which comes from the
+    /// Booster controller's odometry twist (rt/odom, BoosterOdometryTwist). See README.md for the
+    /// full contract.
     class K1WalkPolicy : public ::extension::behaviour::BehaviourReactor {
     public:
         /// All K1 joints, in the Booster SDK JointIndexK1 serial order
@@ -39,8 +40,6 @@ namespace module::skill {
         static constexpr std::size_t HEAD_PITCH = 1;
         /// Velocity command length: [vx, vy, wz]
         static constexpr std::size_t COMMAND_DIM = 3;
-        /// Gait clock length: [sin(2*pi*phase), cos(2*pi*phase)]
-        static constexpr std::size_t CLOCK_DIM = 2;
 
         explicit K1WalkPolicy(std::unique_ptr<NUClear::Environment> environment);
 
@@ -55,12 +54,9 @@ namespace module::skill {
             std::size_t history_window = 1;
             /// JointIndexK1 indices of the policy-controlled joints, in policy order
             std::vector<std::size_t> policy_joints{};
-            /// Full gait-cycle duration (s) of the observed clock; must match the training
-            /// GAIT_PERIOD, since the same clock drove the swing-height and contact rewards
-            double gait_period = 0.6;
-            /// Command magnitude (|v_xy| + |wz|) at or below which the observed clock collapses to
-            /// (0, 0) -- the distinct "standing" input the policy was trained to see
-            double command_threshold = 0.05;
+            /// Oldest odometry twist (s) observed as the base linear velocity. Older, or none at
+            /// all, is observed as zero and warned about.
+            double linear_velocity_max_age = 0.1;
             /// Commanded pose is blended from the current pose into the policy target over this
             /// window (s), since deployment enters CUSTOM from wherever the previous mode left the
             /// robot while training always starts at the default pose
@@ -84,10 +80,10 @@ namespace module::skill {
             std::array<double, JOINT_COUNT> joint_upper{};
         } cfg;
 
-        /// Length of one observation frame: gyro(3) + gravity(3) + 3 * n_policy_joints
-        /// + command(3) + gait clock(2)
+        /// Length of one observation frame: linear velocity(3) + gyro(3) + gravity(3)
+        /// + 3 * n_policy_joints + command(3)
         [[nodiscard]] std::size_t frame_dim() const {
-            return 6 + 3 * cfg.policy_joints.size() + COMMAND_DIM + CLOCK_DIM;
+            return 9 + 3 * cfg.policy_joints.size() + COMMAND_DIM;
         }
 
         /// Load the ONNX and check its input/output sizes against the configured contract
@@ -96,7 +92,7 @@ namespace module::skill {
         /// Run the network on a flat observation window, returning n_policy_joints actions
         std::vector<float> infer(const std::vector<float>& input);
 
-        /// Drop the history window, the action feedback and the gait phase. Called whenever the
+        /// Drop the history window and the action feedback. Called whenever the
         /// next tick cannot continue the previous one: a new walk task, or a resumption after the
         /// get-up policy owned the low-level channel.
         void reset_policy_state();
@@ -113,13 +109,17 @@ namespace module::skill {
         /// Observation window, oldest frame first
         std::deque<std::vector<float>> history{};
 
-        /// Gait clock phase in [0, 1). Training indexes it on episode time at a fixed 50 Hz; here
-        /// it advances on the measured loop period so the gait keeps its trained wall-clock rate
-        /// when the loop runs slow.
-        double gait_phase = 0.0;
+        /// Latest base linear velocity from the controller's odometry twist (body frame, m/s) and
+        /// when it arrived, guarded against the tick loop reading it mid-write
+        std::mutex linear_velocity_mutex{};
+        Eigen::Vector3d linear_velocity = Eigen::Vector3d::Zero();
+        NUClear::clock::time_point linear_velocity_time{};
+        bool have_linear_velocity = false;
+        /// When a missing or stale velocity was last warned about
+        NUClear::clock::time_point last_linear_velocity_warning{};
 
-        /// Wall-clock of the previous policy tick, so the gait phase advances on the period that
-        /// actually elapsed rather than on a hardcoded 0.02 s.
+        /// Wall-clock of the previous policy tick, to measure the loop period against the trained
+        /// 0.02 s.
         bool have_last_tick = false;
         NUClear::clock::time_point last_tick_time{};
 

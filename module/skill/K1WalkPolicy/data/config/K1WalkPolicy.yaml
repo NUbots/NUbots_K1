@@ -1,18 +1,18 @@
 log_level: INFO
 
-# mjlab K1 velocity-tracking walk policy (Mjlab-Velocity-Flat-Booster-K1, W&B run 2p0glew7,
-# iteration 14999). Contract pinned in README.md.
+# mjlab K1 velocity-tracking walk policy (Mjlab-Velocity-Flat-Booster-K1, W&B run t98yksya,
+# k1-noclock-linvel, iteration 14999). Contract pinned in README.md.
 #
 # The ONNX is an observation-history model: its input is a flat window of the last
 # history_window observation frames, time-major and oldest first, i.e.
-# [1, history_window * (6 + 3 * len(policy_joints) + 5)] = [1, 25 * 71] = [1, 1775].
+# [1, history_window * (9 + 3 * len(policy_joints) + 3)] = [1, 25 * 72] = [1, 1800].
 # Output is [1, len(policy_joints)] = [1, 20]. Both observation normalizers are baked into
 # the graph, so nothing here normalizes.
 #
 # The older mujoco_playground checkpoints (k1_walk*.onnx, 79-obs / 22-action, single frame)
 # are NOT loadable against this module: the module refuses any graph whose I/O sizes do not
 # match the configured contract.
-model_path: "k1_walk_mjlab_2p0glew7_14999.onnx"
+model_path: "k1-noclock-linvel.onnx"
 
 # Run inference on the GPU with TensorRT. Falls back to OpenVINO CPU automatically when no
 # CUDA device is visible (the container needs --gpus), so this is safe to leave on. The
@@ -30,14 +30,10 @@ history_window: 25
 # permutation is needed.
 policy_joints: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 
-# Gait clock. Full cycle duration (s), matching the training GAIT_PERIOD -- the same clock
-# drove the swing-height and contact-mismatch rewards, so the observed clock and the rewarded
-# clock must agree. The observation is [sin(2*pi*phase), cos(2*pi*phase)].
-gait_period: 0.6
-# Command magnitude (|v_xy| + |wz|) at or below which the observed clock collapses to (0, 0):
-# the distinct "standing" input the policy was trained to see, rather than a walking phase.
-# Matches the training command_threshold on both the clock observation and the gait rewards.
-command_threshold: 0.05
+# The base linear velocity the policy observes comes from the Booster controller's odometry twist
+# (rt/odom, BoosterOdometryTwist, body frame). A twist older than this (s), or none at all, is
+# observed as zero and warned about: rt/odom is published at the controller's rate.
+linear_velocity_max_age: 0.1
 
 # Commanded pose ramps from the measured pose into the policy target over this window (s).
 # Training starts every episode from the default pose; deployment enters CUSTOM from wherever

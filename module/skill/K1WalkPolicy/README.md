@@ -14,6 +14,8 @@ stack, and the robot/simulator only tracks servo joint commands.
 - `message::platform::RawSensors` for joint feedback, gyro and the IMU attitude
 - `message::behaviour::state::Stability` — ticks are skipped while FALLEN, when
   `skill::K1GetUpPolicy` owns the low-level channel
+- `message::booster::BoosterOdometryTwist` for the base linear velocity (the controller's `rt/odom`
+  twist, body frame)
 - `message::booster::BoosterHeadRot` for the head targets (the policy does not own the head)
 - `message::booster::BoosterModeState` (cached, optional) — logged with every observation so
   a capture can be segmented by the mode the robot was actually in
@@ -27,14 +29,16 @@ stack, and the robot/simulator only tracks servo joint commands.
 ## Contract
 
 Trained in the NUbots [mjlab fork](https://github.com/NUbots/mjlab), branch `k1`, task
-`Mjlab-Velocity-Flat-Booster-K1`. The shipped checkpoint is W&B run `2p0glew7`, iteration
-14999 (`data/k1_walk_mjlab_2p0glew7_14999.onnx`).
+`Mjlab-Velocity-Flat-Booster-K1`. The shipped checkpoint is W&B run `t98yksya`
+(`k1-noclock-linvel`, trained at mjlab `55b975c96`), iteration 14999
+(`data/k1-noclock-linvel.onnx`). It dropped the previous run's (`2p0glew7`) gait clock and
+observes the base linear velocity instead.
 
 ### ONNX graph I/O
 
 | Tensor | Name | Shape | Type |
 |---|---|---|---|
-| Input | `obs` | `[1, 1775]` | `float32` |
+| Input | `obs` | `[1, 1800]` | `float32` |
 | Output | `actions` | `[1, 20]` | `float32` |
 
 The module checks these element counts against the configured contract on load and refuses
@@ -66,25 +70,36 @@ running at 40 Hz feeds the encoder 0.625 s of history instead of 0.5 s. A loop p
 the trained 0.02 s by more than 5 ms is counted and reported at WARN every 2 s. That is a
 bug to fix, not to compensate for.
 
-### Observation layout (71 floats per frame)
+### Observation layout (72 floats per frame)
 
 | Offset | Count | Field | Notes |
 |---|---|---|---|
-| 0  | 3  | Angular velocity (gyro), body frame | rad/s, from `RawSensors::gyroscope`. |
-| 3  | 3  | Projected gravity, body frame | world `(0,0,-1)` rotated into the trunk frame by the firmware attitude estimate; unit vector (upright ⇒ `(0,0,-1)`). |
-| 6  | 20 | `q − default_pose` | policy joints only, rad. |
-| 26 | 20 | `dq` | policy joints only, rad/s, **unscaled**. |
-| 46 | 20 | `last_action` | previous **raw** network output, before scaling and before the joint-range clamp. |
-| 66 | 3  | Command `[vx, vy, wz]` | body-frame planar velocity (m/s, m/s, rad/s), passed through as-is. |
-| 69 | 2  | Gait clock `[sin 2πφ, cos 2πφ]` | see below. |
+| 0  | 3  | Base linear velocity, body frame | m/s, from the controller's odometry twist (see below). |
+| 3  | 3  | Angular velocity (gyro), body frame | rad/s, from `RawSensors::gyroscope`. |
+| 6  | 3  | Projected gravity, body frame | world `(0,0,-1)` rotated into the trunk frame by the firmware attitude estimate; unit vector (upright ⇒ `(0,0,-1)`). |
+| 9  | 20 | `q − default_pose` | policy joints only, rad. |
+| 29 | 20 | `dq` | policy joints only, rad/s, **unscaled**. |
+| 49 | 20 | `last_action` | previous **raw** network output, before scaling and before the joint-range clamp. |
+| 69 | 3  | Command `[vx, vy, wz]` | body-frame planar velocity (m/s, m/s, rad/s), passed through as-is. |
 
-Total `3 + 3 + 20 + 20 + 20 + 3 + 2 = 71`.
+Total `3 + 3 + 3 + 20 + 20 + 20 + 3 = 72`.
 
 No per-term scaling and no clipping: every mjlab observation term has scale 1.0.
 
-**No base linear velocity.** There is no measured base linear velocity on the real K1 in
-CUSTOM mode, so it is a critic-only privileged quantity in training and nothing here
-estimates it.
+### Base linear velocity
+
+Training observes the `imu_lin_vel` velocimeter, which sits at the trunk origin with the
+trunk's orientation: the trunk's linear velocity in the trunk frame, with 0.05/0.05/0.08 m/s
+noise and 0–60 ms of delay. Here it is the Booster controller's odometry twist (`rt/odom`,
+`nav_msgs/Odometry`), which `platform::Booster::HardwareIO` emits as
+`BoosterOdometryTwist`: its linear part is in the twist's `child_frame_id`, the body frame by
+ROS convention. HardwareIO logs both frame ids with the first message, since Booster does not
+document them.
+
+A twist older than `linear_velocity_max_age` (0.1 s), or none at all, is observed as zero,
+and the module warns every 2 s while that lasts. Zero reads as standing still, so the policy
+walks badly on it: a robot or simulator that does not publish `rt/odom` in CUSTOM mode needs
+fixing, not ignoring.
 
 ### Joint order
 
@@ -100,21 +115,6 @@ config is simply `2..21`.
 10 LeftHipPitch  11 LeftHipRoll  12 LeftHipYaw  13 LeftKneePitch  14 LeftAnklePitch  15 LeftAnkleRoll
 16 RightHipPitch 17 RightHipRoll 18 RightHipYaw 19 RightKneePitch 20 RightAnklePitch 21 RightAnkleRoll
 ```
-
-### Gait clock
-
-A fixed-period clock the policy does not control, indexed on episode time in training:
-`φ = (t / gait_period) mod 1`, `gait_period = 0.6 s` (exactly 30 control steps at 50 Hz).
-The same clock drove the swing-height and contact-mismatch rewards, so the observed period
-must match the trained one.
-
-**Standing gate:** when the command magnitude `‖[vx, vy]‖ + |wz| ≤ command_threshold`
-(0.05), the observed clock collapses to `(0, 0)` — off the unit circle, *not* pinned to a
-phase. That is a distinct "standing" input rather than a walking phase, and it is what
-turns the gait rewards off in training. The internal phase keeps advancing regardless.
-
-Here the phase advances on the **measured** loop period, not a hardcoded 0.02 s, so the gait
-keeps its trained wall-clock rate when the loop runs slow.
 
 ### Action layout (20 floats) & application
 
@@ -156,14 +156,14 @@ count is logged at DEBUG:
 
 ### Command envelope
 
-The training curriculum's final envelope is `vx ∈ [-0.6, 1.2]`, `vy ∈ [-0.4, 0.4]`,
-`wz ∈ [-1.0, 1.0]`. `PlanWalkPath`'s ball-adjust mode can ask for `wz = 1.5`, which is
-outside it. Commands are passed through unclipped, as in training.
+The training curriculum's final envelope is `vx ∈ [-1.0, 2.0]`, `vy ∈ [-0.8, 0.8]`,
+`wz ∈ [-2.0, 2.0]`, reached by iteration 8000. Commands are passed through unclipped, as in
+training.
 
 ## Instrumentation
 
 At `log_level: TRACE` every tick emits `WALKOBS <tick> mode=<K1Mode> t=<s> dt=<s>` followed
-by all 71 observations of the newest frame. `tools/analysis/segment_walk_log.py` splits a
+by all 72 observations of the newest frame. `tools/analysis/segment_walk_log.py` splits a
 capture into MOVING/FROZEN runs before reporting statistics — the first hardware log was
 81.5% robot-standing-still, and whole-file statistics from it were misleading enough to be
 quoted as findings.

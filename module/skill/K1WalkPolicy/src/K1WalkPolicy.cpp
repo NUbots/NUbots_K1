@@ -20,6 +20,7 @@
 #include "message/booster/BoosterLowCmd.hpp"
 #include "message/booster/BoosterMode.hpp"
 #include "message/booster/BoosterModeState.hpp"
+#include "message/booster/BoosterOdometryTwist.hpp"
 #include "message/platform/RawSensors.hpp"
 #include "message/skill/Walk.hpp"
 
@@ -39,6 +40,7 @@ namespace module::skill {
     using message::booster::BoosterLowCmd;
     using message::booster::BoosterMode;
     using message::booster::BoosterModeState;
+    using message::booster::BoosterOdometryTwist;
     using message::booster::K1Mode;
     using message::platform::RawSensors;
     using WalkTask = message::skill::Walk;
@@ -49,15 +51,13 @@ namespace module::skill {
 
     namespace {
 
-        constexpr double TWO_PI = 6.283185307179586;
-
         // Booster SDK RotateHead limits: pitch down-positive [-0.3, 1.0], yaw [-0.785, 0.785]
         constexpr double HEAD_PITCH_MIN = -0.3;
         constexpr double HEAD_PITCH_MAX = 1.0;
         constexpr double HEAD_YAW_LIMIT = 0.785;
 
-        // Bounds on the measured loop period used to advance the gait phase. A resumed provider or
-        // a clock step must not fling the phase forward.
+        // Bounds on the measured loop period reported by the debug graph. A resumed provider or a
+        // clock step must not show as a period of seconds.
         constexpr double MIN_TICK_DT = 0.005;
         constexpr double MAX_TICK_DT = 0.100;
 
@@ -73,6 +73,9 @@ namespace module::skill {
 
         // How often to re-ask for CUSTOM while the robot is not in it
         constexpr std::chrono::seconds MODE_RETRY_PERIOD{1};
+
+        // How often a missing or stale base linear velocity may be warned about
+        constexpr std::chrono::seconds LINEAR_VELOCITY_WARNING_PERIOD{2};
 
         template <std::size_t N>
         std::array<double, N> load_joint_array(const Configuration& config, const char* key) {
@@ -110,7 +113,6 @@ namespace module::skill {
     void K1WalkPolicy::reset_policy_state() {
         std::fill(last_action.begin(), last_action.end(), 0.0f);
         history.clear();
-        gait_phase     = 0.0;
         have_last_tick = false;
 
         off_rate_ticks     = 0;
@@ -124,23 +126,19 @@ namespace module::skill {
         on<Configuration>("K1WalkPolicy.yaml").then([this](const Configuration& config) {
             log_level = config["log_level"].as<NUClear::LogLevel>();
 
-            cfg.model_path        = config["model_path"].as<std::string>();
-            cfg.use_tensorrt      = config["use_tensorrt"].as<bool>();
-            cfg.history_window    = config["history_window"].as<std::size_t>();
-            cfg.gait_period       = config["gait_period"].as<double>();
-            cfg.command_threshold = config["command_threshold"].as<double>();
-            cfg.handoff_blend     = config["handoff_blend"].as<double>();
-            cfg.head_kp           = config["head"]["kp"].as<double>();
-            cfg.head_kd           = config["head"]["kd"].as<double>();
-            cfg.kick_velocity     = Eigen::Vector3d(config["kick"]["velocity"].as<Expression>());
-            cfg.kick_duration     = std::chrono::duration_cast<NUClear::clock::duration>(
+            cfg.model_path              = config["model_path"].as<std::string>();
+            cfg.use_tensorrt            = config["use_tensorrt"].as<bool>();
+            cfg.history_window          = config["history_window"].as<std::size_t>();
+            cfg.linear_velocity_max_age = config["linear_velocity_max_age"].as<double>();
+            cfg.handoff_blend           = config["handoff_blend"].as<double>();
+            cfg.head_kp                 = config["head"]["kp"].as<double>();
+            cfg.head_kd                 = config["head"]["kd"].as<double>();
+            cfg.kick_velocity           = Eigen::Vector3d(config["kick"]["velocity"].as<Expression>());
+            cfg.kick_duration           = std::chrono::duration_cast<NUClear::clock::duration>(
                 std::chrono::duration<double>(config["kick"]["duration"].as<double>()));
 
             if (cfg.history_window < 1) {
                 throw std::runtime_error("K1WalkPolicy.yaml: history_window must be >= 1");
-            }
-            if (cfg.gait_period <= 0.0) {
-                throw std::runtime_error("K1WalkPolicy.yaml: gait_period must be > 0");
             }
 
             // The policy joints must be distinct, in range, and exclude the head (vision owns it)
@@ -176,6 +174,16 @@ namespace module::skill {
         // and a With<> would silently stop the whole walk provider in NUSim.
         on<Trigger<BoosterModeState>>().then([this](const BoosterModeState& state) {  //
             last_mode = int(state.mode);
+        });
+
+        // The base linear velocity the policy observes: the controller's odometry twist, in the body
+        // frame (the twist's child_frame_id, by ROS convention), as the training velocimeter at the
+        // trunk's IMU site measures it
+        on<Trigger<BoosterOdometryTwist>>().then([this](const BoosterOdometryTwist& twist) {
+            const std::lock_guard<std::mutex> lock(linear_velocity_mutex);
+            linear_velocity      = twist.linear;
+            linear_velocity_time = NUClear::clock::now();
+            have_linear_velocity = true;
         });
 
         // The policy does not own the head: track whatever the look skills last asked for
@@ -263,10 +271,8 @@ namespace module::skill {
                     emit<Task>(std::make_unique<Continue>());
                 }
 
-                // Measured control period. The gait phase is advanced on this rather than on a
-                // hardcoded 0.02 s, so a loop running slow keeps the gait at its trained
-                // wall-clock rate. The observation window still spans history_window *steps*
-                // though, so a slow loop is a bug to fix: say so rather than absorb it quietly.
+                // Measured control period. The observation window spans history_window *steps*, so a
+                // loop off the trained 0.02 s is a bug to fix: say so rather than absorb it quietly.
                 const auto now = NUClear::clock::now();
                 double tick_dt = NOMINAL_TICK_DT;
                 if (have_last_tick) {
@@ -295,16 +301,40 @@ namespace module::skill {
 
                 const auto servos = servos_of(raw);
 
-                // --- observation frame (71 floats; see README.md) ---
+                // --- observation frame (72 floats; see README.md) ---
                 std::vector<float> frame{};
                 frame.reserve(frame_dim());
 
-                // [0:3] gyro, body frame
+                // [0:3] base linear velocity, body frame, from the odometry twist. Without a recent
+                // one the policy is shown zero, which it reads as standing still: warn, because it
+                // will walk badly on it.
+                Eigen::Vector3d base_velocity = Eigen::Vector3d::Zero();
+                {
+                    const std::lock_guard<std::mutex> lock(linear_velocity_mutex);
+                    const bool fresh =
+                        have_linear_velocity
+                        && std::chrono::duration<double>(now - linear_velocity_time).count()
+                               <= cfg.linear_velocity_max_age;
+                    if (fresh) {
+                        base_velocity = linear_velocity;
+                    }
+                    else if (now - last_linear_velocity_warning > LINEAR_VELOCITY_WARNING_PERIOD) {
+                        last_linear_velocity_warning = now;
+                        log<WARN>("No base linear velocity from rt/odom in the last",
+                                  cfg.linear_velocity_max_age,
+                                  "s: the walk policy is observing zero");
+                    }
+                }
+                frame.push_back(static_cast<float>(base_velocity.x()));
+                frame.push_back(static_cast<float>(base_velocity.y()));
+                frame.push_back(static_cast<float>(base_velocity.z()));
+
+                // [3:6] gyro, body frame
                 frame.push_back(raw.gyroscope.x());
                 frame.push_back(raw.gyroscope.y());
                 frame.push_back(raw.gyroscope.z());
 
-                // [3:6] projected gravity: world (0,0,-1) in the body frame, from the firmware
+                // [6:9] projected gravity: world (0,0,-1) in the body frame, from the firmware
                 // attitude estimate
                 const Eigen::Matrix3d Rwt =
                     rpy_intrinsic_to_mat(Eigen::Vector3d(raw.imu_rpy.x(), raw.imu_rpy.y(), raw.imu_rpy.z()));
@@ -313,7 +343,7 @@ namespace module::skill {
                 frame.push_back(static_cast<float>(gravity.y()));
                 frame.push_back(static_cast<float>(gravity.z()));
 
-                // [6:26] q - default_pose, [26:46] dq, both over the policy joints only
+                // [9:29] q - default_pose, [29:49] dq, both over the policy joints only
                 for (const std::size_t j : cfg.policy_joints) {
                     frame.push_back(static_cast<float>(servos[j]->present_position - cfg.default_pose[j]));
                 }
@@ -321,22 +351,13 @@ namespace module::skill {
                     frame.push_back(servos[j]->present_velocity);
                 }
 
-                // [46:66] previous raw network output
+                // [49:69] previous raw network output
                 frame.insert(frame.end(), last_action.begin(), last_action.end());
 
-                // [66:69] command [vx, vy, wz], passed through as-is
+                // [69:72] command [vx, vy, wz], passed through as-is
                 frame.push_back(static_cast<float>(cmd.x()));
                 frame.push_back(static_cast<float>(cmd.y()));
                 frame.push_back(static_cast<float>(cmd.z()));
-
-                // [69:71] gait clock. Collapsed to (0, 0) -- off the unit circle, not pinned to a
-                // phase -- while the command is below threshold, which is the distinct "standing"
-                // input the policy was trained on. The internal phase keeps advancing regardless,
-                // as it does in training where it is indexed on episode time.
-                const double command_magnitude = cmd.head<2>().norm() + std::abs(cmd.z());
-                const bool clock_active        = command_magnitude > cfg.command_threshold;
-                frame.push_back(clock_active ? static_cast<float>(std::sin(TWO_PI * gait_phase)) : 0.0f);
-                frame.push_back(clock_active ? static_cast<float>(std::cos(TWO_PI * gait_phase)) : 0.0f);
 
                 // --- observation window: seed by repeating the first frame, as the training-side
                 // circular buffer backfills on reset ---
@@ -358,10 +379,6 @@ namespace module::skill {
                 // --- inference ---
                 const std::vector<float> action = infer(input);
                 std::copy_n(action.begin(), last_action.size(), last_action.begin());
-
-                // Advance the gait phase once per inference regardless of the command (only the
-                // *observed* clock is gated), wrapped into [0, 1)
-                gait_phase = std::fmod(gait_phase + tick_dt / cfg.gait_period, 1.0);
 
                 // Full observation trace. Statistics over a log that mixes CUSTOM-mode walking with
                 // frozen non-CUSTOM ticks are meaningless, so every record carries the tick counter,
@@ -438,10 +455,10 @@ namespace module::skill {
                     out << std::fixed << std::setprecision(4);
                     out << "K1WalkPolicy sim2real"
                         // The command the planner actually asked for. Training's final envelope is
-                        // vx [-0.6, 1.2], vy [-0.4, 0.4], wz [-1.0, 1.0]; PlanWalkPath's
-                        // ball-adjust mode can ask for wz 1.5, which is outside that.
-                        << " cmd=[" << cmd.x() << ',' << cmd.y() << ',' << cmd.z() << ']' << " phase=" << gait_phase
-                        << " clamped=" << clamped;
+                        // vx [-1.0, 2.0], vy [-0.8, 0.8], wz [-2.0, 2.0].
+                        << " cmd=[" << cmd.x() << ',' << cmd.y() << ',' << cmd.z() << ']'
+                        << " base_velocity=[" << base_velocity.x() << ',' << base_velocity.y() << ','
+                        << base_velocity.z() << ']' << " clamped=" << clamped;
                     std::ostringstream action_stream;
                     std::ostringstream joint_pos_rel_stream;
                     std::ostringstream joint_vel_stream;
