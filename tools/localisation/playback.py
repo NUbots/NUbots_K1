@@ -37,8 +37,11 @@ recordings/<recording>_localisation.png. The csvs are copied to recordings/local
 
 Ground truth is read from the recording itself:
   - message.localisation.RobotPoseGroundTruth (Hft): the real robot under motion capture (localisation::Mocap)
-  - message.booster.NUSimRobotGroundTruth (Hst): NUSim (input::NUSimGroundTruth). NUSim's world is the field turned
-    half way round (our goal is at -x in NUSim, +x in {f}); --nusim-field-yaw changes that.
+  - message.booster.NUSimRobotGroundTruth (Hst): NUSim (input::NUSimGroundTruth), in NUSim's world
+
+The field is symmetric, so without a team side the localisation can settle on the field turned half way round and be
+equally right. By default (--field-yaw auto) the ground truth is turned by 0 or 180 degrees, whichever the estimates
+fit better, and the choice is printed; pass --field-yaw 0 or 180 to fix it and see a side flip as error instead.
 """
 
 import math
@@ -68,10 +71,10 @@ def register(command):
         "Use the robot's hostname, or docker for the defaults, for real robot recordings",
     )
     command.add_argument(
-        "--nusim-field-yaw",
-        type=float,
-        default=180.0,
-        help="Rotation (deg) from NUSim's world to the NUbots field frame, for NUSimRobotGroundTruth",
+        "--field-yaw",
+        default="auto",
+        help="Rotation (deg) applied to the ground truth to put it in the estimates' field frame, or auto to pick "
+        "0 or 180, whichever the estimates fit better (the field is symmetric)",
     )
     command.add_argument(
         "--plot-only", action="store_true", help="Plot the csvs of an earlier run instead of playing back again"
@@ -105,7 +108,7 @@ def load_estimates(path):
     return {"t": data["t_ns"] * 1e-9, "x": data["x"], "y": data["y"], "yaw": data["yaw"]}
 
 
-def load_ground_truth(nbs, nusim_field_yaw):
+def load_ground_truth(nbs):
     import numpy as np
 
     from utility.nbs import LinearDecoder
@@ -113,19 +116,12 @@ def load_ground_truth(nbs, nusim_field_yaw):
 
     wanted = ["message.localisation.RobotPoseGroundTruth", "message.booster.NUSimRobotGroundTruth"]
     types = [t for t in wanted if t in MessageTypes]
-    c, s = math.cos(math.radians(nusim_field_yaw)), math.sin(math.radians(nusim_field_yaw))
 
     rows = []
     for packet in LinearDecoder(nbs, types=types, show_progress=True):
         t = packet.index_timestamp * 1e-9
-        if packet.type.name == "message.localisation.RobotPoseGroundTruth":
-            m = packet.msg.Hft
-            rows.append((t, m.t.x, m.t.y, math.atan2(m.x.y, m.x.x)))
-        else:
-            # Hft = Rz(nusim_field_yaw) * Hst
-            m = packet.msg.Hst
-            yaw = math.atan2(m.x.y, m.x.x) + math.radians(nusim_field_yaw)
-            rows.append((t, c * m.t.x - s * m.t.y, s * m.t.x + c * m.t.y, math.atan2(math.sin(yaw), math.cos(yaw))))
+        m = packet.msg.Hft if packet.type.name == "message.localisation.RobotPoseGroundTruth" else packet.msg.Hst
+        rows.append((t, m.t.x, m.t.y, math.atan2(m.x.y, m.x.x)))
 
     if not rows:
         cprint(
@@ -134,6 +130,30 @@ def load_ground_truth(nbs, nusim_field_yaw):
         )
         return None
     return np.array(sorted(rows))
+
+
+def rotate(truth, degrees):
+    """The ground truth turned about the field centre: Rz(degrees) * H."""
+    import numpy as np
+
+    c, s = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
+    out = truth.copy()
+    out[:, 1] = c * truth[:, 1] - s * truth[:, 2]
+    out[:, 2] = s * truth[:, 1] + c * truth[:, 2]
+    out[:, 3] = np.angle(np.exp(1j * (truth[:, 3] + math.radians(degrees))))
+    return out
+
+
+def choose_field_yaw(estimates, truth):
+    """0 or 180: whichever turn of the ground truth the best estimator's median position error is smaller for."""
+    import numpy as np
+
+    def fit(degrees):
+        medians = [np.median(errors(e, rotate(truth, degrees))[1]) for e in estimates.values() if len(e["t"])]
+        medians = [m for m in medians if np.isfinite(m)]
+        return min(medians) if medians else np.inf
+
+    return min((0.0, 180.0), key=fit)
 
 
 def errors(estimate, truth):
@@ -174,6 +194,10 @@ def plot(nbs, estimates, truth, output):
         style = dict(color=COLOURS[name], label=name.upper() if name != "ground truth" else name)
         line = dict(linewidth=2.0) if name == "ground truth" else dict(linewidth=1.0, alpha=0.85)
         ax_xy.plot(x, y, **style, **line)
+        if len(x):
+            # Where each path starts (filled circle) and ends (cross)
+            ax_xy.plot(x[0], y[0], "o", color=COLOURS[name], markersize=9, markeredgecolor="white", zorder=5)
+            ax_xy.plot(x[-1], y[-1], "X", color=COLOURS[name], markersize=9, markeredgecolor="white", zorder=5)
         ax_x.plot(t - t0, x, **style, **line)
         ax_y.plot(t - t0, y, **style, **line)
         if name == "ground truth":
@@ -205,6 +229,9 @@ def plot(nbs, estimates, truth, output):
     ax_xy.set_xlabel("field x [m]")
     ax_xy.set_ylabel("field y [m]")
     ax_xy.set_title("torso in the field")
+    # Legend entries for the start and end markers, in a neutral colour
+    ax_xy.plot([], [], "o", color="grey", markersize=8, label="start")
+    ax_xy.plot([], [], "X", color="grey", markersize=8, label="end")
     ax_xy.legend()
     ax_x.set_ylabel("x [m]")
     ax_y.set_ylabel("y [m]")
@@ -220,7 +247,7 @@ def plot(nbs, estimates, truth, output):
 
 
 @run_on_docker
-def run(file, config_hostname, nusim_field_yaw, plot_only, **kwargs):
+def run(file, config_hostname, field_yaw, plot_only, **kwargs):
     build_dir = os.path.realpath(os.path.join(b.project_dir, "..", "build"))
     nbs = resolve(file, build_dir)
     name = os.path.splitext(os.path.basename(nbs))[0]
@@ -243,7 +270,11 @@ def run(file, config_hostname, nusim_field_yaw, plot_only, **kwargs):
         count = len(estimates[method]["t"])
         cprint(f"{method.upper()}: {count} estimates ({csv})", "green")
 
-    truth = load_ground_truth(nbs, nusim_field_yaw)
+    truth = load_ground_truth(nbs)
+    if truth is not None:
+        yaw = choose_field_yaw(estimates, truth) if field_yaw == "auto" else float(field_yaw)
+        truth = rotate(truth, yaw)
+        cprint(f"Ground truth turned {yaw:g} deg into the estimates' field frame", "cyan")
     output = os.path.join(recordings, f"{name}_localisation.png")
     for line in plot(nbs, estimates, truth, output):
         cprint(line, "cyan")

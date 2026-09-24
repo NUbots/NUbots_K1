@@ -16,7 +16,6 @@ output_directory: recordings/localisation_playback
 # what is being regenerated.
 messages:
   message.input.Sensors: true # odometry (Htw, vTw) and IMU, for both
-  message.behaviour.state.Stability: true # fall gating, for both (NLopt assumes upright without it)
   message.vision.FieldIntersections: true # NLopt's measurement
   message.vision.Goals: true # NLopt's startup/goal-post measurement
   message.vision.BoundingBoxes: true # SRIF's measurement (landmark boxes and Hcw)

@@ -27,7 +27,6 @@ The recording needs (DataLogging.yaml):
 
 ```yaml
 message.input.Sensors: true # both
-message.behaviour.state.Stability: true # both
 message.vision.FieldIntersections: true # NLopt
 message.vision.Goals: true # NLopt
 message.vision.BoundingBoxes: true # SRIF
