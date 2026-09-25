@@ -195,16 +195,14 @@ RUN if [ "${platform}" != "generic" ]; then \
     fi
 
 # Build dependencies
-RUN install-package opencl-c-headers \
+RUN install-package \
     shellcheck \
     scons \
     pkgconf \
     patchelf \
     fdupes \
     ca-certificates \
-    file \
-    rapidjson-dev \
-    libsnappy-dev
+    file
 
 
 RUN install-from-source https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2021.13.0.tar.gz \
@@ -233,39 +231,43 @@ RUN install-package -p ${platform} \
     cuda-nvrtc-dev-12-5
 
 # TensorRT - install binary packages from NVIDIA CUDA repository
-# NvInfer.h, NvOnnxParser.h, libnvinfer.so, libnvonnxparsers.so
 RUN install-package -p ${platform} \
     libnvinfer-dev \
-    libnvonnxparsers-dev \
-    libnvinfer-plugin-dev \
-    libnvinfer-lean-dev \
-    libnvinfer-vc-plugin-dev
+    libnvonnxparsers-dev
 
 
 # ONNXRuntime
 RUN . /root/.dep_env && \
     if [ "${platform}" = "generic" ]; then \
-        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-x64-1.30.0.tgz; \
+        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-x64-gpu-1.24.1.tgz; \
     else \
-        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-aarch64-1.30.0.tgz; \
+        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-aarch64-1.24.1.tgz; \
     fi && \
-    install-from-source https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/${ONNXRUNTIME_ARCHIVE} \
+    install-from-source https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/${ONNXRUNTIME_ARCHIVE} \
         --prefix ${DEP_PREFIX} \
         --no-toolchain
+
+# Install providers for ONNXRuntime [non-generic]
+# If you ever need to update the Python wheel used below, see:
+# https://pypi.jetson-ai-lab.io/
+RUN . /root/.dep_env && \
+    if [ "${platform}" != "generic" ]; then \
+        wget -nv https://pypi.jetson-ai-lab.io/jp6/cu128/+f/d98/0b934b9a29c1a/onnxruntime_gpu-1.24.0-cp310-cp310-linux_aarch64.whl#sha256=d980b934b9a29c1a9d6f39751edd7662b69fadd75556a10ff363773a58ce0950 -O /tmp/onnxruntime_tensorrt.whl && \
+        unzip /tmp/onnxruntime_tensorrt.whl -d /tmp/onnxruntime_tensorrt && \
+        # We're only interested in the EP's static libs
+        cd /tmp/onnxruntime_tensorrt/onnxruntime/capi && \
+        mv libonnxruntime_*.so ${DEP_PREFIX}/lib/ && \
+        # ONNXRuntime doesn't have a 1.24.0 tag for some reason, but it won't kill us to use 1.24.1
+        install-from-source https://raw.githubusercontent.com/microsoft/onnxruntime/refs/tags/v1.24.1/include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h \
+            --prefix ${DEP_PREFIX} \
+            --no-toolchain \
+            --header-path include/onnxruntime/core/providers/tensorrt; \
+    fi
+
 
 # Eigen3
 RUN install-from-source https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz \
     --jobs $(nproc)
-
-# tcmalloc
-RUN . /root/.dep_env && \
-    install-from-source https://github.com/gperftools/gperftools/releases/download/gperftools-2.10/gperftools-2.10.tar.gz \
-    --jobs $(nproc) \
-    --build-system autotools \
-    --prefix ${DEP_PREFIX} \
-    ${DEP_TOOLCHAIN} \
-    --with-tcmalloc-pagesize=64 \
-    --enable-minimal
 
 # Libjpeg
 RUN install-package yasm

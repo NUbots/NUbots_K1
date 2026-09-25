@@ -89,6 +89,8 @@ namespace utility::onnx {
 
     ONNXRuntime::ONNXRuntime(const std::string& onnx_path) : impl(std::make_unique<Impl>()) {
         Ort::SessionOptions session_options{};
+        int device_id = 0;
+        Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, device_id));
         impl->session = Ort::Session(shared_env(), onnx_path.c_str(), session_options);
 
         if (impl->session.GetInputCount() != 1 || impl->session.GetOutputCount() != 1) {
