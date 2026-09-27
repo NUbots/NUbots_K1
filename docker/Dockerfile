@@ -240,15 +240,16 @@ RUN install-package -p ${platform} \
     libnvonnxparsers-dev
 
 
-# ONNXRuntime (generic)
+# ONNXRuntime (headers + libs); on Jetson the libs are replaced by the GPU wheel's below
 RUN . /root/.dep_env && \
     if [ "${platform}" = "generic" ]; then \
-        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-x64-gpu-1.24.1.tgz \
-    && \
+        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-x64-gpu-1.24.1.tgz ;\
+    else \
+        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-aarch64-1.24.1.tgz ;\
+    fi && \
     install-from-source https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/${ONNXRUNTIME_ARCHIVE} \
         --prefix ${DEP_PREFIX} \
-        --no-toolchain ;\
-    fi
+        --no-toolchain
 
 # ONNXRuntime (Jetson); to update, see:
 # https://pypi.jetson-ai-lab.io/
@@ -258,7 +259,11 @@ RUN . /root/.dep_env && \
         unzip /tmp/onnxruntime_tensorrt.whl -d /tmp/onnxruntime_tensorrt && \
         cd /tmp/onnxruntime_tensorrt/onnxruntime/capi && \
         mv libonnxruntime* ${DEP_PREFIX}/lib/ && \
-        # ONNXRuntime doesn't have a 1.24.0 tag for some reason, but it won't kill us to use 1.24.1
+        # Change current symlinks to point to the copied fi;es
+        rm -f ${DEP_PREFIX}/lib/libonnxruntime.so.1.24.1 && \
+        ln -sf libonnxruntime.so.1.24.0 ${DEP_PREFIX}/lib/libonnxruntime.so.1 && \
+        ln -sf libonnxruntime.so.1 ${DEP_PREFIX}/lib/libonnxruntime.so && \
+        # Get TensorRT EP header
         install-from-source https://raw.githubusercontent.com/microsoft/onnxruntime/refs/tags/v1.24.1/include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h \
             --prefix ${DEP_PREFIX} \
             --no-toolchain \
