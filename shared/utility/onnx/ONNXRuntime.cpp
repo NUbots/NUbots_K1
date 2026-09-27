@@ -88,10 +88,17 @@ namespace utility::onnx {
     };
 
     ONNXRuntime::ONNXRuntime(const std::string& onnx_path) : impl(std::make_unique<Impl>()) {
+        // The Env registers ORT's default logger, which loading the TensorRT EP below logs through
+        Ort::Env& env = shared_env();
         Ort::SessionOptions session_options{};
-        int device_id = 0;
-        Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, device_id));
-        impl->session = Ort::Session(shared_env(), onnx_path.c_str(), session_options);
+        const OrtApi& api                 = Ort::GetApi();
+        OrtTensorRTProviderOptionsV2* trt = nullptr;
+        Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&trt));
+        std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> trt_guard(
+            trt,
+            api.ReleaseTensorRTProviderOptions);
+        session_options.AppendExecutionProvider_TensorRT_V2(*trt);
+        impl->session = Ort::Session(env, onnx_path.c_str(), session_options);
 
         if (impl->session.GetInputCount() != 1 || impl->session.GetOutputCount() != 1) {
             throw std::runtime_error("Expected a model with exactly one input and one output tensor");

@@ -236,27 +236,24 @@ RUN install-package -p ${platform} \
     libnvonnxparsers-dev
 
 
-# ONNXRuntime
+# ONNXRuntime (generic)
 RUN . /root/.dep_env && \
     if [ "${platform}" = "generic" ]; then \
-        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-x64-gpu-1.24.1.tgz; \
-    else \
-        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-aarch64-1.24.1.tgz; \
-    fi && \
+        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-x64-gpu-1.24.1.tgz \
+    && \
     install-from-source https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/${ONNXRUNTIME_ARCHIVE} \
         --prefix ${DEP_PREFIX} \
-        --no-toolchain
+        --no-toolchain ;\
+    fi
 
-# Install providers for ONNXRuntime [non-generic]
-# If you ever need to update the Python wheel used below, see:
+# ONNXRuntime (Jetson); to update, see:
 # https://pypi.jetson-ai-lab.io/
 RUN . /root/.dep_env && \
     if [ "${platform}" != "generic" ]; then \
         wget -nv https://pypi.jetson-ai-lab.io/jp6/cu128/+f/d98/0b934b9a29c1a/onnxruntime_gpu-1.24.0-cp310-cp310-linux_aarch64.whl#sha256=d980b934b9a29c1a9d6f39751edd7662b69fadd75556a10ff363773a58ce0950 -O /tmp/onnxruntime_tensorrt.whl && \
         unzip /tmp/onnxruntime_tensorrt.whl -d /tmp/onnxruntime_tensorrt && \
-        # We're only interested in the EP's static libs
         cd /tmp/onnxruntime_tensorrt/onnxruntime/capi && \
-        mv libonnxruntime_*.so ${DEP_PREFIX}/lib/ && \
+        mv *.so ${DEP_PREFIX}/lib/ && \
         # ONNXRuntime doesn't have a 1.24.0 tag for some reason, but it won't kill us to use 1.24.1
         install-from-source https://raw.githubusercontent.com/microsoft/onnxruntime/refs/tags/v1.24.1/include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h \
             --prefix ${DEP_PREFIX} \
