@@ -257,7 +257,7 @@ RUN . /root/.dep_env && \
         wget -nv https://pypi.jetson-ai-lab.io/jp6/cu128/+f/d98/0b934b9a29c1a/onnxruntime_gpu-1.24.0-cp310-cp310-linux_aarch64.whl#sha256=d980b934b9a29c1a9d6f39751edd7662b69fadd75556a10ff363773a58ce0950 -O /tmp/onnxruntime_tensorrt.whl && \
         unzip /tmp/onnxruntime_tensorrt.whl -d /tmp/onnxruntime_tensorrt && \
         cd /tmp/onnxruntime_tensorrt/onnxruntime/capi && \
-        mv *.so ${DEP_PREFIX}/lib/ && \
+        mv libonnxruntime* ${DEP_PREFIX}/lib/ && \
         # ONNXRuntime doesn't have a 1.24.0 tag for some reason, but it won't kill us to use 1.24.1
         install-from-source https://raw.githubusercontent.com/microsoft/onnxruntime/refs/tags/v1.24.1/include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h \
             --prefix ${DEP_PREFIX} \
