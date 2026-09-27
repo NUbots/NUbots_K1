@@ -61,8 +61,17 @@ if [ "$platform" = "orinnx" ]; then
 
     todo=$(comm -23 want.txt have.txt)
     if [ -n "$todo" ]; then
+        # Architecture: all packages have no :arm64 candidate, so download those by bare name
+        dl=""
+        for p in $todo; do
+            if apt-cache show --no-all-versions "$p" 2>/dev/null | grep -q '^Architecture: all'; then
+                dl="$dl $p"
+            else
+                dl="$dl $p:arm64"
+            fi
+        done
         # shellcheck disable=SC2086
-        apt-get download $(printf '%s:arm64 ' $todo) || { echo "Error: Failed to download arm64 packages" >&2; exit 1; }
+        apt-get download $dl || { echo "Error: Failed to download arm64 packages" >&2; exit 1; }
     fi
 
     # Extract all downloaded debs to sysroot
