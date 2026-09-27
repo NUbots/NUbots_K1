@@ -76,7 +76,7 @@ if [ "$platform" = "orinnx" ]; then
 
     # Extract all downloaded debs to sysroot
     for deb in /tmp/debs/*.deb; do
-        [ -f "$deb" ] && dpkg -x "$deb" /l4t/targetfs
+        [ -f "$deb" ] && dpkg-deb --fsys-tarfile "$deb" | tar -x --keep-directory-symlink -C /l4t/targetfs
     done
     [ -n "$todo" ] && printf '%s\n' $todo >> "$ledger"
 
