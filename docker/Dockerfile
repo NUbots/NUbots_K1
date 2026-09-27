@@ -230,6 +230,10 @@ RUN install-package -p ${platform} \
     cuda-nvrtc-12-5 \
     cuda-nvrtc-dev-12-5
 
+# Pin TensorRT to v10 as ONNXRuntime needs v10 and not v11
+RUN printf 'Package: libnvinfer* libnvonnxparsers*\nPin: version 10.3.0.26-1+cuda12.5\nPin-Priority: 1001\n' \
+    > /etc/apt/preferences.d/tensorrt
+
 # TensorRT - install binary packages from NVIDIA CUDA repository
 RUN install-package -p ${platform} \
     libnvinfer-dev \
