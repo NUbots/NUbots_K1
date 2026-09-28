@@ -89,9 +89,10 @@ namespace module::vision {
             // Load the model
             try {
                 std::string model_path = config["model_path"].as<std::string>();
+                std::string device     = config["device"].as<std::string>();
 
-                log<INFO>("Loading YOLO model from: ", model_path);
-                onnx_rt = std::make_unique<utility::onnx::ONNXRuntime>(model_path);
+                log<INFO>("Loading YOLO model from: ", model_path, " on ", device);
+                onnx_rt = std::make_unique<utility::onnx::ONNXRuntime>(model_path, device);
                 log<INFO>("Model loaded successfully");
             }
             catch (const std::exception& e) {

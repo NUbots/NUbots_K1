@@ -63,7 +63,7 @@ namespace module::vision {
 
             // Load the model
             std::string model_path = config["model_path"].as<std::string>();
-            onnx_rt                = std::make_unique<utility::onnx::ONNXRuntime>(model_path);
+            onnx_rt = std::make_unique<utility::onnx::ONNXRuntime>(model_path, config["device"].as<std::string>());
         });
 
         on<Trigger<Image>, Single>().then("Yolo Main Loop", [this](const Image& img) {

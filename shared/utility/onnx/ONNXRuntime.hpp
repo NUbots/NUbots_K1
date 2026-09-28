@@ -34,13 +34,14 @@
 
 namespace utility::onnx {
 
-    /// Runs CPU inference with ONNX Runtime on a single-input, single-output model.ß
+    /// Runs inference with ONNX Runtime on a single-input, single-output model
     class ONNXRuntime {
     public:
         /// Load an ONNX model for inference
         /// @param onnx_path Path to the ONNX model file
-        /// @throws std::runtime_error if the model cannot be loaded
-        explicit ONNXRuntime(const std::string& onnx_path);
+        /// @param device_type "cpu", or "gpu" to use the TensorRT execution provider
+        /// @throws std::runtime_error if the model cannot be loaded or device_type is unknown
+        explicit ONNXRuntime(const std::string& onnx_path, const std::string& device_type);
         ~ONNXRuntime();
 
         ONNXRuntime(const ONNXRuntime&)            = delete;

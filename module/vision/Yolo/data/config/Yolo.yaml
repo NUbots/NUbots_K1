@@ -4,6 +4,9 @@ log_level: INFO
 # Path to the model weights
 model_path: "booster.onnx"
 
+# Inference device: cpu, or gpu (TensorRT)
+device: gpu
+
 # Minimum confidence required for a ball detection to be accepted
 ball_confidence_threshold: 0.45
 

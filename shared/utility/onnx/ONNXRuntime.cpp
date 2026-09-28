@@ -87,17 +87,26 @@ namespace utility::onnx {
         size_t output_count = 0;
     };
 
-    ONNXRuntime::ONNXRuntime(const std::string& onnx_path) : impl(std::make_unique<Impl>()) {
+    ONNXRuntime::ONNXRuntime(const std::string& onnx_path, const std::string& device_type)
+        : impl(std::make_unique<Impl>()) {
         // The Env registers ORT's default logger, which loading the TensorRT EP below logs through
         Ort::Env& env = shared_env();
         Ort::SessionOptions session_options{};
-        const OrtApi& api                 = Ort::GetApi();
-        OrtTensorRTProviderOptionsV2* trt = nullptr;
-        Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&trt));
-        std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> trt_guard(
-            trt,
-            api.ReleaseTensorRTProviderOptions);
-        session_options.AppendExecutionProvider_TensorRT_V2(*trt);
+
+        // ORT always falls back to its built-in CPU EP, so CPU needs no provider registered
+        if (device_type == "gpu") {
+            const OrtApi& api                 = Ort::GetApi();
+            OrtTensorRTProviderOptionsV2* trt = nullptr;
+            Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&trt));
+            std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> trt_guard(
+                trt,
+                api.ReleaseTensorRTProviderOptions);
+            session_options.AppendExecutionProvider_TensorRT_V2(*trt);
+        }
+        else if (device_type != "cpu") {
+            throw std::runtime_error("Unknown device type '" + device_type + "', expected cpu or gpu");
+        }
+
         impl->session = Ort::Session(env, onnx_path.c_str(), session_options);
 
         if (impl->session.GetInputCount() != 1 || impl->session.GetOutputCount() != 1) {

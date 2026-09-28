@@ -4,6 +4,9 @@ log_level: INFO
 # Path to the model weights
 model_path: "coco.onnx"
 
+# Inference device: cpu, or gpu (TensorRT)
+device: gpu
+
 # NMS threshold for filtering out overlapping bounding boxes
 nms_threshold: 0.5
 
