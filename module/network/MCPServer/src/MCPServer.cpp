@@ -364,7 +364,15 @@ namespace module::network {
                 float duration = input.value("duration", 0.0f);      // and the duration
                 speed          = std::clamp(speed, 0.0f, 0.5f);      // enforce stated safety cap
                 rotation       = std::clamp(rotation, -1.0f, 1.0f);  // enforce stated safety cap
-                log<DEBUG>("Starting to walk at ", speed, "with angle ", angle, "and rotation", rotation);
+                log<DEBUG>("Starting to walk at ",
+                           speed,
+                           "with angle ",
+                           angle,
+                           "and rotation",
+                           rotation,
+                           "for ",
+                           duration,
+                           "seconds.");
 
                 float vx = speed * cos(angle);
                 float vy = speed * sin(angle);
@@ -376,7 +384,7 @@ namespace module::network {
                 const uint64_t generation = ++walk_generation;
                 if (duration > 0.0f) {
                     emit<Scope::DELAY>(std::make_unique<StopWalk>(StopWalk{generation}),
-                                        std::chrono::milliseconds(int64_t(duration * 1000)));
+                                       std::chrono::milliseconds(int64_t(duration * 1000)));
                 }
 
                 return {
