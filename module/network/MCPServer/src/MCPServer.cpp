@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <mcp/mcp.hpp>
 #include <memory>
@@ -168,6 +169,9 @@ namespace module::network {
             cfg.path            = config["path"].as<std::string>();
             cfg.allowed_origins = config["allowed_origins"].as<std::vector<std::string>>();
             cfg.allow_ace       = config["allow_ace"].as<bool>();
+            cfg.walk_start_distance = config["walk_start_distance"].as<double>();
+            cfg.walk_start_yaw      = config["walk_start_yaw"].as<double>();
+            cfg.walk_start_timeout  = config["walk_start_timeout"].as<double>();
         });
 
         on<Startup>().then([this] {
@@ -214,6 +218,50 @@ namespace module::network {
             last_sensors = sensors;
         });
 
+        on<Trigger<Sensors>>().then("Detect Walk Start", [this](const Sensors& sensors) {
+            // Odometry says whether the robot has actually started moving, so the duration timer doesn't include
+            // the gait's startup lean
+            const Eigen::Isometry3d Hwt = Eigen::Isometry3d(sensors.Htw).inverse();
+            uint64_t generation         = 0;
+            double duration             = 0.0;
+            {
+                std::lock_guard<std::mutex> lock(walk_start_mutex);
+                if (!pending_walk_start.active) {
+                    return;
+                }
+                const Eigen::Isometry3d& Hwt0 = pending_walk_start.Hwt_start;
+                const double distance         = (Hwt.translation() - Hwt0.translation()).head<2>().norm();
+                const Eigen::Vector3d x0      = Hwt0.rotation().col(0);
+                const Eigen::Vector3d x1      = Hwt.rotation().col(0);
+                const double dyaw             = std::abs(std::atan2(x0.x() * x1.y() - x0.y() * x1.x(),
+                                                                    x0.x() * x1.x() + x0.y() * x1.y()));
+                if (distance < cfg.walk_start_distance && dyaw < cfg.walk_start_yaw) {
+                    return;
+                }
+                pending_walk_start.active = false;
+                generation                = pending_walk_start.generation;
+                duration                  = pending_walk_start.duration;
+            }
+            log<DEBUG>("Walk movement detected by odometry, starting duration timer of", duration, "seconds.");
+            schedule_walk_stop(generation, duration);
+        });
+
+        on<Trigger<WalkStartTimeout>>().then("Walk Start Timeout", [this](const WalkStartTimeout& timeout) {
+            uint64_t generation = 0;
+            double duration     = 0.0;
+            {
+                std::lock_guard<std::mutex> lock(walk_start_mutex);
+                if (!pending_walk_start.active || pending_walk_start.generation != timeout.generation) {
+                    return;
+                }
+                pending_walk_start.active = false;
+                generation                = pending_walk_start.generation;
+                duration                  = pending_walk_start.duration;
+            }
+            log<WARN>("No movement detected by odometry before timeout, starting duration timer anyway.");
+            schedule_walk_stop(generation, duration);
+        });
+
         on<Trigger<Field>>().then("Cache Latest Field", [this](const std::shared_ptr<const Field>& field) {
             std::lock_guard<std::mutex> lock(field_mutex);
             last_field = field;
@@ -225,6 +273,11 @@ namespace module::network {
                 emit<Task>(std::make_unique<Walk>(Eigen::Vector3d::Zero()), 3);
             }
         });
+    }
+
+    void MCPServer::schedule_walk_stop(uint64_t generation, double duration) {
+        emit<Scope::DELAY>(std::make_unique<StopWalk>(StopWalk{generation}),
+                           std::chrono::milliseconds(int64_t(duration * 1000)));
     }
 
     void MCPServer::register_tools(mcp::Server& server) {
@@ -382,9 +435,33 @@ namespace module::network {
                 // Bump the generation on every call (not just timed ones) so a stale StopWalk from an earlier
                 // call can never match and cut short a walk call that came after it
                 const uint64_t generation = ++walk_generation;
+                {
+                    // Supersede any earlier walk call still waiting for movement
+                    std::lock_guard<std::mutex> lock(walk_start_mutex);
+                    pending_walk_start.active = false;
+                }
                 if (duration > 0.0f) {
-                    emit<Scope::DELAY>(std::make_unique<StopWalk>(StopWalk{generation}),
-                                       std::chrono::milliseconds(int64_t(duration * 1000)));
+                    std::shared_ptr<const Sensors> sensors;
+                    {
+                        std::lock_guard<std::mutex> lock(sensors_mutex);
+                        sensors = last_sensors;
+                    }
+                    const bool commanded_motion = (vx != 0.0f || vy != 0.0f || rotation != 0.0f);
+                    if (sensors == nullptr || !commanded_motion) {
+                        // Nothing to detect movement with (or nothing to move), so fall back to a plain timer
+                        schedule_walk_stop(generation, duration);
+                    }
+                    else {
+                        {
+                            std::lock_guard<std::mutex> lock(walk_start_mutex);
+                            pending_walk_start = {true,
+                                                  generation,
+                                                  duration,
+                                                  Eigen::Isometry3d(sensors->Htw).inverse()};
+                        }
+                        emit<Scope::DELAY>(std::make_unique<WalkStartTimeout>(WalkStartTimeout{generation}),
+                                           std::chrono::milliseconds(int64_t(cfg.walk_start_timeout * 1000)));
+                    }
                 }
 
                 return {

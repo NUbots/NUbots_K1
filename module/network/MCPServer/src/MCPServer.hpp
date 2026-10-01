@@ -22,6 +22,12 @@ namespace module::network {
         uint64_t generation;
     };
 
+    /// @brief Fallback trigger fired if odometry never detects movement after a "walk" call, so the duration timer
+    /// still starts and the robot is not left walking forever. Carries the walk call's generation.
+    struct WalkStartTimeout {
+        uint64_t generation;
+    };
+
     class MCPServer : public NUClear::Reactor {
     private:
         /// @brief Stores configuration values
@@ -36,6 +42,12 @@ namespace module::network {
             std::vector<std::string> allowed_origins{};
             /// @brief Boolean for allowing Claude to run random commands with no oversight
             bool allow_ace = false;
+            /// @brief Torso displacement from odometry (m) after which a "walk" call counts as having started moving
+            double walk_start_distance = 0.05;
+            /// @brief Torso yaw change from odometry (rad) after which a "walk" call counts as having started moving
+            double walk_start_yaw = 0.1;
+            /// @brief Max time (s) to wait for odometry to detect movement before starting the duration timer anyway
+            double walk_start_timeout = 3.0;
         } cfg;
 
         /// @brief The MCP Streamable HTTP host, created on Startup and stopped on Shutdown
@@ -59,6 +71,21 @@ namespace module::network {
         /// @brief Incremented on every "walk" tool call so a delayed StopWalk can tell whether it still belongs
         /// to the walk command it was scheduled for, or whether a newer walk call has since superseded it
         std::atomic<uint64_t> walk_generation{0};
+
+        /// @brief State of a "walk" call whose duration timer has not started yet because odometry hasn't seen the
+        /// robot move. Guarded by walk_start_mutex, written from MCP tool calls and read from the Sensors reaction
+        struct PendingWalkStart {
+            bool active = false;
+            uint64_t generation{0};
+            /// @brief Requested walk duration in seconds
+            double duration = 0.0;
+            /// @brief Torso pose in world {w} when the walk was commanded
+            Eigen::Isometry3d Hwt_start = Eigen::Isometry3d::Identity();
+        } pending_walk_start;
+        std::mutex walk_start_mutex;
+
+        /// @brief Starts the countdown that stops walk call `generation` after `duration` seconds
+        void schedule_walk_stop(uint64_t generation, double duration);
 
         /// @brief Register the tools exposed to each MCP session
         void register_tools(mcp::Server& server);

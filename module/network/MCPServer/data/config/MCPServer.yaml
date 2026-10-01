@@ -25,6 +25,14 @@ allowed_origins:
   - "https://claude.ai"
 
 # Section 3:
+# Walk tool: the duration timer only starts once odometry sees the robot start moving, because the gait leans
+# forward for a while before stepping. Movement = torso displacement OR yaw change past these thresholds.
+walk_start_distance: 0.05 # m
+walk_start_yaw: 0.1 # rad
+# If movement is never detected, start the duration timer anyway after this long (s)
+walk_start_timeout: 3.0
+
+# Section 4:
 # NUClear stuff
 
 # Controls the minimum log level that NUClear log will display
