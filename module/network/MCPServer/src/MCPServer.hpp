@@ -2,6 +2,7 @@
 #define MODULE_NETWORK_MCPSERVER_HPP
 
 #include <atomic>
+#include <chrono>
 #include <mcp/http_server_host.hpp>
 #include <memory>
 #include <mutex>
@@ -79,6 +80,8 @@ namespace module::network {
             uint64_t generation{0};
             /// @brief Requested walk duration in seconds
             double duration = 0.0;
+            /// @brief When the walk was commanded, to report how long movement took to appear
+            std::chrono::steady_clock::time_point commanded_at{};
             /// @brief Torso pose in world {w} when the walk was commanded
             Eigen::Isometry3d Hwt_start = Eigen::Isometry3d::Identity();
         } pending_walk_start;

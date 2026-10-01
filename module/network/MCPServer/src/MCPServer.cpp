@@ -224,16 +224,19 @@ namespace module::network {
             const Eigen::Isometry3d Hwt = Eigen::Isometry3d(sensors.Htw).inverse();
             uint64_t generation         = 0;
             double duration             = 0.0;
+            double distance             = 0.0;
+            double dyaw                 = 0.0;
+            double elapsed              = 0.0;
             {
                 std::lock_guard<std::mutex> lock(walk_start_mutex);
                 if (!pending_walk_start.active) {
                     return;
                 }
                 const Eigen::Isometry3d& Hwt0 = pending_walk_start.Hwt_start;
-                const double distance         = (Hwt.translation() - Hwt0.translation()).head<2>().norm();
+                distance                      = (Hwt.translation() - Hwt0.translation()).head<2>().norm();
                 const Eigen::Vector3d x0      = Hwt0.rotation().col(0);
                 const Eigen::Vector3d x1      = Hwt.rotation().col(0);
-                const double dyaw             = std::abs(std::atan2(x0.x() * x1.y() - x0.y() * x1.x(),
+                dyaw                          = std::abs(std::atan2(x0.x() * x1.y() - x0.y() * x1.x(),
                                                                     x0.x() * x1.x() + x0.y() * x1.y()));
                 if (distance < cfg.walk_start_distance && dyaw < cfg.walk_start_yaw) {
                     return;
@@ -241,8 +244,19 @@ namespace module::network {
                 pending_walk_start.active = false;
                 generation                = pending_walk_start.generation;
                 duration                  = pending_walk_start.duration;
+                elapsed                   = std::chrono::duration<double>(std::chrono::steady_clock::now()
+                                                                        - pending_walk_start.commanded_at)
+                                              .count();
             }
-            log<DEBUG>("Walk movement detected by odometry, starting duration timer of", duration, "seconds.");
+            log<DEBUG>("Walk movement detected by odometry",
+                       elapsed,
+                       "s after walk command (moved",
+                       distance,
+                       "m, turned",
+                       dyaw,
+                       "rad). Starting duration timer of",
+                       duration,
+                       "seconds.");
             schedule_walk_stop(generation, duration);
         });
 
@@ -457,8 +471,12 @@ namespace module::network {
                             pending_walk_start = {true,
                                                   generation,
                                                   duration,
+                                                  std::chrono::steady_clock::now(),
                                                   Eigen::Isometry3d(sensors->Htw).inverse()};
                         }
+                        log<DEBUG>("Walk commanded, waiting for odometry to detect movement (timeout",
+                                   cfg.walk_start_timeout,
+                                   "s).");
                         emit<Scope::DELAY>(std::make_unique<WalkStartTimeout>(WalkStartTimeout{generation}),
                                            std::chrono::milliseconds(int64_t(cfg.walk_start_timeout * 1000)));
                     }
