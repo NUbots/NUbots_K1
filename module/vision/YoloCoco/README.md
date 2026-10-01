@@ -11,6 +11,7 @@ Confidence thresholds for each class can be specified in the config.
 Inference is run using ONNX Runtime (https://onnxruntime.ai/), either using the default CPU execution provider, or by using the TensorRT execution provider for NVIDIA GPUs.
 
 Note that inference using non-NVIDIA GPUs is currently unsupported.
+
 ## Usage
 
 Include this module to detect balls, goals, robots and field line intersections in images.
