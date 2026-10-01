@@ -26,7 +26,10 @@ allowed_origins:
 
 # Section 3:
 # Walk tool: the duration timer only starts once odometry sees the robot start moving, because the gait leans
-# forward for a while before stepping. Movement = torso displacement OR yaw change past these thresholds.
+# forward for a while before stepping. Movement = speed (or displacement fallback) OR yaw change past thresholds.
+# Measured torso speed (Sensors.vTw from rt/odom) above which the robot counts as moving
+walk_start_speed: 0.1 # m/s
+# Fallback when vTw is NaN (no recent rt/odom twist): torso displacement from odometry
 walk_start_distance: 0.05 # m
 walk_start_yaw: 0.1 # rad
 # If movement is never detected, start the duration timer anyway after this long (s)

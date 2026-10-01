@@ -169,6 +169,7 @@ namespace module::network {
             cfg.path            = config["path"].as<std::string>();
             cfg.allowed_origins = config["allowed_origins"].as<std::vector<std::string>>();
             cfg.allow_ace       = config["allow_ace"].as<bool>();
+            cfg.walk_start_speed    = config["walk_start_speed"].as<double>();
             cfg.walk_start_distance = config["walk_start_distance"].as<double>();
             cfg.walk_start_yaw      = config["walk_start_yaw"].as<double>();
             cfg.walk_start_timeout  = config["walk_start_timeout"].as<double>();
@@ -227,6 +228,8 @@ namespace module::network {
             double distance             = 0.0;
             double dyaw                 = 0.0;
             double elapsed              = 0.0;
+            double speed                = 0.0;
+            bool speed_measured         = false;
             {
                 std::lock_guard<std::mutex> lock(walk_start_mutex);
                 if (!pending_walk_start.active) {
@@ -238,7 +241,15 @@ namespace module::network {
                 const Eigen::Vector3d x1      = Hwt.rotation().col(0);
                 dyaw                          = std::abs(std::atan2(x0.x() * x1.y() - x0.y() * x1.x(),
                                                                     x0.x() * x1.x() + x0.y() * x1.y()));
-                if (distance < cfg.walk_start_distance && dyaw < cfg.walk_start_yaw) {
+                // vTw is measured torso velocity from rt/odom (NaN when no recent twist), so prefer it for
+                // linear motion and only fall back to displacement when it isn't available. It has no yaw rate,
+                // so turning is always detected from the pose.
+                const Eigen::Vector2d v_xy = sensors.vTw.head<2>();
+                speed_measured             = v_xy.allFinite();
+                speed                      = speed_measured ? v_xy.norm() : 0.0;
+                const bool moving_linear   = speed_measured ? speed > cfg.walk_start_speed
+                                                            : distance >= cfg.walk_start_distance;
+                if (!moving_linear && dyaw < cfg.walk_start_yaw) {
                     return;
                 }
                 pending_walk_start.active = false;
@@ -254,7 +265,9 @@ namespace module::network {
                        distance,
                        "m, turned",
                        dyaw,
-                       "rad). Starting duration timer of",
+                       "rad, speed",
+                       speed_measured ? std::to_string(speed) + " m/s" : std::string("unmeasured (fell back to displacement)"),
+                       "). Starting duration timer of",
                        duration,
                        "seconds.");
             schedule_walk_stop(generation, duration);

@@ -43,7 +43,9 @@ namespace module::network {
             std::vector<std::string> allowed_origins{};
             /// @brief Boolean for allowing Claude to run random commands with no oversight
             bool allow_ace = false;
-            /// @brief Torso displacement from odometry (m) after which a "walk" call counts as having started moving
+            /// @brief Measured torso speed (m/s, from Sensors.vTw) above which a "walk" call counts as moving
+            double walk_start_speed = 0.1;
+            /// @brief Fallback when vTw is unmeasured: torso displacement from odometry (m) after which a "walk" call counts as having started moving
             double walk_start_distance = 0.05;
             /// @brief Torso yaw change from odometry (rad) after which a "walk" call counts as having started moving
             double walk_start_yaw = 0.1;
