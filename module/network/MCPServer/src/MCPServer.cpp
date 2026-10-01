@@ -159,16 +159,25 @@ namespace module::network {
         return result;
     }
 
+    float find_accurate_walk_speed(float target_velocity) {
+        // so I fit a curve for real walk speed vs target walk speed
+        // it can be represented as
+
+        float output = (-0.9358 + sqrt(0.85869 + 1.2096 * target_velocity)) / (0.6048);
+
+        return output;
+    }
+
     MCPServer::MCPServer(std::unique_ptr<NUClear::Environment> environment) : Reactor(std::move(environment)) {
 
         on<Configuration>("MCPServer.yaml").then([this](const Configuration& config) {
             this->log_level = config["log_level"].as<NUClear::LogLevel>();
 
-            cfg.host            = config["host"].as<std::string>();
-            cfg.port            = config["port"].as<int>();
-            cfg.path            = config["path"].as<std::string>();
-            cfg.allowed_origins = config["allowed_origins"].as<std::vector<std::string>>();
-            cfg.allow_ace       = config["allow_ace"].as<bool>();
+            cfg.host                = config["host"].as<std::string>();
+            cfg.port                = config["port"].as<int>();
+            cfg.path                = config["path"].as<std::string>();
+            cfg.allowed_origins     = config["allowed_origins"].as<std::vector<std::string>>();
+            cfg.allow_ace           = config["allow_ace"].as<bool>();
             cfg.walk_start_speed    = config["walk_start_speed"].as<double>();
             cfg.walk_start_distance = config["walk_start_distance"].as<double>();
             cfg.walk_start_yaw      = config["walk_start_yaw"].as<double>();
@@ -239,37 +248,37 @@ namespace module::network {
                 distance                      = (Hwt.translation() - Hwt0.translation()).head<2>().norm();
                 const Eigen::Vector3d x0      = Hwt0.rotation().col(0);
                 const Eigen::Vector3d x1      = Hwt.rotation().col(0);
-                dyaw                          = std::abs(std::atan2(x0.x() * x1.y() - x0.y() * x1.x(),
-                                                                    x0.x() * x1.x() + x0.y() * x1.y()));
+                dyaw = std::abs(std::atan2(x0.x() * x1.y() - x0.y() * x1.x(), x0.x() * x1.x() + x0.y() * x1.y()));
                 // vTw is measured torso velocity from rt/odom (NaN when no recent twist), so prefer it for
                 // linear motion and only fall back to displacement when it isn't available. It has no yaw rate,
                 // so turning is always detected from the pose.
                 const Eigen::Vector2d v_xy = sensors.vTw.head<2>();
                 speed_measured             = v_xy.allFinite();
                 speed                      = speed_measured ? v_xy.norm() : 0.0;
-                const bool moving_linear   = speed_measured ? speed > cfg.walk_start_speed
-                                                            : distance >= cfg.walk_start_distance;
+                const bool moving_linear =
+                    speed_measured ? speed > cfg.walk_start_speed : distance >= cfg.walk_start_distance;
                 if (!moving_linear && dyaw < cfg.walk_start_yaw) {
                     return;
                 }
                 pending_walk_start.active = false;
                 generation                = pending_walk_start.generation;
                 duration                  = pending_walk_start.duration;
-                elapsed                   = std::chrono::duration<double>(std::chrono::steady_clock::now()
-                                                                        - pending_walk_start.commanded_at)
-                                              .count();
+                elapsed =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - pending_walk_start.commanded_at)
+                        .count();
             }
-            log<DEBUG>("Walk movement detected by odometry",
-                       elapsed,
-                       "s after walk command (moved",
-                       distance,
-                       "m, turned",
-                       dyaw,
-                       "rad, speed",
-                       speed_measured ? std::to_string(speed) + " m/s" : std::string("unmeasured (fell back to displacement)"),
-                       "). Starting duration timer of",
-                       duration,
-                       "seconds.");
+            log<DEBUG>(
+                "Walk movement detected by odometry",
+                elapsed,
+                "s after walk command (moved",
+                distance,
+                "m, turned",
+                dyaw,
+                "rad, speed",
+                speed_measured ? std::to_string(speed) + " m/s" : std::string("unmeasured (fell back to displacement)"),
+                "). Starting duration timer of",
+                duration,
+                "seconds.");
             schedule_walk_stop(generation, duration);
         });
 
