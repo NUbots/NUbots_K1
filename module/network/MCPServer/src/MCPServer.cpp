@@ -161,7 +161,9 @@ namespace module::network {
 
     float find_accurate_walk_speed(float target_velocity) {
         // so I fit a curve for real walk speed vs target walk speed
-        // it can be represented as
+
+        // it is an estimate
+        // it may not work
 
         float output = (-0.9358 + sqrt(0.85869 + 1.2096 * target_velocity)) / (0.6048);
 
@@ -462,6 +464,10 @@ namespace module::network {
                            "for ",
                            duration,
                            "seconds.");
+
+                // convert speed from real to projected speed
+
+                speed = find_accurate_walk_speed(speed);
 
                 float vx = speed * cos(angle);
                 float vy = speed * sin(angle);
