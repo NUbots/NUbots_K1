@@ -101,6 +101,7 @@ namespace utility::onnx {
             std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> trt_guard(
                 trt,
                 api.ReleaseTensorRTProviderOptions);
+            Ort::ThrowOnError(api.UpdateTensorRTProviderOptions(trt, option_keys.data(), option_values.data(), option_keys.size()));
             session_options.AppendExecutionProvider_TensorRT_V2(*trt);
         }
         else if (device_type != "cpu") {

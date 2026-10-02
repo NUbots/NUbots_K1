@@ -61,6 +61,23 @@ namespace utility::onnx {
     private:
         struct Impl;
         std::unique_ptr<Impl> impl;
+        // The API for the TensorRT EP takes in option keys and values as separate arrays
+        std::vector<const char*> option_keys = {
+            "trt_fp16_enable",
+            "trt_int8_enable",
+            "trt_engine_cache_enable",
+            "trt_engine_cache_path",
+            "trt_timing_cache_enable",
+            "trt_timing_cache_path",
+        };
+        std::vector<const char*> option_values = {
+            "1",
+            "1",
+            "1",
+            "/tmp/onnx_trt_cache",
+            "1",
+            "/tmp/onnx_trt_cache",
+        };
     };
 
 }  // namespace utility::onnx
