@@ -91,9 +91,10 @@ RUN cd /usr/local && ln -sf lib lib64
 COPY usr/local/bin/install-from-source.py /usr/local/bin/install-from-source.py
 RUN ln -s /usr/local/bin/install-from-source.py /usr/local/bin/install-from-source
 
+COPY usr/local/toolchain /usr/local/toolchain
+
 # Generate toolchain files for generic
-RUN --mount=type=bind,source=usr/local/toolchain,target=/usr/local/toolchain \
-    python3 /usr/local/toolchain/generate_generic_toolchain.py --prefix /usr
+RUN python3 /usr/local/toolchain/generate_generic_toolchain.py --prefix /usr
 
 ##############################################
 ### ADD NEW SYSTEM PROGRAMS/LIBRARIES HERE ###
@@ -108,6 +109,15 @@ RUN --mount=type=bind,source=usr/local/toolchain,target=/usr/local/toolchain \
 ################################################
 ARG prefix=/usr/local
 
+# Install prefix/toolchain-dir for source-built dependencies below, computed once per platform
+RUN if [ "${platform}" = "orinnx" ]; then \
+    echo "DEP_PREFIX=/l4t/targetfs${prefix}" > /root/.dep_env && \
+    echo "DEP_TOOLCHAIN='--toolchain-dir /usr/local'" >> /root/.dep_env; \
+    else \
+    echo "DEP_PREFIX=/usr/local" > /root/.dep_env && \
+    echo "DEP_TOOLCHAIN=''" >> /root/.dep_env; \
+    fi
+
 # Create a python virtual environment at ${PREFIX} to decouple python packages from the system
 RUN python3 -m venv ${prefix}
 
@@ -119,8 +129,7 @@ RUN pip3 install \
     tqdm==4.62.3
 
 # Generate toolchain files for the current platform
-RUN --mount=type=bind,source=usr/local/toolchain,target=/usr/local/toolchain \
-    python3 /usr/local/toolchain/generate_${platform}_toolchain.py --prefix ${prefix}
+RUN python3 /usr/local/toolchain/generate_${platform}_toolchain.py --prefix ${prefix}
 
 
 # We install ncurses rather than building it as it's used by many of the build tools and they don't like it when it changes
@@ -133,16 +142,20 @@ RUN install-package -p ${platform} libncurses-dev libncurses6 libtinfo6 libc6-de
 RUN pip3 install pyyaml mako
 
 # Install OpenCL C Headers
-RUN install-from-source https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2022.05.18.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2022.05.18.tar.gz \
+    --jobs $(nproc) \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN}
 
 
 # OpenCL loader library
 RUN install-package ruby autotools-dev automake libtool
-RUN install-from-source https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v2.3.1.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v2.3.1.tar.gz \
+    --jobs $(nproc) \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN}
 
 RUN if [ "${platform}" != "generic" ]; then \
     ln -sf libm.so.6      /l4t/targetfs/usr/lib/aarch64-linux-gnu/libm.so && \
@@ -152,7 +165,8 @@ RUN if [ "${platform}" != "generic" ]; then \
     fi
 
 # OpenCV
-RUN install-from-source https://github.com/opencv/opencv/archive/refs/tags/4.9.0.tar.gz
+RUN install-from-source https://github.com/opencv/opencv/archive/refs/tags/4.9.0.tar.gz \
+    --jobs $(nproc)
 
 RUN wget -nv https://github.com/protocolbuffers/protobuf/releases/download/v21.4/protoc-21.4-linux-x86_64.zip -O protoc-21.4-linux-x86_64.zip && \
     unzip protoc-21.4-linux-x86_64.zip -d /usr/ && \
@@ -160,6 +174,7 @@ RUN wget -nv https://github.com/protocolbuffers/protobuf/releases/download/v21.4
 
 # Protobuf
 RUN install-from-source https://github.com/protocolbuffers/protobuf/releases/download/v21.4/protobuf-cpp-3.21.4.tar.gz \
+    --jobs $(nproc) \
     -Dprotobuf_PROTOC_EXECUTABLE="/usr/bin/protoc" \
     -Dprotobuf_BUILD_TESTS=OFF \
     -Dprotobuf_BUILD_LIBPROTOC=ON \
@@ -171,6 +186,7 @@ RUN if [ "${platform}" != "generic" ]; then \
     unzip protoc-21.4-linux-aarch_64.zip -d /l4t/targetfs/usr/ && \
     rm protoc-21.4-linux-aarch_64.zip && \
     install-from-source https://github.com/protocolbuffers/protobuf/releases/download/v21.4/protobuf-cpp-3.21.4.tar.gz \
+    --jobs $(nproc) \
     --toolchain-dir /usr \
     -Dprotobuf_PROTOC_EXECUTABLE="/usr/bin/protoc" \
     -Dprotobuf_BUILD_TESTS=OFF \
@@ -178,59 +194,23 @@ RUN if [ "${platform}" != "generic" ]; then \
     -DBUILD_SHARED_LIBS=OFF; \
     fi
 
-# OpenVino - Dependencies
-RUN install-package opencl-c-headers \
+# Build dependencies
+RUN install-package \
     shellcheck \
     scons \
     pkgconf \
     patchelf \
     fdupes \
     ca-certificates \
-    file \
-    rapidjson-dev \
-    libsnappy-dev
+    file
 
 
 RUN install-from-source https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2021.13.0.tar.gz \
+    --jobs $(nproc) \
     --build-system cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DTBB_TEST:BOOL='OFF' \
     -DTBB_BENCH:BOOL='OFF'
-
-# Clone OpenVINO repository
-RUN git clone https://github.com/openvinotoolkit/openvino.git --branch 2024.6.0 && \
-    cd openvino && \
-    git submodule update --init --recursive
-
-# Build OpenVINO
-WORKDIR /openvino
-RUN mkdir build && cd build && \
-    cmake .. -DBUILD_TESTING:BOOL='OFF' \
-    -DCMAKE_BUILD_TYPE:STRING='Release' \
-    -DCMAKE_TOOLCHAIN_FILE=${prefix}/toolchain.cmake \
-    -DENABLE_AVX512F:BOOL='OFF' \
-    -DENABLE_PYTHON:BOOL='OFF' \
-    -DENABLE_CLANG_FORMAT:BOOL='OFF' \
-    -DENABLE_NCC_STYLE:BOOL='OFF' \
-    -DENABLE_SYSTEM_PUGIXML:BOOL='ON' \
-    -DENABLE_INTEL_NPU:BOOL='OFF' \
-    -DENABLE_SYSTEM_TBB:BOOL='ON' \
-    -DENABLE_SYSTEM_OPENCL:BOOL='ON' \
-    -DENABLE_SYSTEM_PROTOBUF:BOOL='OFF' \
-    -DENABLE_SYSTEM_FLATBUFFERS:BOOL='OFF' \
-    -DENABLE_INTEL_GPU:BOOL='OFF' \
-    -DENABLE_INTEL_CPU:BOOL='OFF' \
-    -DENABLE_ARM_COMPUTE_CMAKE:BOOL='ON' \
-    -DENABLE_CPPLINT:BOOL='OFF' \
-    -DCMAKE_CXX_STANDARD='17' \
-    -Wno-dev \
-    -GNinja && \
-    ninja -j$(nproc) && ninja -j$(nproc) install
-
-# Move OpenVino libraries to our library path
-RUN ARCH=$([ "${platform}" = "orinnx" ] && echo "aarch64" || echo "intel64") && \
-    LIB_PATH=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/usr/local/lib" || echo "/usr/local/lib") && \
-    cp /openvino/bin/${ARCH}/Release/* ${LIB_PATH}/ -r
 
 # CUDA Toolkit
 COPY usr/local/bin/install-cuda.sh /usr/local/bin/install-cuda.sh
@@ -250,29 +230,55 @@ RUN install-package -p ${platform} \
     cuda-nvrtc-12-5 \
     cuda-nvrtc-dev-12-5
 
+# Pin TensorRT to v10 as ONNXRuntime needs v10 and not v11
+RUN printf 'Package: libnvinfer* libnvonnxparsers*\nPin: version 10.3.0.26-1+cuda12.5\nPin-Priority: 1001\n' \
+    > /etc/apt/preferences.d/tensorrt
+
 # TensorRT - install binary packages from NVIDIA CUDA repository
-# NvInfer.h, NvOnnxParser.h, libnvinfer.so, libnvonnxparsers.so
 RUN install-package -p ${platform} \
     libnvinfer-dev \
-    libnvonnxparsers-dev \
-    libnvinfer-plugin-dev \
-    libnvinfer-lean-dev \
-    libnvinfer-vc-plugin-dev
+    libnvonnxparsers-dev
+
+
+# ONNXRuntime (headers + libs); on Jetson the libs are replaced by the GPU wheel's below
+RUN . /root/.dep_env && \
+    if [ "${platform}" = "generic" ]; then \
+        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-x64-gpu-1.24.1.tgz ;\
+    else \
+        ONNXRUNTIME_ARCHIVE=onnxruntime-linux-aarch64-1.24.1.tgz ;\
+    fi && \
+    install-from-source https://github.com/microsoft/onnxruntime/releases/download/v1.24.1/${ONNXRUNTIME_ARCHIVE} \
+        --prefix ${DEP_PREFIX} \
+        --no-toolchain
+
+# ONNXRuntime (Jetson); to update, see:
+# https://pypi.jetson-ai-lab.io/
+RUN . /root/.dep_env && \
+    if [ "${platform}" != "generic" ]; then \
+        wget -nv https://pypi.jetson-ai-lab.io/jp6/cu128/+f/d98/0b934b9a29c1a/onnxruntime_gpu-1.24.0-cp310-cp310-linux_aarch64.whl#sha256=d980b934b9a29c1a9d6f39751edd7662b69fadd75556a10ff363773a58ce0950 -O /tmp/onnxruntime_tensorrt.whl && \
+        unzip /tmp/onnxruntime_tensorrt.whl -d /tmp/onnxruntime_tensorrt && \
+        cd /tmp/onnxruntime_tensorrt/onnxruntime/capi && \
+        mv libonnxruntime* ${DEP_PREFIX}/lib/ && \
+        # Change current symlinks to point to the copied fi;es
+        rm -f ${DEP_PREFIX}/lib/libonnxruntime.so.1.24.1 && \
+        ln -sf libonnxruntime.so.1.24.0 ${DEP_PREFIX}/lib/libonnxruntime.so.1 && \
+        ln -sf libonnxruntime.so.1 ${DEP_PREFIX}/lib/libonnxruntime.so && \
+        # Get TensorRT EP header
+        install-from-source https://raw.githubusercontent.com/microsoft/onnxruntime/refs/tags/v1.24.1/include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h \
+            --prefix ${DEP_PREFIX} \
+            --no-toolchain \
+            --header-path include/onnxruntime/core/providers/tensorrt; \
+    fi
+
 
 # Eigen3
-RUN install-from-source https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
-
-# tcmalloc
-RUN install-from-source https://github.com/gperftools/gperftools/releases/download/gperftools-2.10/gperftools-2.10.tar.gz \
-    --build-system autotools \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local \
-    --with-tcmalloc-pagesize=64 \
-    --enable-minimal
+RUN install-from-source https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz \
+    --jobs $(nproc)
 
 # Libjpeg
 RUN install-package yasm
 RUN install-from-source https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/2.0.7-esr.tar.gz \
+    --jobs $(nproc) \
     -DWITH_SIMD=ON \
     -DFORCE_INLINE=ON \
     -DINLINE_WORKS=1 \
@@ -286,16 +292,19 @@ RUN install-from-source https://github.com/libjpeg-turbo/libjpeg-turbo/archive/r
 
 # yaml-cpp
 RUN install-from-source https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.tar.gz \
+    --jobs $(nproc) \
     -DYAML_CPP_BUILD_TESTS=OFF \
     -DBUILD_SHARED_LIBS=OFF
 
 # fmt formatting library
 RUN install-from-source https://github.com/fmtlib/fmt/archive/refs/tags/9.0.0.tar.gz \
+    --jobs $(nproc) \
     -DFMT_DOC=OFF \
     -DFMT_TEST=OFF
 
 # Catch unit testing library
 RUN install-from-source https://github.com/catchorg/Catch2/archive/refs/tags/v3.8.0.tar.gz \
+    --jobs $(nproc) \
     -DCATCH_CONFIG_CONSOLE_WIDTH=120 \
     -DCATCH_CONFIG_CPP11_TO_STRING=ON \
     -DCATCH_CONFIG_CPP17_UNCAUGHT_EXCEPTIONS=ON \
@@ -306,82 +315,96 @@ RUN install-from-source https://github.com/catchorg/Catch2/archive/refs/tags/v3.
 
 # LibUV
 RUN install-from-source https://github.com/libuv/libuv/archive/refs/tags/v1.44.2.tar.gz \
+    --jobs $(nproc) \
     -Dlibuv_buildtests=OFF \
     -DBUILD_TESTING=OFF
 
 # NUClear!
 RUN install-from-source https://github.com/Fastcode/NUClear/archive/925dca0f31484a7df64fd335de5a6c9335483c7f.tar.gz \
+    --jobs $(nproc) \
     -DBUILD_TESTS=OFF
 
 # Backtrace
-RUN install-from-source https://github.com/ianlancetaylor/libbacktrace/archive/8602fda64e78f1f46563220f2ee9f7e70819c51d.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local \
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/ianlancetaylor/libbacktrace/archive/8602fda64e78f1f46563220f2ee9f7e70819c51d.tar.gz \
+    --jobs $(nproc) \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN} \
     --without-system-libunwind \
     --enable-shared \
     --enable-static
 
 # Alsa and espeak
-RUN install-from-source https://github.com/alsa-project/alsa-lib/archive/refs/tags/v1.2.7.2.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local \
+RUN . /root/.dep_env && \
+    install-from-source https://github.com/alsa-project/alsa-lib/archive/refs/tags/v1.2.7.2.tar.gz \
+    --jobs $(nproc) \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN} \
     --without-debug
 RUN install-package -p ${platform} alsa-utils
 
 # mio memory mapping library
 RUN install-from-source https://github.com/mandreyel/mio/archive/3f86a95c0784d73ce6815237ec33ed25f233b643.tar.gz \
+    --jobs $(nproc) \
     --patch https://patch-diff.githubusercontent.com/raw/mandreyel/mio/pull/93.patch
 
 # zstr header to have file streams that do zlib compression
-RUN INCLUDE_PREFIX=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/usr/local" || echo "/usr/local") && \
+RUN . /root/.dep_env && \
     install-from-source https://raw.githubusercontent.com/mateidavid/zstr/v1.0.6/src/zstr.hpp \
-    --prefix ${INCLUDE_PREFIX} --no-toolchain \
+    --prefix ${DEP_PREFIX} --no-toolchain \
     --header-path include/zstr && \
     install-from-source https://raw.githubusercontent.com/mateidavid/zstr/v1.0.6/src/strict_fstream.hpp \
-    --prefix ${INCLUDE_PREFIX} --no-toolchain \
+    --prefix ${DEP_PREFIX} --no-toolchain \
     --header-path include/zstr
 
 # Visual Mesh
 RUN install-from-source https://github.com/NUbots/VisualMesh/archive/64c49fce3a17bbee73339eaee556f47a80b93c40.tar.gz \
+    --jobs $(nproc) \
     -DBUILD_TENSORFLOW_OP=OFF \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_OPENCL_ENGINE=ON
 
 # JSON for modern C++ (https://github.com/nlohmann/json)
-RUN INCLUDE_PREFIX=$([ "${platform}" = "orinnx" ] && echo "/l4t/targetfs/usr/local" || echo "/usr/local") && \
+RUN . /root/.dep_env && \
     install-from-source https://github.com/nlohmann/json/releases/download/v3.10.5/json.hpp \
-    --prefix ${INCLUDE_PREFIX} --no-toolchain
+    --prefix ${DEP_PREFIX} --no-toolchain
 
 # TinyXML
-RUN install-from-source https://github.com/leethomason/tinyxml2/archive/refs/tags/9.0.0.tar.gz
+RUN install-from-source https://github.com/leethomason/tinyxml2/archive/refs/tags/9.0.0.tar.gz \
+    --jobs $(nproc)
 
 # NLopt
-RUN install-from-source https://github.com/stevengj/nlopt/archive/refs/tags/v2.7.1.tar.gz
+RUN install-from-source https://github.com/stevengj/nlopt/archive/refs/tags/v2.7.1.tar.gz \
+    --jobs $(nproc)
 
 # tinyrobotics
 RUN install-from-source https://github.com/Tom0Brien/tinyrobotics/archive/refs/tags/0.0.1.tar.gz \
+    --jobs $(nproc) \
     -DBUILD_TESTS=OFF
 
 # lame
-RUN install-from-source https://downloads.sourceforge.net/lame/lame-3.100.tar.gz \
-    --prefix /l4t/targetfs/${prefix} \
-    --toolchain-dir /usr/local
+RUN . /root/.dep_env && \
+    install-from-source https://downloads.sourceforge.net/lame/lame-3.100.tar.gz \
+    --jobs $(nproc) \
+    --prefix ${DEP_PREFIX} \
+    ${DEP_TOOLCHAIN}
 
 # Nanopb for generating messages for NUSense
-RUN install-from-source https://github.com/nanopb/nanopb/archive/refs/tags/0.4.9.1.tar.gz
+RUN install-from-source https://github.com/nanopb/nanopb/archive/refs/tags/0.4.9.1.tar.gz \
+    --jobs $(nproc)
 
 # Install Booster Robotics SDK
 
 RUN install-package curl lsb-release
 
-RUN curl -L https://github.com/BoosterRobotics/booster_robotics_sdk/archive/324946e7c885de6cd6d37220eca64ed4e0f8d418.tar.gz \
+RUN curl -L https://github.com/BoosterRobotics/booster_robotics_sdk/archive/d5d8f7ae76d3e9f8cc224e682216f4681003ca46.tar.gz \
     -o /tmp/booster_robotics_sdk.tar.gz && \
     cd /tmp && tar -xzf booster_robotics_sdk.tar.gz && \
-    mv booster_robotics_sdk-324946e7c885de6cd6d37220eca64ed4e0f8d418 booster_robotics_sdk && \
+    mv booster_robotics_sdk-d5d8f7ae76d3e9f8cc224e682216f4681003ca46 booster_robotics_sdk && \
     rm /tmp/booster_robotics_sdk.tar.gz
 
 WORKDIR /tmp/booster_robotics_sdk
-RUN curl -L https://gist.githubusercontent.com/ZeoNyph/69e4ec80b66cc083191522de7eb4f43b/raw/ef9393748b5a8797fb8ef08d9eaa56ade76d7547/install_script.patch \
+RUN curl -L https://gist.githubusercontent.com/ZeoNyph/69e4ec80b66cc083191522de7eb4f43b/raw/e0cf865742fcdcbc9d09592b42c9ab5af6f450ef/install_script.patch \
     -o install_script.patch && \
     patch -p1 < install_script.patch
 
@@ -400,6 +423,9 @@ RUN install-package \
     doxygen \
     gcc-12 \
     g++-12
+
+# qemu lets ctest run the cross compiled test binaries, see CMAKE_CROSSCOMPILING_EMULATOR in the toolchain
+RUN if [ "${platform}" != "generic" ]; then install-package qemu-user-static; fi
 
 
 # Node tools
@@ -426,6 +452,10 @@ RUN install-package clinfo
 
 # Copy the nvidia OpenCL vendorfile into the container so we can also use OpenCL on nvidia GPUs
 COPY --chown=root:root etc/OpenCL/vendors/nvidia.icd /etc/OpenCL/vendors/nvidia.icd
+
+# Creates symlink for librt since CUDAToolkit CMake module can't find it
+# See: https://notes.rdu.im/howtos/fix-librt-not-found-in-jammy/
+RUN ln -s /lib/x86_64-linux-gnu/librt.so.1 /usr/lib/x86_64-linux-gnu/librt.so
 
 # Re-run ldconfig to make sure the database is up to date
 RUN ldconfig

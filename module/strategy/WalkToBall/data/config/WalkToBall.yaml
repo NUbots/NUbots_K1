@@ -45,3 +45,7 @@ err_x_ok: 0.05
 err_y_ok: 0.09
 # Heading error threshold - robot should be facing the target
 err_z_ok: 15 * pi / 180
+
+# Ball range in metres below which the robot orbits the ball (Adjust) to fix its approach angle,
+# instead of backing off and re-approaching.
+adjust_range_threshold: 1.5

@@ -1,11 +1,11 @@
 log_level: INFO
-field_type: small # options: small, l1, l3
+field_type: 5v5 # options: small, l1, l3, 5v5
 
 # ROBOCUP FIELD SIZES
 Units: m
 BallRadius: 0.07
 LineWidth: 0.06
-# What shape the goal is (RECTANGLE,CIRCLE)
+# What shape the goal frame is (RECTANGLE,CIRCLE)
 GoalpostType: CIRCLE
 # The crossbar diameter and the goalpost diameter are (supposed to be) equal.
 GoalpostWidth: 0.10
@@ -22,12 +22,10 @@ presets:
     FieldWidth: 6.0
     GoalDepth: 0.58
     GoalWidth: 2.575
-    # Height to the bottom of the crossbar.
     GoalCrossbarHeight: 1.2
-    GoalAreaLength: 0.9
+    GoalAreaLength: 0.9 # GoalArea = "6 yard box"
     GoalAreaWidth: 2.9
-    # Measured from the goal line
-    PenaltyMarkDistance: 1.47 #to the middle of the penalty mark.
+    PenaltyMarkDistance: 1.47 # Measured from the goal line to the middle of the penalty mark.
     CenterCircleDiameter: 1.5
     PenaltyAreaLength: 1.9
     PenaltyAreaWidth: 3.9
@@ -55,3 +53,15 @@ presets:
     CenterCircleDiameter: 1.5
     PenaltyAreaLength: 3.0
     PenaltyAreaWidth: 6.0
+  5v5:
+    FieldLength: 22.0
+    FieldWidth: 14.0
+    GoalWidth: 2.6 #needs measuring
+    GoalDepth: 0.6 #needs measuring
+    GoalCrossbarHeight: 1.25 #needs measuring
+    GoalAreaLength: 2.0
+    GoalAreaWidth: 5.0
+    PenaltyMarkDistance: 3.5
+    CenterCircleDiameter: 4
+    PenaltyAreaLength: 5.0
+    PenaltyAreaWidth: 8.0

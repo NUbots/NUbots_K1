@@ -85,7 +85,7 @@ def build(image, platform, username, uid, reset):
 
     # If we are building the selected platform we need to work out what that refers to
     _selected = platform == "selected_k1"
-    platform = selected(image) if _selected else platform
+    platform = selected(image, username) if _selected else platform
 
     # Temporary workaround to prevent conflict with NUgus
     if platform == "generic":
@@ -140,6 +140,9 @@ def build(image, platform, username, uid, reset):
     # Make sure buildx will use the correct buildx instance
     subprocess.run(["docker", "buildx", "use", builder_name])
 
+    platform_arg = platform
+    if platform.endswith("_k1"):
+        platform_arg = platform[:-3]
     # Build the image!
     err = pty.spawn(
         [
@@ -150,7 +153,9 @@ def build(image, platform, username, uid, reset):
             local_tag,
             "--pull",
             "--build-arg",
-            f"platform={platform}",
+            f"platform={platform_arg}",
+            "--platform",
+            "linux/amd64",
             "--build-arg",
             f"user_uid={uid}",
             "--output=type=docker",

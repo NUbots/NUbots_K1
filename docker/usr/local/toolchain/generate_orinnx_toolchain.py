@@ -63,6 +63,21 @@ target = {
         "-Wl,--allow-shlib-undefined",
         "-Wl,-Bdynamic",
     ],
+    "emulator": [
+        "/usr/bin/qemu-aarch64-static",
+        "-L",
+        _TARGETFS_DIR,
+        "-E",
+        "LD_LIBRARY_PATH={}".format(
+            ":".join(
+                [
+                    f"{_TARGETFS_DIR}/usr/local/lib",
+                    f"{_TARGETFS_DIR}/usr/lib/{_CROSS_PREFIX}",
+                    f"{_TARGETFS_DIR}/lib/{_CROSS_PREFIX}",
+                ]
+            )
+        ),
+    ],
     "asm_object": "elf64",
     "arch": "aarch64",
     "prefix": _CROSS_PREFIX,

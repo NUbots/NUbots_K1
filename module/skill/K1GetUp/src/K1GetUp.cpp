@@ -31,6 +31,7 @@
 
 #include "message/behaviour/state/Stability.hpp"
 #include "message/booster/BoosterFallDownState.hpp"
+#include "message/localisation/Field.hpp"
 #include "message/booster/BoosterGetUp.hpp"
 #include "message/skill/GetUp.hpp"
 
@@ -41,6 +42,7 @@ namespace module::skill {
     using message::booster::BoosterFallDownState;
     using message::booster::FallDownStateType;
     using message::booster::BoosterGetUp;
+    using message::localisation::ResetFieldLocalisation;
     using GetUpTask = message::skill::GetUp;
 
     K1GetUp::K1GetUp(std::unique_ptr<NUClear::Environment> environment) : BehaviourReactor(std::move(environment)) {
@@ -61,6 +63,7 @@ namespace module::skill {
                 if (fall_state.fall_down_state == FallDownStateType::IS_READY) {
                     log<INFO>("Finished getting up");
                     emit(std::make_unique<Stability>(Stability::STANDING));
+                    emit(std::make_unique<ResetFieldLocalisation>());
                     emit<Task>(std::make_unique<Done>());
                 }
                 else {
