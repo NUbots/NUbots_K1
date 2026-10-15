@@ -56,6 +56,11 @@ namespace module::skill {
         /// Time we first observed the robot upright (reset when it tips again)
         NUClear::clock::time_point upright_since{};
         bool was_upright = false;
+
+        /// Whether the robot was in CUSTOM mode (another policy driving it) when the get-up started
+        bool was_custom = false;
+        /// Whether the robot is currently in CUSTOM mode, from BoosterModeState
+        bool in_custom = false;
     };
 
 }  // namespace module::skill

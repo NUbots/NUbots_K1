@@ -1,7 +1,8 @@
-# NUSim counterpart of test/behaviour: same skills, policies and behaviour tree, but
-# reads the camera from NUSim's shared-memory writer (input::NUSimCamera, lock-free
-# seqlock) instead of the on-robot NUbridge writer (input::K1Camera). Run this against
-# NUSim; run test/behaviour on the real robot. Modify Tester.yaml to pick behaviours.
+# NUSim counterpart of test/behaviour. NUSim ignores the firmware Move/VisualKick RPCs, so walk
+# and kick run as ONNX policies (K1WalkPolicy, K1KickPolicy) instead of K1Walk/KickWalk, and the
+# camera comes from NUSim's shared-memory writer (input::NUSimCamera). Sim-only config overrides
+# (NUClearNet multicast, walk-policy velocity caps, Tester priorities) live in each module's
+# config/bin/nusim/behaviour/.
 nuclear_role(
   # FileWatcher, ConsoleLogHandler and Signal Catcher Must Go First and without it many roles do not run
   extension::FileWatcher # Watches configuration files for changes
@@ -33,7 +34,7 @@ nuclear_role(
   actuation::Servos
   actuation::K1Servos # Director-arbitrated sink for the K1 low-level channel (walk/kick/getup subsumption)
   actuation::FootController
-  # Skills — shared with the real robot (ONNX policy inference works in both)
+  # Skills
   skill::K1WalkPolicy # ONNX walk inference -> LowCmd
   skill::K1KickPolicy # ONNX kick inference -> LowCmd (provides skill::Kick)
   skill::K1GetUpPolicy # ONNX get-up inference -> LowCmd

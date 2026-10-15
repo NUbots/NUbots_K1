@@ -36,7 +36,7 @@ nuclear_role(
   actuation::Servos
   actuation::K1Servos # Director-arbitrated sink for the K1 low-level channel (walk/getup subsumption)
   actuation::FootController
-  # Skills — shared with the real robot (ONNX policy inference works in both)
+  # Skills
   skill::K1WalkPolicy # ONNX walk inference -> LowCmd
   skill::K1GetUpPolicy # ONNX get-up inference -> LowCmd
   skill::K1Look

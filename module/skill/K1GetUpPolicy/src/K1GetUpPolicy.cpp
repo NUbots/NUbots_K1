@@ -9,6 +9,7 @@
 #include "message/behaviour/state/Stability.hpp"
 #include "message/booster/BoosterLowCmd.hpp"
 #include "message/booster/BoosterMode.hpp"
+#include "message/booster/BoosterModeState.hpp"
 #include "message/platform/RawSensors.hpp"
 #include "message/skill/GetUp.hpp"
 
@@ -21,6 +22,7 @@ namespace module::skill {
     using message::behaviour::state::Stability;
     using message::booster::BoosterLowCmd;
     using message::booster::BoosterMode;
+    using message::booster::BoosterModeState;
     using message::booster::K1Mode;
     using message::platform::RawSensors;
     using GetUpTask = message::skill::GetUp;
@@ -92,6 +94,9 @@ namespace module::skill {
             }
         });
 
+        on<Trigger<BoosterModeState>>().then(
+            [this](const BoosterModeState& state) { in_custom = state.mode == K1Mode::CUSTOM; });
+
         on<Start<GetUpTask>>().then([this]() {
             // Never take the robot into CUSTOM with nothing to stream (see K1WalkPolicy)
             if (!model_loaded) {
@@ -101,6 +106,7 @@ namespace module::skill {
             log<INFO>("Getting up (policy)...");
             last_action.fill(0.0f);
             was_upright = false;
+            was_custom  = in_custom;
             // Make sure other policy skills yield the low-level channel until we finish
             emit(std::make_unique<Stability>(Stability::FALLEN));
             auto mode  = std::make_unique<BoosterMode>();
@@ -204,6 +210,14 @@ namespace module::skill {
                            std::chrono::duration<double>(cfg.upright_time))) {
                     log<INFO>("Finished getting up (policy)");
                     emit(std::make_unique<Stability>(Stability::STANDING));
+                    // Hand back to the firmware unless a policy was already driving the robot in
+                    // CUSTOM. skill::K1Walk only requests SOCCER when its task starts, so a walk
+                    // that was running through the fall would otherwise be left stuck in CUSTOM.
+                    if (!was_custom) {
+                        auto mode  = std::make_unique<BoosterMode>();
+                        mode->mode = K1Mode::SOCCER;
+                        emit(std::move(mode));
+                    }
                     emit<Task>(std::make_unique<Done>());
                     return;
                 }

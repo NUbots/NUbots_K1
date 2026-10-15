@@ -1,0 +1,5 @@
+# NUSim drives the robot with skill::K1WalkPolicy, not the firmware walk. Keep commands inside
+# what the policy was trained on: it serves 0.62 m/s at a 0.8 command and stalls at 1.0, and
+# training samples yaw rate in [-1, 1].
+max_velocity: [0.8, 0.5, 1.0]
+adjust_vtheta_limit: 1.0

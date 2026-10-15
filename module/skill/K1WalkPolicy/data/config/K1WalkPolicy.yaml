@@ -1,4 +1,4 @@
-log_level: TRACE
+log_level: INFO
 
 # mujoco_playground K1 joystick walk policy (79-obs / 22-action ONNX, contract pinned in
 # NUSim docs/OBS_ACTION_CONTRACT.md). All joint arrays are in the Booster SDK
