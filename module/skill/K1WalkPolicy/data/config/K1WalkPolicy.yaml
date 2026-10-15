@@ -10,9 +10,10 @@ log_level: TRACE
 # (k1_walk_v1_20260723_617M.onnx, k1_walk.onnx) are NOT loadable against this module.
 model_path: "k1_walk_v3_20260812_102M.onnx"
 
-# Run inference on the GPU with TensorRT. Falls back to OpenVINO CPU automatically when
-# no CUDA device is visible (the container needs --gpus), so this is safe to leave on.
-use_tensorrt: true
+# Inference device: cpu, or gpu (ONNX Runtime TensorRT EP, fp16). The policy is a small MLP
+# whose actions drive the servos directly, so cpu (fp32, same numerics as training) is the
+# default; gpu falls back to cpu on its own when no CUDA device is usable.
+device: cpu
 
 gait_frequency: 1.5 # Hz, phase advance rate (training randomizes U(1.25, 1.75))
 stand_threshold: 0.01 # command norm below which the phase obs pins to [pi, pi] (standing)

@@ -5,11 +5,10 @@
 #include <memory>
 #include <Eigen/Core>
 #include <nuclear>
-#include <openvino/openvino.hpp>
 #include <string>
 
 #include "extension/Behaviour.hpp"
-#include "utility/vision/TensorRT.hpp"
+#include "utility/onnx/ONNXRuntime.hpp"
 
 namespace module::skill {
 
@@ -33,9 +32,9 @@ namespace module::skill {
     private:
         struct Config {
             std::string model_path;
-            /// Run inference with TensorRT (GPU). Falls back to OpenVINO CPU when false, or
-            /// when the engine cannot be built (no CUDA device, driver mismatch, ...).
-            bool use_tensorrt = false;
+            /// Inference device: "cpu", or "gpu" for ONNX Runtime's TensorRT EP (fp16). gpu falls
+            /// back to cpu when it cannot load (no CUDA device, driver mismatch, ...).
+            std::string device = "cpu";
             /// @brief Hz, gait phase advance rate (training randomizes U(1.25, 1.75))
             double gait_frequency = 1.5;
             /// @brief command norm below which the phase observation pins to [pi, pi]
@@ -60,14 +59,8 @@ namespace module::skill {
             std::array<double, JOINT_COUNT> joint_upper{};
         } cfg;
 
-        /// TensorRT inference backend (preferred on robot, falls back to OpenVINO)
-        std::unique_ptr<utility::vision::TensorRT> trt{};
-        bool use_tensorrt = false;
-
-        /// OpenVINO inference plumbing (fallback path)
-        ov::Core core{};
-        ov::CompiledModel compiled_model;
-        ov::InferRequest infer_request;
+        /// ONNX Runtime inference backend
+        std::unique_ptr<utility::onnx::ONNXRuntime> policy{};
         bool model_loaded = false;
 
         /// Previous raw network output (part of the observation)

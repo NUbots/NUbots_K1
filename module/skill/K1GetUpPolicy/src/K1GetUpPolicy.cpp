@@ -51,7 +51,7 @@ namespace module::skill {
             log_level = config["log_level"].as<NUClear::LogLevel>();
 
             cfg.model_path          = config["model_path"].as<std::string>();
-            cfg.use_tensorrt          = config["use_tensorrt"].as<bool>();
+            cfg.device              = config["device"].as<std::string>();
             cfg.upright_angle       = config["upright_angle"].as<double>();
             cfg.upright_time        = config["upright_time"].as<double>();
             cfg.knee_extended_angle = config["knee_extended_angle"].as<double>();
@@ -66,23 +66,27 @@ namespace module::skill {
                 s *= action_scale;
             }
 
+            // CPU by default: the net is a small MLP, so there is no speed to win on the GPU, and
+            // gpu runs TensorRT in fp16 while the actions drive the servos directly
             try {
                 try {
-                    trt          = std::make_unique<utility::vision::TensorRT>(cfg.model_path);
-                    use_tensorrt = true;
-                    log<INFO>("Loaded get-up policy with TensorRT", cfg.model_path);
+                    policy = std::make_unique<utility::onnx::ONNXRuntime>(cfg.model_path, cfg.device);
                 }
-                catch (const std::exception& trt_error) {
-                    trt.reset();
-                    use_tensorrt = false;
-                    log<WARN>("TensorRT unavailable for get-up policy, falling back to OpenVINO", trt_error.what());
-                    compiled_model = core.compile_model(cfg.model_path, "CPU");
-                    infer_request  = compiled_model.create_infer_request();
-                    log<INFO>("Loaded get-up policy with OpenVINO", cfg.model_path);
+                catch (const std::exception& device_error) {
+                    if (cfg.device == "cpu") {
+                        throw;
+                    }
+                    log<WARN>("Could not load get-up policy on",
+                              cfg.device,
+                              "- falling back to cpu:",
+                              device_error.what());
+                    policy = std::make_unique<utility::onnx::ONNXRuntime>(cfg.model_path, "cpu");
                 }
-                model_loaded   = true;
+                model_loaded = true;
+                log<INFO>("Loaded get-up policy", cfg.model_path);
             }
             catch (const std::exception& e) {
+                policy.reset();
                 model_loaded = false;
                 log<ERROR>("Failed to load get-up policy", cfg.model_path, e.what());
             }
@@ -153,22 +157,11 @@ namespace module::skill {
                 }
 
                 // --- inference ---
-                if (use_tensorrt && trt != nullptr) {
-                    const std::vector<float> input(obs.begin(), obs.end());
-                    const std::vector<float> action = trt->infer(input);
-                    if (action.size() != JOINT_COUNT) {
-                        throw std::runtime_error("Get-up policy TensorRT output size mismatch");
-                    }
-                    std::copy(action.begin(), action.end(), last_action.begin());
+                const std::vector<float> action = policy->infer(std::vector<float>(obs.begin(), obs.end()));
+                if (action.size() != JOINT_COUNT) {
+                    throw std::runtime_error("Get-up policy output size mismatch");
                 }
-                else {
-                    ov::Tensor input(ov::element::f32, {1, OBS_DIM});
-                    std::copy(obs.begin(), obs.end(), input.data<float>());
-                    infer_request.set_input_tensor(input);
-                    infer_request.infer();
-                    const float* action = infer_request.get_output_tensor(0).data<float>();
-                    std::copy(action, action + JOINT_COUNT, last_action.begin());
-                }
+                std::copy(action.begin(), action.end(), last_action.begin());
 
                 // --- action -> low-level joint command: offsets on the CURRENT pose ---
                 auto low      = std::make_unique<BoosterLowCmd>();

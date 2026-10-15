@@ -57,7 +57,7 @@ namespace module::skill {
             log_level = config["log_level"].as<NUClear::LogLevel>();
 
             cfg.model_path                = config["model_path"].as<std::string>();
-            cfg.use_tensorrt                = config["use_tensorrt"].as<bool>();
+            cfg.device                    = config["device"].as<std::string>();
             cfg.kick_duration             = config["kick_duration"].as<double>();
             cfg.ball_confidence_threshold = config["ball_confidence_threshold"].as<double>();
             cfg.ball_stale_timeout        = config["ball_stale_timeout"].as<double>();
@@ -78,30 +78,29 @@ namespace module::skill {
                 s *= action_scale;
             }
 
-            // TensorRT first, OpenVINO CPU as the fallback so a machine without a CUDA device
-            // (or with a driver/plan mismatch) still runs. fp16 is off: the net is a small MLP,
-            // so there is no speed to win and the actions drive servos directly.
+            // CPU by default: the net is a small MLP, so there is no speed to win on the GPU, and
+            // gpu runs TensorRT in fp16 while the actions drive the servos directly
             try {
-                if (!cfg.use_tensorrt) {
-                    throw std::runtime_error("use_tensorrt is false");
-                }
-                trt          = std::make_unique<utility::vision::TensorRT>(cfg.model_path, false);
-                model_loaded = true;
-                log<INFO>("Loaded kick policy (TensorRT)", cfg.model_path);
-            }
-            catch (const std::exception& trt_e) {
-                trt.reset();
-                log<INFO>("TensorRT unavailable, falling back to OpenVINO:", trt_e.what());
                 try {
-                    compiled_model = core.compile_model(cfg.model_path, "CPU");
-                    infer_request  = compiled_model.create_infer_request();
-                    model_loaded   = true;
-                    log<INFO>("Loaded kick policy (OpenVINO CPU)", cfg.model_path);
+                    policy = std::make_unique<utility::onnx::ONNXRuntime>(cfg.model_path, cfg.device);
                 }
-                catch (const std::exception& e) {
-                    model_loaded = false;
-                    log<ERROR>("Failed to load kick policy", cfg.model_path, e.what());
+                catch (const std::exception& device_error) {
+                    if (cfg.device == "cpu") {
+                        throw;
+                    }
+                    log<WARN>("Could not load kick policy on",
+                              cfg.device,
+                              "- falling back to cpu:",
+                              device_error.what());
+                    policy = std::make_unique<utility::onnx::ONNXRuntime>(cfg.model_path, "cpu");
                 }
+                model_loaded = true;
+                log<INFO>("Loaded kick policy", cfg.model_path);
+            }
+            catch (const std::exception& e) {
+                policy.reset();
+                model_loaded = false;
+                log<ERROR>("Failed to load kick policy", cfg.model_path, e.what());
             }
         });
 
@@ -226,20 +225,11 @@ namespace module::skill {
                 }
 
                 // --- inference ---
-                std::vector<float> trt_out{};
-                const float* action = nullptr;
-                if (trt) {
-                    trt_out = trt->infer(std::vector<float>(obs.begin(), obs.end()));
-                    action  = trt_out.data();
+                const std::vector<float> action = policy->infer(std::vector<float>(obs.begin(), obs.end()));
+                if (action.size() != JOINT_COUNT) {
+                    throw std::runtime_error("Kick policy output size mismatch");
                 }
-                else {
-                    ov::Tensor input(ov::element::f32, {1, OBS_DIM});
-                    std::copy(obs.begin(), obs.end(), input.data<float>());
-                    infer_request.set_input_tensor(input);
-                    infer_request.infer();
-                    action = infer_request.get_output_tensor(0).data<float>();
-                }
-                std::copy(action, action + JOINT_COUNT, last_action.begin());
+                std::copy(action.begin(), action.end(), last_action.begin());
 
                 // Advance the gait-phase clock once per inference, wrapped to [-pi, pi), the
                 // same 50 Hz step (0.02 s) and wrap the walk policy uses.

@@ -2,7 +2,7 @@
 log_level: INFO
 
 head_pose:
-  - segment: _head_pose
+  topic: rt/head_pose
 
 # Deadband (metres for x/y, radians for theta) below which normalized odometry components are
 # snapped to zero, avoiding tiny floating-point residuals (~1e-10) being treated as real motion
@@ -15,7 +15,8 @@ Hhp:
   translation: [0.0, 0.0, -0.08]
   rotation_rpy: [0.0, 0.0, 0.0]
 
-# Transform from pitch frame to camera optical frame
+# Transform from pitch frame to camera optical frame. Default for robots without a per-robot
+# calibration (config/<hostname>/K1Sensors.yaml) and for NUSim
 # translation: [x, y, z] in metres
 # rotation_rpy: [roll, pitch, yaw] in radians
 Hpc:
