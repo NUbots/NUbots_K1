@@ -32,11 +32,10 @@ nuclear_role(
   actuation::Kinematics
   actuation::Servos
   actuation::FootController
-  actuation::K1Servos # Director-arbitrated sink for K1GetUpPolicy's low-level joint commands
   # Skills
   skill::K1Walk
   skill::KickWalk
-  skill::K1GetUpPolicy # ONNX get-up inference -> LowCmd (replaces skill::K1GetUp)
+  skill::K1GetUp
   skill::K1Look
   skill::Say
   skill::GPT

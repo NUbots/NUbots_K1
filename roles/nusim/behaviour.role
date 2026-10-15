@@ -1,5 +1,5 @@
 # NUSim counterpart of test/behaviour. NUSim ignores the firmware Move/VisualKick RPCs, so walk
-# and kick run as ONNX policies (K1WalkPolicy, K1KickPolicy) instead of K1Walk/KickWalk, and the
+# and kick run as ONNX policies (SimK1Walk, SimK1Kick) instead of K1Walk/KickWalk, and the
 # camera comes from NUSim's shared-memory writer (input::NUSimCamera). Sim-only config overrides
 # (NUClearNet multicast, walk-policy velocity caps, Tester priorities) live in each module's
 # config/bin/nusim/behaviour/.
@@ -35,9 +35,9 @@ nuclear_role(
   actuation::K1Servos # Director-arbitrated sink for the K1 low-level channel (walk/kick/getup subsumption)
   actuation::FootController
   # Skills
-  skill::K1WalkPolicy # ONNX walk inference -> LowCmd
-  skill::K1KickPolicy # ONNX kick inference -> LowCmd (provides skill::Kick)
-  skill::K1GetUpPolicy # ONNX get-up inference -> LowCmd
+  skill::SimK1Walk # ONNX walk inference -> LowCmd
+  skill::SimK1Kick # ONNX kick inference -> LowCmd (provides skill::Kick)
+  skill::SimK1GetUp # ONNX get-up inference -> LowCmd
   skill::K1Look
   skill::Say
   skill::GPT

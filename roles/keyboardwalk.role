@@ -18,10 +18,9 @@ nuclear_role(
   actuation::Servos
   actuation::Kinematics
   actuation::FootController
-  actuation::K1Servos # Director-arbitrated sink for K1GetUpPolicy's low-level joint commands
   # Skills
   skill::K1Walk
-  skill::K1GetUpPolicy # ONNX get-up inference -> LowCmd (replaces skill::K1GetUp)
+  skill::K1GetUp
   skill::K1Look
   # Planners
   planning::GetUpPlanner

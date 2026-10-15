@@ -18,7 +18,7 @@ tasks:
   # Planners
   kick_to_priority: 0
   look_around_priority: 0
-  # Run skill::Kick (K1KickPolicy) directly, bypassing the FindBall -> WalkToKickBall -> PlanKick chain
+  # Run skill::Kick (SimK1Kick) directly, bypassing the FindBall -> WalkToKickBall -> PlanKick chain
   kick_policy_priority: 0
 
   # Skills
