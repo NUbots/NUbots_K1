@@ -1,37 +1,31 @@
 log_level: INFO
 
-# mujoco_playground K1Getup fall-recovery policy (72-obs / 22-action ONNX). Actions are
-# offsets on the CURRENT joint configuration (Go1Getup convention). All joint arrays are
-# in the Booster SDK JointIndexK1 serial order.
-# getup.onnx is the v21 run at 984M steps (2026-07-25).
+# Path to the fall-recovery policy
 model_path: "getup.onnx"
 
-# Inference device: cpu, or gpu (ONNX Runtime TensorRT EP, fp16). The policy is a small MLP
-# whose actions drive the servos directly, so cpu (fp32, same numerics as training) is the
-# default; gpu falls back to cpu on its own when no CUDA device is usable.
+# Inference device: cpu, or gpu (ONNX Runtime TensorRT EP, fp16). Gpu falls back to cpu on its own when no CUDA device
+# is usable.
 device: cpu
 
 # |roll| and |pitch| below this angle (rad) count as upright; sustained for
-# upright_time seconds (with knees extended and gyro settled) the get-up reports Done.
+# upright_time seconds (with knees extended and gyro settled).
 upright_angle: 0.35
 upright_time: 2.0
-# Gyro norm must stay below this (rad/s) for the whole upright_time window — a
-# posture-only check fires while the robot is still oscillating from a dynamic rise
-# and hands the walk policy a moving robot.
+
+# Gyro norm must stay below this (rad/s) for the whole upright_time window
 settled_gyro: 0.5
-# Both knees must be flexed less than this (rad) to count as standing — the torso is
-# already vertical mid-rise, so attitude alone hands off to the walk policy too early
-# (standing knee ~0.4 rad, mid-rise > 1 rad).
+
+# Both knees must be flexed less than this (rad) to count as standing
 knee_extended_angle: 0.9
 
 # Global multiplier on action_scale_joint. MUST match the training config's
-# action_scale (K1Getup trains with 3.0: get-up needs ~75% of the actuator torque
-# limits, walking only 25%).
+# action_scale, may be subject to some tuning when another policy is introduced
 action_scale: 3.0
 
-# Training-time actuation, identical to SimK1Walk (same playground model): kp = the
-# XML position-actuator gains, kd = joint damping, action_scale_joint =
-# 0.25 * effort_limit / kp.
+# Training-time actuation
+# kp = the XML position-actuator gains,
+# kd = joint damping,
+# action_scale_joint = 0.25 * effort_limit / kp.
 kp: [3.948, 3.948,
      3.948, 3.948, 3.948, 3.948, 3.948, 3.948, 3.948, 3.948,
      30.201, 21.448, 17.846, 60.402, 35.692, 35.692,
