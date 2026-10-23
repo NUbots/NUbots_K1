@@ -53,7 +53,7 @@ def register(command):
         help="The target to retrieve: config/recordings/scripts/all",
     )
 
-    command.add_argument("--user", "-u", help="The user to retrieve the files with", default="nubots")
+    command.add_argument("--user", "-u", help="The user to retrieve the files with", default="booster")
 
 
 def rsync_from(host, user, remote_folder, local_folder, ssh_cmd="ssh"):
