@@ -451,8 +451,8 @@ RUN pip3 install uv==0.7.2
 
 # When in the docker image uv will use a separate volume for the cache and venv
 # Virtual environments are on the same volume as the uv cache to allow hard linking for ~speed~
-ENV UV_CACHE_DIR=/home/nubots/python/uv-cache
-ENV UV_PROJECT_ENVIRONMENT=/home/nubots/python/.venv
+ENV UV_CACHE_DIR=/home/booster/python/uv-cache
+ENV UV_PROJECT_ENVIRONMENT=/home/booster/python/.venv
 
 # Enable all the driver capabilities so we can use OpenCL in the container
 ENV NVIDIA_VISIBLE_DEVICES=all
@@ -482,31 +482,31 @@ ARG user_uid=1000
 ARG user_gid=$user_uid
 ARG render_gid=110
 
-# useradd -G is not sufficient to add the nubots user to the dialout
+# useradd -G is not sufficient to add the booster user to the dialout
 # group as docker manages to lose supplementary groups when changing
-# to the nubots user.
+# to the booster user.
 # Also need to add "--group-add dialout" to the docker run command in run.py
 # Add user to uucp as well so people can directly test with arch/ubuntu/pop devices
 RUN groupadd --gid $render_gid render_host \
-    && groupadd --gid $user_gid nubots \
-    && useradd --uid $user_uid --gid nubots -G audio,dialout,uucp,video,render_host -m nubots
+    && groupadd --gid $user_gid booster \
+    && useradd --uid $user_uid --gid booster -G audio,dialout,uucp,video,render_host -m booster
 
-USER nubots
+USER booster
 
 # Without this git gets very angry and confused about the state of the user
 RUN git config --global --add safe.directory '*'
 
 # Copy over GDB alias'
-COPY --chown=nubots:nubots home/nubots/.gdbinit /home/nubots/.gdbinit
+COPY --chown=booster:booster home/booster/.gdbinit /home/booster/.gdbinit
 
 
 # Setup the locations where we will mount our folders
-RUN install -d -m 0755 /home/nubots/NUbots \
-    && install -d -m 0777 /home/nubots/build \
-    && install -d -m 0777 /home/nubots/python \
-    && install -d -m 0777 /home/nubots/NUbots/nusight2/node_modules
+RUN install -d -m 0755 /home/booster/NUbots \
+    && install -d -m 0777 /home/booster/build \
+    && install -d -m 0777 /home/booster/python \
+    && install -d -m 0777 /home/booster/NUbots/nusight2/node_modules
 
 # Configure the cache directories
-ENV CCACHE_DIR=/home/nubots/build/ccache
+ENV CCACHE_DIR=/home/booster/build/ccache
 
-WORKDIR /home/nubots/NUbots
+WORKDIR /home/booster/NUbots
