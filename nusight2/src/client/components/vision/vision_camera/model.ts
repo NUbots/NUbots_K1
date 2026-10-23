@@ -9,10 +9,8 @@ import { BoundingBoxesModel } from "./bounding_boxes";
 import { GoalModel } from "./goals";
 import { GreenHorizonModel } from "./green_horizon";
 import { OtherRobotsModel } from "./other_robots";
-import { VisualMeshModel } from "./visual_mesh";
 
 type DrawOptions = CameraDefaultDrawOptions & {
-  drawVisualMesh: boolean;
   drawGreenHorizon: boolean;
   drawBalls: boolean;
   drawGoals: boolean;
@@ -25,7 +23,6 @@ export interface VisionCameraModelOpts {
   name: string;
   image: Image;
   params: CameraParams;
-  visualMesh?: VisualMeshModel;
   greenHorizon?: GreenHorizonModel;
   balls?: BallModel[];
   goals?: GoalModel[];
@@ -41,7 +38,6 @@ export class VisionCameraModel implements CameraModel {
   @observable.ref image: Image;
   @observable.ref params: CameraParams;
 
-  @observable.ref visualMesh?: VisualMeshModel;
   @observable.ref greenHorizon?: GreenHorizonModel;
   @observable.ref balls?: BallModel[];
   @observable.ref goals?: GoalModel[];
@@ -55,7 +51,6 @@ export class VisionCameraModel implements CameraModel {
     this.name = opts.name;
     this.image = opts.image;
     this.params = opts.params;
-    this.visualMesh = opts.visualMesh;
     this.greenHorizon = opts.greenHorizon;
     this.balls = opts.balls;
     this.goals = opts.goals;
@@ -73,7 +68,6 @@ export class VisionCameraModel implements CameraModel {
         drawDistance: false,
         drawCompass: true,
         drawHorizon: true,
-        drawVisualMesh: false,
         drawGreenHorizon: true,
         drawBalls: true,
         drawGoals: true,
@@ -88,7 +82,6 @@ export class VisionCameraModel implements CameraModel {
     this.name = that.name;
     this.image = that.image;
     this.params.copy(that.params);
-    this.visualMesh = that.visualMesh;
     this.greenHorizon = (that.greenHorizon && this.greenHorizon?.copy(that.greenHorizon)) || that.greenHorizon;
     this.balls = that.balls;
     this.goals = that.goals;

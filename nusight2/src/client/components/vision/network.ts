@@ -5,7 +5,6 @@ import { BoundingBoxes } from "@proto/message/vision/BoundingBoxes";
 import { Goal_SideEnum, Goals } from "@proto/message/vision/Goal";
 import { GreenHorizon } from "@proto/message/vision/GreenHorizon";
 import { Robots } from "@proto/message/vision/Robot";
-import { VisualMesh } from "@proto/message/vision/VisualMesh";
 import { action, runInAction } from "mobx";
 
 import { UnreachableError } from "../../../shared/base/unreachable_error";
@@ -31,7 +30,6 @@ export class VisionNetwork {
   constructor(private network: Network) {
     this.network.on(Image, this.onImage);
     this.network.on(CompressedImage, this.onImage);
-    this.network.on(VisualMesh, this.onMesh);
     this.network.on(Balls, this.onBalls);
     this.network.on(Goals, this.onGoals);
     this.network.on(Robots, this.onRobots);
@@ -87,21 +85,6 @@ export class VisionNetwork {
       robot.cameras.set(id, (model && camera?.copy(model)) || model);
     });
   };
-
-  @action
-  onMesh(robotModel: RobotModel, packet: VisualMesh) {
-    const robot = VisionRobotModel.of(robotModel);
-    const { id, neighbourhood, uPCw, classifications } = packet;
-    const camera = robot.cameras.get(id);
-    if (!camera) {
-      return;
-    }
-    camera.visualMesh = {
-      neighbours: neighbourhood?.v!,
-      rays: uPCw?.v!,
-      classifications: { dim: classifications?.rows!, values: classifications?.v! },
-    };
-  }
 
   @action
   private onBalls(robotModel: RobotModel, packet: Balls) {

@@ -78,9 +78,7 @@ formatters = OrderedDict()
 #         "**/Dockerfile",
 #     ],
 #     "exclude": [
-#         "shared/utility/skill/splines/*",
 #         "shared/utility/platform/models/nugus/nugus.proto",
-#         "module/support/optimisation/NSGA2Optimiser/src/nsga2",
 #         "nusight2/src/assets/robot-models/nugus/nugus.proto",
 #         "nusight2/src/shared/messages/proto/google/*",
 #     ],

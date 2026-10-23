@@ -366,13 +366,6 @@ RUN . /root/.dep_env && \
     --prefix ${DEP_PREFIX} --no-toolchain \
     --header-path include/zstr
 
-# Visual Mesh
-RUN install-from-source https://github.com/NUbots/VisualMesh/archive/64c49fce3a17bbee73339eaee556f47a80b93c40.tar.gz \
-    --jobs $(nproc) \
-    -DBUILD_TENSORFLOW_OP=OFF \
-    -DBUILD_EXAMPLES=OFF \
-    -DBUILD_OPENCL_ENGINE=ON
-
 # JSON for modern C++ (https://github.com/nlohmann/json)
 RUN . /root/.dep_env && \
     install-from-source https://github.com/nlohmann/json/releases/download/v3.10.5/json.hpp \
@@ -397,10 +390,6 @@ RUN . /root/.dep_env && \
     --jobs $(nproc) \
     --prefix ${DEP_PREFIX} \
     ${DEP_TOOLCHAIN}
-
-# Nanopb for generating messages for NUSense
-RUN install-from-source https://github.com/nanopb/nanopb/archive/refs/tags/0.4.9.1.tar.gz \
-    --jobs $(nproc)
 
 # Install Booster Robotics SDK
 

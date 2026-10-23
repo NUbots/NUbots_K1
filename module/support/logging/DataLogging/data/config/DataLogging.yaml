@@ -20,7 +20,6 @@ messages:
   message.vision.GreenHorizon: false
   message.vision.FieldLines: false
   message.vision.FieldIntersections: true
-  message.vision.VisualMesh: false
   message.vision.BoundingBoxes: true
   # Odometry and Localisation
   message.localisation.Ball: true

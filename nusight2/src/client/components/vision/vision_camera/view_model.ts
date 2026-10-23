@@ -9,7 +9,6 @@ import { GoalsViewModel } from "./goals";
 import { GreenHorizonViewModel } from "./green_horizon";
 import { VisionCameraModel } from "./model";
 import { OtherRobotsViewModel } from "./other_robots";
-import { VisualMeshViewModel } from "./visual_mesh";
 
 export class VisionCameraViewModel extends CameraViewModel {
   constructor(
@@ -26,7 +25,6 @@ export class VisionCameraViewModel extends CameraViewModel {
   readonly getRenderables = () => {
     const { drawOptions } = this.model;
     return [
-      drawOptions.drawVisualMesh && this.visualMesh?.visualMesh(),
       drawOptions.drawGreenHorizon && this.greenHorizon?.greenHorizon(),
       drawOptions.drawBalls && this.balls?.balls(),
       drawOptions.drawGoals && this.goals?.goals(),
@@ -83,8 +81,4 @@ export class VisionCameraViewModel extends CameraViewModel {
   }
 
   @computed
-  private get visualMesh(): VisualMeshViewModel | undefined {
-    const { visualMesh, params } = this.model;
-    return visualMesh && VisualMeshViewModel.of(visualMesh, params, this.canvas, this.imageAspectRatio);
-  }
 }

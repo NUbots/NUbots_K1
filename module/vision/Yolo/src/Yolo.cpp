@@ -46,7 +46,6 @@
 #include "utility/vision/Vision.hpp"
 #include "utility/vision/fourcc.hpp"
 #include "utility/vision/projection.hpp"
-#include "utility/vision/visualmesh/VisualMesh.hpp"
 
 namespace module::vision {
 

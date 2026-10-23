@@ -24,8 +24,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef MODULE_SKILL_LOOK_HPP
-#define MODULE_SKILL_LOOK_HPP
+#ifndef MODULE_SKILL_K1LOOK_HPP
+#define MODULE_SKILL_K1LOOK_HPP
 
 #include <Eigen/Core>
 #include <nuclear>
@@ -39,8 +39,6 @@ namespace module::skill {
         /// @brief Stores configuration values
         struct Config {
             float smoothing_factor = 0.0;
-            float head_gain        = 0.0;
-            float head_torque      = 0.0;
         } cfg;
 
         /// @brief Store whether we are smoothing the head movements from the previous run, to help with transitioning
@@ -57,4 +55,4 @@ namespace module::skill {
 
 }  // namespace module::skill
 
-#endif  // MODULE_SKILL_LOOK_HPP
+#endif  // MODULE_SKILL_K1LOOK_HPP

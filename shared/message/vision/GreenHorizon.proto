@@ -33,7 +33,6 @@ import "Neutron.proto";
 import "Vector.proto";
 import "Transform.proto";
 
-import "message/vision/VisualMesh.proto";
 import "message/platform/webots/messages.proto";
 
 message GreenHorizon {
@@ -43,12 +42,8 @@ message GreenHorizon {
     iso3 Hcw = 2;
     /// ID of the camera that took the image containing the green horizon
     uint32 id = 3;
-    /// The visual mesh that this green horizon was calculated from
-    VisualMesh mesh = 4 [(pointer) = SHARED];
     /// When the image was taken that this measurement is derived from
     google.protobuf.Timestamp timestamp = 5;
-    /// A mapping from class names to column indices (for accessing the corresponding classification column)
-    map<string, uint32> class_map = 6;
     /// Ground truth data from webots
     platform.webots.VisionGroundTruth vision_ground_truth = 7;
 }
