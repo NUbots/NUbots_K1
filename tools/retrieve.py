@@ -209,4 +209,4 @@ def run(host, target, user=None, **kwargs):
 
     # STAGE 3: copy all the scripts back, filtered very similar to the configs
     if target in ("scripts", "all"):
-        retrieve_and_merge(host, user, f"{home_folder}/scripts", "nugus", ssh_cmd)
+        retrieve_and_merge(host, user, f"{home_folder}/scripts", "scripts", ssh_cmd)

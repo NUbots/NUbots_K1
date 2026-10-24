@@ -52,33 +52,12 @@ namespace module::input {
     using utility::platform::Booster::ensure_channel_factory;
     using utility::support::Expression;
     using utility::vision::fourcc;
+    using utility::vision::ros_encoding_to_fourcc;
 
     using booster::common::DdsExecutorDispatchMode;
     using booster::common::DdsExecutorOverflowPolicy;
     using booster::common::DdsReaderExecutorOptions;
     using booster::robot::ChannelFactory;
-
-    /// @brief How stale a Hcw may be before it is dropped from the buffer.
-    static constexpr std::chrono::milliseconds HCW_BUFFER_DURATION{500};
-    /// @brief How far a capture timestamp may be from our own clock before we distrust it.
-    static constexpr std::chrono::seconds MAX_CLOCK_SKEW{1};
-    /// @brief How long to wait for CameraInfo before warning that the fallback lens is in use.
-    static constexpr std::chrono::seconds CAMERA_INFO_TIMEOUT{5};
-
-    /// @brief Map a ROS sensor_msgs/Image encoding string to the FOURCC code NUbots uses.
-    static uint32_t ros_encoding_to_fourcc(const std::string& enc) {
-        // clang-format off
-        if (enc == "rgb8")         return fourcc("RGB3");
-        if (enc == "bgr8")         return fourcc("BGR3");
-        if (enc == "mono8")        return fourcc("GREY");
-        if (enc == "bayer_bggr8")  return fourcc("BGGR");
-        if (enc == "bayer_grbg8")  return fourcc("GRBG");
-        if (enc == "bayer_rggb8")  return fourcc("RGGB");
-        if (enc == "bayer_gbrg8")  return fourcc("GBRG");
-        if (enc == "nv12")         return fourcc("NV12");
-        // clang-format on
-        return 0;
-    }
 
     Eigen::Isometry3d Camera::nearest_Hcw(const NUClear::clock::time_point& timestamp) {
         std::lock_guard<std::mutex> lock(sensors_mutex);
@@ -158,7 +137,7 @@ namespace module::input {
                 std::chrono::seconds(stamp.sec()) + std::chrono::nanoseconds(stamp.nanosec())));
 
         const auto skew = std::chrono::abs(stamped - now);
-        if (stamp.sec() == 0 || skew > MAX_CLOCK_SKEW) {
+        if (stamp.sec() == 0 || skew > max_clock_skew.load()) {
             if (!ctx.warned_about_timestamp.exchange(true)) {
                 log<WARN>(fmt::format("Capture timestamps on '{}' are {} s from our clock, using receive time"
                                       " instead. Check that BoosterOS and NUbots share a clock.",
@@ -235,6 +214,9 @@ namespace module::input {
         on<Configuration>("Camera.yaml").then([this](const Configuration& cfg) {
             this->log_level = cfg["log_level"].as<NUClear::LogLevel>();
 
+            hcw_buffer_duration = std::chrono::milliseconds(cfg["hcw_buffer_duration"].as<int>());
+            max_clock_skew      =std::chrono::milliseconds(cfg["max_clock_skew"].as<int>());
+
             // Can't reconfigure the readers once the topics have been subscribed to
             if (channels_created) {
                 log<WARN>("Camera topics changed but readers already exist, restart to apply");
@@ -282,7 +264,7 @@ namespace module::input {
 
         on<Trigger<Sensors>>().then("Buffer Hcw", [this](const Sensors& sensors) {
             std::lock_guard<std::mutex> lock(sensors_mutex);
-            const auto cutoff = NUClear::clock::now() - HCW_BUFFER_DURATION;
+            const auto cutoff = NUClear::clock::now() - hcw_buffer_duration.load();
             while (!Hcws.empty() && Hcws.front().first < cutoff) {
                 Hcws.pop_front();
             }

@@ -5,6 +5,7 @@
 Subscribes directly to the Booster K1's camera topics using the [Booster Robotics
 SDK](https://github.com/BoosterRobotics/booster_robotics_sdk) (1.7) over DDS, and emits the frames as
 `message::input::Image`.
+
 ## Usage
 
 `data/config/Camera.yaml` contains the following information under `cameras`:

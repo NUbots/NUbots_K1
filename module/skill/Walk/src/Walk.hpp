@@ -24,8 +24,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef MODULE_SKILL_K1WALK_HPP
-#define MODULE_SKILL_K1WALK_HPP
+#ifndef MODULE_SKILL_WALK_HPP
+#define MODULE_SKILL_WALK_HPP
 
 #include <Eigen/Core>
 #include <nuclear>
@@ -54,4 +54,4 @@ namespace module::skill {
 
 }  // namespace module::skill
 
-#endif  // MODULE_SKILL_K1WALK_HPP
+#endif  // MODULE_SKILL_WALK_HPP

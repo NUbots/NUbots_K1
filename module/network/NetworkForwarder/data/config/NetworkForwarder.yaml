@@ -25,7 +25,6 @@ targets:
     message.vision.Balls: true
     message.vision.Goals: true
     message.vision.Robots: true
-    message.vision.GreenHorizon: true
     message.vision.FieldLines: true
     message.vision.FieldIntersections: true
     message.vision.BoundingBoxes: true

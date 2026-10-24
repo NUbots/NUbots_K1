@@ -13,4 +13,4 @@ namespace module::actuation {
 
 }  // namespace module::actuation
 
-#endif  // MODULE_ACTUATION_K1SERVOS_HPP
+#endif  // MODULE_ACTUATION_SERVOS_HPP

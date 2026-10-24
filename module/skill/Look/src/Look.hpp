@@ -24,8 +24,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef MODULE_SKILL_K1LOOK_HPP
-#define MODULE_SKILL_K1LOOK_HPP
+#ifndef MODULE_SKILL_LOOK_HPP
+#define MODULE_SKILL_LOOK_HPP
 
 #include <Eigen/Core>
 #include <nuclear>
@@ -55,4 +55,4 @@ namespace module::skill {
 
 }  // namespace module::skill
 
-#endif  // MODULE_SKILL_K1LOOK_HPP
+#endif  // MODULE_SKILL_LOOK_HPP

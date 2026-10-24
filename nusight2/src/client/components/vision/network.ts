@@ -3,7 +3,6 @@ import { CompressedImage, CompressedImage_Lens_ProjectionEnum } from "@proto/mes
 import { Balls } from "@proto/message/vision/Ball";
 import { BoundingBoxes } from "@proto/message/vision/BoundingBoxes";
 import { Goal_SideEnum, Goals } from "@proto/message/vision/Goal";
-import { GreenHorizon } from "@proto/message/vision/GreenHorizon";
 import { Robots } from "@proto/message/vision/Robot";
 import { action, runInAction } from "mobx";
 
@@ -23,7 +22,6 @@ import { Lens } from "../camera/lens";
 import { RobotModel } from "../robot/model";
 
 import { VisionRobotModel } from "./model";
-import { GreenHorizonModel } from "./vision_camera/green_horizon";
 import { VisionCameraModel } from "./vision_camera/model";
 
 export class VisionNetwork {
@@ -33,7 +31,6 @@ export class VisionNetwork {
     this.network.on(Balls, this.onBalls);
     this.network.on(Goals, this.onGoals);
     this.network.on(Robots, this.onRobots);
-    this.network.on(GreenHorizon, this.onGreenHorizon);
     this.network.on(BoundingBoxes, this.onBoundingBoxes);
   }
 
@@ -162,21 +159,6 @@ export class VisionNetwork {
       corners: boundingBox.corners?.map((corner) => Vector3.from(corner))!,
       colour: Vector4.from(boundingBox.colour),
     }));
-  }
-
-  @action
-  private onGreenHorizon(robotModel: RobotModel, packet: GreenHorizon) {
-    const robot = VisionRobotModel.of(robotModel);
-    const { horizon, Hcw, id } = packet;
-    const camera = robot.cameras.get(id);
-    if (!camera) {
-      return;
-    }
-    const greenHorizon = new GreenHorizonModel({
-      horizon: horizon?.map((v) => Matrix4.from(Hcw).invert().decompose().translation.subtract(Vector3.from(v))),
-      Hcw: Matrix4.from(Hcw),
-    });
-    camera.greenHorizon = camera.greenHorizon?.copy(greenHorizon) || greenHorizon;
   }
 }
 

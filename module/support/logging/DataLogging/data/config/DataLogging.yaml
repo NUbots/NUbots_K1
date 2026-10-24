@@ -17,7 +17,6 @@ messages:
   # Vision
   message.vision.Balls: true
   message.vision.Goals: true
-  message.vision.GreenHorizon: false
   message.vision.FieldLines: false
   message.vision.FieldIntersections: true
   message.vision.BoundingBoxes: true

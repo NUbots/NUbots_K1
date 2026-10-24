@@ -71,9 +71,7 @@ namespace module::skill {
             rot.y()             = -rot.y();  // swap signs for SDK
 
             // Send the head rotation command to the Booster SDK (handled by Booster HardwareIO)
-            auto msg = std::make_unique<BoosterHeadRot>();
-            msg->rot = rot;
-            emit(std::move(msg));
+            emit(std::make_unique<BoosterHeadRot>(rot));
 
             if (log_level <= NUClear::LogLevel::DEBUG) {
                 emit(graph("Look head rot (yaw, pitch)", rot.x(), rot.y()));
