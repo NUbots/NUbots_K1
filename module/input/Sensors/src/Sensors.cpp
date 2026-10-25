@@ -27,7 +27,6 @@ namespace module::input {
     using message::input::ButtonLeftUp;
     using message::input::ButtonMiddleDown;
     using message::input::ButtonMiddleUp;
-    using message::input::Sensors;
     using message::localisation::ResetFieldLocalisation;
     using message::platform::RawSensors;
 
@@ -198,7 +197,7 @@ namespace module::input {
 
 
             // Populate and emit the Sensors message
-            auto sensors       = std::make_unique<Sensors>();
+            auto sensors       = std::make_unique<SensorsMsg>();
             sensors->timestamp = raw_sensors.timestamp;
             sensors->Hcw       = Hwc.inverse();
             sensors->Hrw       = Hwr.inverse();

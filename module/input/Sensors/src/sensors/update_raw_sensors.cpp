@@ -30,14 +30,13 @@
 
 namespace module::input {
 
-    using message::input::Sensors;
     using message::platform::RawSensors;
 
     using utility::platform::get_raw_servo;
     using utility::platform::make_packet_error_string;
     using utility::platform::make_servo_hardware_error_string;
 
-    void Sensors::update_raw_sensors(std::unique_ptr<Sensors>& sensors, const RawSensors& raw_sensors) {
+    void Sensors::update_raw_sensors(std::unique_ptr<SensorsMsg>& sensors, const RawSensors& raw_sensors) {
 
         // Mask to ignore the alert bit (because servo errors are handled separately)
         bool subcontroller_packet_error =

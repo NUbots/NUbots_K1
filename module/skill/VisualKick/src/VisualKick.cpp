@@ -50,7 +50,7 @@ namespace module::skill {
     using message::localisation::Ball;
     using message::localisation::Field;
     using message::skill::Kick;
-    using VisualKick = message::booster::BoosterVisualKick;
+    using VisualKickMsg = message::booster::BoosterVisualKick;
     using KickVer    = message::booster::VisualKickVer;
 
     VisualKick::VisualKick(std::unique_ptr<NUClear::Environment> environment)
@@ -81,7 +81,7 @@ namespace module::skill {
                     emit(std::move(mode));
                     // Starting the visual kick switches the robot into the mode that accepts kick
                     // references on rt/kick_ball, so the reference must be sent after the start.
-                    auto vk     = std::make_unique<VisualKick>();
+                    auto vk     = std::make_unique<VisualKickMsg>();
                     vk->start   = true;
                     vk->version = cfg.version;
                     emit(std::move(vk));
@@ -132,7 +132,7 @@ namespace module::skill {
         // Stop the SDK behaviour when the Kick task ends
         on<Stop<Kick>>().then([this] {
             log<INFO>("Stopping visual kick");
-            auto vk     = std::make_unique<VisualKick>();
+            auto vk     = std::make_unique<VisualKickMsg>();
             vk->start   = false;
             vk->version = cfg.version;
             emit(std::move(vk));

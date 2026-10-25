@@ -18,7 +18,7 @@
 
 namespace module::input {
 
-    using message::input::Sensors;
+    using SensorsMsg = message::input::Sensors;
     using message::platform::RawSensors;
 
     class Sensors : public NUClear::Reactor {
@@ -67,7 +67,7 @@ namespace module::input {
         /// @brief Updates the sensors message with raw sensor data, including servo joint information
         /// @param sensors The sensors message to update
         /// @param raw_sensors The raw sensor data
-        void update_raw_sensors(std::unique_ptr<Sensors>& sensors, const RawSensors& raw_sensors);
+        void update_raw_sensors(std::unique_ptr<SensorsMsg>& sensors, const RawSensors& raw_sensors);
 
     public:
         /// @brief Called by the powerplant to build and setup the Sensors reactor.
