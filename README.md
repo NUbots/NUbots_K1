@@ -1,10 +1,7 @@
-# NUbots Codebase
+# NUbots K1 Migration Codebase Snapshot
 
-![Main Build](https://github.com/NUbots/NUbots/actions/workflows/nubots.yaml/badge.svg?branch=main)
-
-![NUsight2 Build](https://github.com/NUbots/NUbots/actions/workflows/nusight.yaml/badge.svg?branch=main)
-
-![Image Build](https://github.com/NUbots/NUbots/actions/workflows/images.yaml/badge.svg?branch=main)
+> [!CAUTION]
+> This fork of the NUbots codebase is archived as a snapshot of the work that went into porting the codebase to the Booster K1. Any work to be done on the K1 must be done in [NUbots/NUbots](https://github.com/NUbots/NUbots).
 
 NUbots is a team in the University of Newcastle's robotics research group focused on developing humanoid soccer-playing robots for the international RoboCup competition.
 The multidisciplinary team of students and academics develops both hardware and software for the robots.
